@@ -1,6 +1,6 @@
 //! `dns add` — append new DNS records to a domain without touching existing ones.
 
-use cli_engine::{Alignment, CommandResult, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
+use cli_engine::{Alignment, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
 use serde_json::{Value, json};
 
 use crate::domain::make_client;
@@ -9,7 +9,8 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 
 use super::conflicts::{WriteErrorContext, describe_write_error};
 use super::records::{
-    RecordOptions, RecordWriteArgs, v3_records, validate_caa_fields, verify_with_list_action,
+    RecordOptions, RecordWriteArgs, v3_records, validate_caa_fields, validate_svcb_fields,
+    validate_tlsa_fields, verified_result,
 };
 
 // `dns add` creates one v3 record per `--data` value; it reports each outcome
@@ -82,14 +83,14 @@ fn summarize_add_outcomes(
 /// `--fields all`).
 fn view_columns() -> Vec<TableColumn> {
     vec![
-        TableColumn::new("domain", "Domain"),
+        TableColumn::new("domain", "Domain").essential(true),
         TableColumn::new("type", "Type"),
         TableColumn::new("name", "Name"),
         TableColumn::new("created", "Created").align(Alignment::Right),
         TableColumn::new("failed", "Failed").align(Alignment::Right),
         TableColumn::new("results", "Results").nested(vec![
-            TableColumn::new("data", "Data"),
-            TableColumn::new("status", "Status"),
+            TableColumn::new("data", "Data").essential(true),
+            TableColumn::new("status", "Status").essential(true),
             TableColumn::new("error", "Error"),
         ]),
         TableColumn::new("action", "Action"),
@@ -123,9 +124,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let domain = args.domain;
             let record_type = args.record_type;
             let name = args.name;
-            let data = args.data;
+            let domain_format = args.domain_format.form(&ctx)?;
             validate_caa_fields(&record_type, &opts)
                 .map_err(crate::error::GddyError::validation)?;
+            validate_tlsa_fields(&record_type, &opts)
+                .map_err(crate::error::GddyError::validation)?;
+            validate_svcb_fields(&record_type, &opts)
+                .map_err(crate::error::GddyError::validation)?;
+            let data = args.data;
             let records = v3_records(&name, &record_type, &data, &opts);
 
             let debug = !ctx.middleware.debug.is_empty();
@@ -152,6 +158,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                             name: name.as_str(),
                             desired_type: record_type.as_str(),
                             desired_data: value.as_str(),
+                            opts: &opts,
                             action: "adding DNS record",
                             debug,
                         },
@@ -165,13 +172,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // All-created → success payload; any failure → non-zero error
             // with a per-record breakdown.
             summarize_add_outcomes(&domain, &record_type, &name, outcomes)
-                .map(|v| {
-                    CommandResult::new(v).with_next_actions(vec![verify_with_list_action(
-                        &domain,
-                        &record_type,
-                        &name,
-                    )])
-                })
+                .map(|v| verified_result(domain_format, v, &domain, &record_type, &name))
                 .map_err(super::mutate_failed)
         },
     )
@@ -214,8 +215,7 @@ mod tests {
             vec![("1.2.3.4".to_string(), Ok(()))],
         )
         .expect("all created -> success payload");
-        let envelope = cli_engine::Envelope::success(payload, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(payload, &view_columns());
         assert!(rendered.contains("Results:"), "{rendered}");
         assert!(rendered.contains("1.2.3.4"), "{rendered}");
         assert!(rendered.contains("created"), "{rendered}");

@@ -9,13 +9,15 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{
-    fetch_with_domain_retry, format_money, period_label, resolve_domain_name,
+    fees_to_json, fetch_with_domain_retry, format_money, period_label, resolve_domain_name,
     resolve_nameserver_hosts,
 };
+use crate::domain::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
+use crate::error::GddyError;
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
-use crate::{contacts, quote_cache};
 
 // Mirrors what `quote_to_json` emits: `domain`/`available` are always present;
 // the rest appear only when the API supplies them (available + priced quotes).
@@ -33,39 +35,13 @@ output_schema!(DomainQuoteResult {
     "agreements": "string", optional;
     "requiredAgreements": "[]object", optional;
     "resolved": "object", optional;
-    // Present only for premium (Afternic) domains: `inventory` is `PREMIUM` and
-    // `fees` carries the one-time acquisition surcharge to acknowledge at purchase.
+    // Present whenever the API returns an inventory source at all: `REGISTRY`,
+    // `REGISTRY_PREMIUM`, or `PREMIUM` — see `types::InventoryType`. Only the
+    // latter two carry a premium surcharge; when they do, it's acknowledged
+    // via `fees`, in addition to `price`.
     "inventory": "string", optional;
     "fees": "[]object", optional;
 });
-
-/// Render a quote's `fees` array (e.g. a premium domain's one-time acquisition
-/// surcharge) as `{type, amount, currency}` objects for display — mirrors how
-/// `quote_to_json` renders prices via [`format_money`]. `None` (rather than an
-/// empty array) when the quote carried no fees, so the field is omitted from
-/// output entirely instead of showing an empty list.
-fn fees_to_json(fees: &[types::Fee]) -> Option<serde_json::Value> {
-    if fees.is_empty() {
-        return None;
-    }
-    Some(json!(
-        fees.iter()
-            .map(|f| {
-                let mut out = json!({});
-                if let Some(t) = f.type_.as_ref() {
-                    out["type"] = json!(t.to_string());
-                }
-                if let Some(amount) = f.fee.as_ref().and_then(format_money) {
-                    out["amount"] = json!(amount);
-                    if let Some(code) = f.fee.as_ref().and_then(|m| m.currency_code.as_ref()) {
-                        out["currency"] = json!(code.to_string());
-                    }
-                }
-                out
-            })
-            .collect::<Vec<_>>()
-    ))
-}
 
 /// Build the inline registration profile (contacts + preferences) sent with a
 /// quote. Always returns a profile: `auto_renew` and `privacy` are always set
@@ -76,13 +52,13 @@ fn build_profile(
     privacy: bool,
     renew_auto: bool,
     name_servers: &[String],
-) -> Result<types::InlineRegistrationProfile> {
-    let file = contacts::load().map_err(|e| CliCoreError::message(e.to_string()))?;
+) -> Result<types::Profile> {
+    let file = super::contacts_file::load().map_err(|e| CliCoreError::message(e.to_string()))?;
     let to_api = |role| file.to_api(role).map_err(CliCoreError::message);
-    let registrant = to_api(contacts::Role::Registrant)?;
-    let admin = to_api(contacts::Role::Admin)?;
-    let billing = to_api(contacts::Role::Billing)?;
-    let tech = to_api(contacts::Role::Tech)?;
+    let registrant = to_api(super::contacts_file::Role::Registrant)?;
+    let admin = to_api(super::contacts_file::Role::Admin)?;
+    let billing = to_api(super::contacts_file::Role::Billing)?;
+    let tech = to_api(super::contacts_file::Role::Tech)?;
 
     let any_non_registrant = admin.is_some() || billing.is_some() || tech.is_some();
     let contacts_obj = match registrant {
@@ -111,7 +87,7 @@ fn build_profile(
         )
     });
 
-    Ok(types::InlineRegistrationProfile {
+    Ok(types::Profile {
         auto_renew: Some(renew_auto),
         contacts: contacts_obj,
         name_servers,
@@ -155,10 +131,8 @@ fn quote_to_json(quote: &types::RegistrationQuote, request_domain: &str) -> serd
     if let Some(renewal) = quote.renewal_price.as_ref().and_then(format_money) {
         out["renewalPrice"] = json!(renewal);
     }
-    if let Some(period) = quote.period {
-        out["period"] = json!(period.get());
-        out["periodLabel"] = json!(period_label(period.get()));
-    }
+    out["period"] = json!(quote.period.get());
+    out["periodLabel"] = json!(period_label(quote.period.get()));
     if let Some(token) = quote.quote_token.as_ref() {
         out["quoteToken"] = json!(token.to_string());
     }
@@ -207,6 +181,34 @@ fn quote_to_json(quote: &types::RegistrationQuote, request_domain: &str) -> serd
     out
 }
 
+/// The `next_action` a successful, available quote points at: registering with
+/// the cached token. Carries the price-confirmation instruction so an AI
+/// assistant reading this from `--output json` is told to relay the price to
+/// the end user before adding `--confirm`. `show_agent_note` should be `false`
+/// for `--output human` — a human reading their own terminal doesn't need to
+/// be told to show themselves the price and confirm with themselves.
+///
+/// Deliberately omits `--agree`/`--confirm` from the suggested command — an
+/// assistant that executes `next_actions[].command` verbatim without those
+/// flags hits the gates (and their price-confirmation errors) instead of
+/// silently charging the account. Mirrors shopping's `agreement_review_action`,
+/// which never suggests `checkout complete --agree` either.
+fn purchase_next_action(quote_token: String, show_agent_note: bool) -> cli_engine::NextAction {
+    let description = if show_agent_note {
+        format!(
+            "Register at the quoted price (plus applicable taxes and fees) \
+            within ~10 minutes — requires --agree and --confirm. \
+            {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}"
+        )
+    } else {
+        "Register at the quoted price (plus applicable taxes and fees) within \
+        ~10 minutes — requires --agree and --confirm."
+            .to_owned()
+    };
+    next_action("domain purchase --quote-token <quote-token>", description)
+        .with_param("quote-token", NextActionParam::value(quote_token))
+}
+
 /// Split a quote's required agreements into (types, human-title lines) for the
 /// quote cache — the types are echoed into `consent.agreementTypes` at purchase,
 /// the titles drive the `--agree` review prompt.
@@ -240,6 +242,9 @@ struct QuoteArgs {
     /// Custom nameserver (repeatable); omit to use GoDaddy defaults.
     #[arg(long, value_name = "HOST")]
     nameserver: Vec<String>,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 /// `requiredAgreements`/`resolved` aren't in the default fields (the
@@ -250,24 +255,26 @@ fn view_columns() -> Vec<TableColumn> {
     vec![
         TableColumn::new("domain", "Domain"),
         TableColumn::new("available", "Available"),
-        TableColumn::new("price", "Price").align(Alignment::Right),
-        TableColumn::new("renewalPrice", "Renewal Price").align(Alignment::Right),
+        TableColumn::new("price", "Price (before taxes and fees)").align(Alignment::Right),
+        TableColumn::new("renewalPrice", "Auto-Renewal Price").align(Alignment::Right),
         TableColumn::new("currency", "Currency"),
         TableColumn::new("periodLabel", "Period"),
         TableColumn::new("quoteToken", "Quote Token").no_truncate(true),
         TableColumn::new("expiresAt", "Expires At"),
         TableColumn::new("irreversible", "Irreversible"),
         TableColumn::new("inventory", "Inventory"),
-        TableColumn::new("fees", "Fees").nested(vec![
-            TableColumn::new("type", "Type"),
-            TableColumn::new("amount", "Amount").align(Alignment::Right),
-            TableColumn::new("currency", "Currency"),
+        TableColumn::new("fees", "Premium Fees").nested(vec![
+            TableColumn::new("type", "Type").essential(true),
+            TableColumn::new("amount", "Amount")
+                .align(Alignment::Right)
+                .essential(true),
+            TableColumn::new("currency", "Currency").essential(true),
         ]),
         TableColumn::new("agreements", "Agreements"),
         TableColumn::new("requiredAgreements", "Required Agreements").nested(vec![
             TableColumn::new("agreementType", "Type"),
             TableColumn::new("title", "Title"),
-            TableColumn::new("url", "URL").no_truncate(true),
+            TableColumn::new("url", "URL").essential(true),
         ]),
         TableColumn::new("resolved", "Resolved Settings").nested(vec![
             TableColumn::new("contactSource", "Contact Source"),
@@ -286,20 +293,21 @@ pub(super) fn command() -> RuntimeCommandSpec {
             "Price a domain registration and lock a quote",
         )
         .with_long(
-            "Quote a single-domain registration: returns the locked price, the \
-                 legal agreements you must accept, the contact/preference settings that \
-                 would apply, and a single-use quote token (valid ~10 minutes). Quoting \
-                 is free and changes nothing.\n\
-                 \n\
-                 The quote — including the registration settings you pass here \
-                 (--period/--privacy/--no-renew/--nameserver and your contacts.toml) — is \
-                 saved locally so `gddy domain purchase --quote-token <token>` buys the \
-                 exact thing you reviewed, at the price you were quoted.",
+            "Quote a single-domain registration: returns the registration price, \
+            the legal agreements you must accept, the contact/preference \
+            settings that would apply, and a single-use quote token (valid ~10 \
+            minutes). Quoting is free and changes nothing.\n\
+            \n\
+            The price excludes taxes and fees, such as the ICANN fee, which are \
+            added when you register — the total charged will be higher. Whether \
+            tax applies depends on the billing address of your payment method. \
+            After purchasing, `gddy shopping order get <order-id>` shows the \
+            total charged.",
         )
         .with_system("domain")
         .with_tier(Tier::Read)
         .with_default_fields(
-            "domain,available,price,renewalPrice,currency,period,periodLabel,quoteToken,expiresAt,agreements",
+            "domain,available,price,renewalPrice,currency,period,periodLabel,inventory,fees,quoteToken,expiresAt,agreements",
         )
         .with_output_schema::<DomainQuoteResult>()
         .with_view(view_columns())
@@ -325,6 +333,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // Resolve auth first (fail closed before reading local config), then
             // build the profile. The token is bound to a hash of this quoted
             // request, so what's quoted here is what `purchase` later registers.
+            // Resolve the display form before a quote is requested and cached,
+            // so a bad preference can't discard a token that was just issued.
+            let domain_format = args.domain_format.form(&ctx)?;
             let profile = build_profile(privacy, renew_auto, &name_servers)?;
             // Cache the exact profile we quote with: the token binds a hash of the
             // domain/price/profile, so `purchase` must re-send this verbatim or the
@@ -362,7 +373,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .await?;
 
-            let view = quote_to_json(&quote, &domain);
+            let mut view = quote_to_json(&quote, &domain);
 
             // Persist the quote so `purchase --quote-token` can reproduce this
             // exact request (only possible when it's available and got a token).
@@ -388,9 +399,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     })?),
                     None => None,
                 };
-                let cached = quote_cache::CachedQuote {
+                let cached = super::quote_cache::CachedQuote {
                     domain: quote.domain.clone().unwrap_or_else(|| domain.clone()),
-                    period: quote.period.map_or(period, |p| p.get()),
+                    period: quote.period.get(),
                     agreement_types,
                     agreement_titles,
                     price: view
@@ -409,12 +420,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     idempotency_key: Some(uuid::Uuid::new_v4().to_string()),
                     fees: fees_json,
                 };
-                if let Err(e) = quote_cache::save(&token, cached) {
-                    // Non-fatal: the quote is still shown, but purchase won't
-                    // find it. Warn so the user knows to re-quote on this host.
-                    tracing::warn!(error = %e, "could not cache the quote for purchase");
-                }
-                // If interactive, offer to purchase directly.
+                // `purchase` can only rebuild the quote from this local copy, so a
+                // quote that can't be saved can't be bought: fail instead of
+                // advertising a next step that would hit "quote not found".
+                super::quote_cache::save(&token, cached).map_err(GddyError::into_cli_error)?;
+                // If interactive, offer to purchase directly (only after a
+                // successful save so the wizard can reuse the cached quote).
                 let quote_price = view
                     .get("price")
                     .and_then(|v| v.as_str())
@@ -439,25 +450,24 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     super::register::BridgeHandoff::ShowHostOutput => {}
                 }
 
-                next_actions.push(
-                    next_action(
-                        "domain purchase --quote-token <quote-token> --agree --confirm",
-                        "Register at the quoted price (within ~10 minutes)",
-                    )
-                    .with_param("quote-token", NextActionParam::value(token)),
-                );
+                next_actions.push(purchase_next_action(
+                    token,
+                    ctx.middleware.output_format != "human",
+                ));
             } else {
                 // Not available (or no token was issued): point at discovery, the
                 // same next step `domain available` offers for a taken name.
                 // `domain suggest` accepts a seed domain, so the domain just
                 // quoted is a valid query to copy/paste directly.
-                let resolved_domain = quote.domain.clone().unwrap_or_else(|| domain.clone());
+                let resolved_domain =
+                    domain_format.render(&quote.domain.clone().unwrap_or_else(|| domain.clone()));
                 next_actions.push(
                     next_action("domain suggest <query>", "Find an available alternative")
                         .with_param("query", NextActionParam::value(resolved_domain)),
                 );
             }
 
+            domain_format.convert_fields(&mut view, &["domain", "resolved.nameServers"]);
             Ok(CommandResult::new(view).with_next_actions(next_actions))
         },
     )
@@ -465,8 +475,94 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::{command, view_columns};
+    use super::{command, purchase_next_action, view_columns};
     use serde_json::json;
+
+    #[test]
+    fn purchase_next_action_tells_ai_assistants_to_confirm_price_first() {
+        let action = purchase_next_action("quote-token-1".to_owned(), true);
+
+        assert_eq!(
+            action.command,
+            "gddy domain purchase --quote-token <quote-token>"
+        );
+        // Regression: the suggested command must never bake in --agree/--confirm
+        // — an assistant that executes `next_actions[].command` verbatim must
+        // hit the gates (and their price-confirmation errors), not silently
+        // charge the account. Mirrors shopping's equivalent regression check.
+        assert!(!action.command.contains("--agree"));
+        assert!(!action.command.contains("--confirm"));
+        assert!(
+            action
+                .description
+                .contains("requires --agree and --confirm")
+        );
+        assert_eq!(
+            action.params["quote-token"].value.as_deref(),
+            Some("quote-token-1")
+        );
+        assert!(action.description.contains("AI assistants:"));
+        assert!(
+            action
+                .description
+                .contains("show the end user the quoted price from `domain quote`")
+        );
+        assert!(
+            action
+                .description
+                .contains("Do not infer confirmation from a general request to buy")
+        );
+        // Regression: an agent that only named the agreement (no link) still
+        // technically "showed the agreements" — the instruction must be
+        // unambiguous that the link itself is required, not just the title.
+        assert!(action.description.contains("title and URL"));
+        assert!(
+            action
+                .description
+                .contains("click through and read the agreements")
+        );
+    }
+
+    #[test]
+    fn purchase_next_action_says_taxes_and_fees_are_extra() {
+        // Both the human and the agent variants: the quoted price is not the
+        // total charged.
+        for show_agent_note in [true, false] {
+            let action = purchase_next_action("quote-token-1".to_owned(), show_agent_note);
+            assert!(
+                action
+                    .description
+                    .contains("Register at the quoted price (plus applicable taxes and fees)"),
+                "{}",
+                action.description
+            );
+            assert!(
+                action
+                    .description
+                    .contains("requires --agree and --confirm")
+            );
+        }
+    }
+
+    #[test]
+    fn price_column_says_it_is_before_taxes_and_fees() {
+        let quote = json!({"domain": "example.com", "available": true, "price": "9.19"});
+        let rendered = cli_engine::preview_human_view(quote, &view_columns());
+        assert!(
+            rendered.contains("Price (before taxes and fees): 9.19"),
+            "{rendered}"
+        );
+    }
+
+    #[test]
+    fn purchase_next_action_omits_agent_note_when_output_is_for_a_human() {
+        // `--output human`: a human reading their own terminal doesn't need to
+        // be told to confirm the price with themselves.
+        let action = purchase_next_action("quote-token-1".to_owned(), false);
+
+        assert!(!action.description.contains("AI assistants:"));
+        assert!(action.description.contains("Register at the quoted price"));
+    }
 
     #[test]
     fn default_fields_includes_renewal_price() {
@@ -476,6 +572,13 @@ mod tests {
         // `renewalPrice1Year` can't produce a false pass here.
         let fields = command().spec.default_fields.expect("default fields set");
         assert!(fields.split(',').any(|f| f == "renewalPrice"), "{fields}");
+    }
+
+    #[test]
+    fn default_fields_includes_inventory_and_fees() {
+        let fields = command().spec.default_fields.expect("default fields set");
+        assert!(fields.split(',').any(|f| f == "inventory"), "{fields}");
+        assert!(fields.split(',').any(|f| f == "fees"), "{fields}");
     }
 
     #[test]
@@ -489,8 +592,7 @@ mod tests {
             "period": 1,
             "periodLabel": "1 year",
         });
-        let envelope = cli_engine::Envelope::success(quote, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(quote, &view_columns());
         assert!(rendered.contains("1 year"), "{rendered}");
     }
 
@@ -500,9 +602,10 @@ mod tests {
     /// `quote_to_json`, and `resolved` is `ResolvedSettings` serialized via
     /// serde, whose `#[serde(rename = ...)]` attributes were cross-checked
     /// for the field names used below) as nested blocks — a mismatch would
-    /// silently drop them from `--fields all` output. Renders a hand-built
-    /// envelope rather than calling `quote_to_json`, which would need a
-    /// live `RegistrationQuote` built through its generated builder.
+    /// silently drop them from `--fields all` output. Renders hand-built
+    /// fixture data through the view rather than calling `quote_to_json`,
+    /// which would need a live `RegistrationQuote` built through its
+    /// generated builder.
     #[test]
     fn quote_result_renders_required_agreements_and_resolved_as_nested_blocks() {
         let quote = json!({
@@ -519,8 +622,7 @@ mod tests {
                 "nameServers": ["ns01.domaincontrol.com", "ns02.domaincontrol.com"],
             },
         });
-        let envelope = cli_engine::Envelope::success(quote, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(quote, &view_columns());
         assert!(rendered.contains("Required Agreements:"), "{rendered}");
         assert!(rendered.contains("Registration Agreement"), "{rendered}");
         assert!(rendered.contains("Resolved Settings:"), "{rendered}");
@@ -543,11 +645,10 @@ mod tests {
                 {"type": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE", "amount": "3900.00", "currency": "USD"},
             ],
         });
-        let envelope = cli_engine::Envelope::success(quote, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(quote, &view_columns());
         assert!(rendered.contains("Inventory:"), "{rendered}");
         assert!(rendered.contains("PREMIUM"), "{rendered}");
-        assert!(rendered.contains("Fees:"), "{rendered}");
+        assert!(rendered.contains("Premium Fees:"), "{rendered}");
         assert!(
             rendered.contains("ONE_TIME_PREMIUM_DOMAIN_PURCHASE"),
             "{rendered}"
@@ -565,8 +666,7 @@ mod tests {
             "domain": "example.com",
             "available": true,
         });
-        let envelope = cli_engine::Envelope::success(quote, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(quote, &view_columns());
         assert!(!rendered.contains("null"), "{rendered}");
     }
 }

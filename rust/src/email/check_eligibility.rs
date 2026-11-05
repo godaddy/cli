@@ -1,9 +1,10 @@
 use cli_engine::{
-    CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
+    CliCoreError, CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
 };
-use serde_json::Value;
+use email_client::types;
 
-use crate::email::{client_err, make_client};
+use crate::email::client::ClientError;
+use crate::email::{body_has_issue, client_err, client_err_with_fix, make_client};
 use crate::next_action::next_action;
 use crate::scopes::EMAIL_READ;
 
@@ -21,53 +22,73 @@ pub(super) fn command() -> RuntimeCommandSpec {
         )
         .with_system("email")
         .with_tier(Tier::Read)
+        .with_json_schema::<types::EligibilityResult>()
         .with_scopes(&[EMAIL_READ]),
         |ctx, args: CheckEligibilityArgs| async move {
             let client = make_client(&ctx, &[EMAIL_READ]).await?;
             let data = client
                 .check_eligibility(&args.email)
                 .await
-                .map_err(client_err)?;
+                .map_err(|e| match &e {
+                    ClientError::Http { status, body }
+                        if *status == 422 && body_has_issue(body, "EMAIL_PLAN_NOT_AVAILABLE") =>
+                    {
+                        client_err_with_fix(
+                            e,
+                            "Run: 'gddy shopping catalog search --query titan' \
+                             to see available email plans, select one to purchase, then retry.",
+                        )
+                    }
+                    ClientError::Http { status, body }
+                        if *status == 422 && body_has_issue(body, "EMAIL_PLAN_NOT_ELIGIBLE") =>
+                    {
+                        client_err_with_fix(
+                            e,
+                            "Go to the GoDaddy Email dashboard \
+                             (https://productivity.godaddy.com/addnewemail) to create the \
+                             mailbox manually — this domain's plan doesn't support \
+                             provisioning via this API.",
+                        )
+                    }
+                    _ => client_err(e),
+                })?;
             let next_actions = eligibility_next_actions(&args.email, &data);
-            Ok(CommandResult::new(data).with_next_actions(next_actions))
+            let value = serde_json::to_value(&data).map_err(|e| {
+                CliCoreError::message(format!("failed to serialize eligibility result: {e}"))
+            })?;
+            Ok(CommandResult::new(value).with_next_actions(next_actions))
         },
     )
 }
 
-/// Always points at `email create` and prefills `--account-id` when the
-/// response names an eligible account, plus a pointer at the `email-mailboxes`
-/// guide for what an account ID actually is.
-fn eligibility_next_actions(email: &str, data: &Value) -> Vec<NextAction> {
-    let mut create = next_action("email create", "Create a mailbox for this address")
-        .with_param("email", NextActionParam::value(email.to_owned()));
+/// Points at `email create` (prefilling `--account-id` and any required
+/// `--consent` flags) only when the response names an eligible account —
+/// with no eligible account there is nothing to create. Always includes a
+/// pointer at the `email` guide for what an account ID actually is.
+fn eligibility_next_actions(email: &str, data: &types::EligibilityResult) -> Vec<NextAction> {
+    let mut actions = Vec::new();
 
-    if let Some(account_id) = first_eligible_account_id(data) {
-        create = create.with_param("account-id", NextActionParam::value(account_id));
+    if let Some(account) = data.eligible_accounts.first() {
+        let mut command = "email create --email <email> --account-id <account-id>".to_owned();
+        for requirement in &account.requirements {
+            command.push_str(&format!(" --consent {}", requirement.type_));
+        }
+        actions.push(
+            next_action(command, "Create a mailbox for this address")
+                .with_param("email", NextActionParam::value(email.to_owned()))
+                .with_param(
+                    "account-id",
+                    NextActionParam::value(account.account_id.to_string()),
+                ),
+        );
     }
 
-    vec![
-        create,
-        next_action("guide email-mailboxes", "Learn about email accounts"),
-    ]
-}
-
-// Every field here is read out of an untyped `serde_json::Value`, as is every
-// other `EmailClient` response in this module — panel-v3-api has no published
-// OpenAPI spec yet. Once it does, a generated typed client (mirroring
-// `domains_client`) would remove this class of bug; not actionable today.
-fn first_eligible_account_id(data: &Value) -> Option<String> {
-    data.get("eligibleAccounts")?
-        .as_array()?
-        .first()?
-        .get("accountId")?
-        .as_str()
-        .map(str::to_owned)
+    actions.push(next_action("guide email", "Learn about email accounts"));
+    actions
 }
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
     use super::*;
 
     #[test]
@@ -77,24 +98,111 @@ mod tests {
         assert_eq!(spec.metadata().scopes, vec![EMAIL_READ.to_string()]);
     }
 
-    #[test]
-    fn next_actions_prefill_email_and_account_id_when_present() {
-        let data = json!({
-            "isEligible": true,
-            "eligibleAccounts": [{ "accountId": "acct-1", "requirements": [] }]
-        });
-        let actions = eligibility_next_actions("someone@example.com", &data);
-        assert_eq!(actions.len(), 2);
-        assert_eq!(actions[0].command, "gddy email create");
-        assert_eq!(actions[1].command, "gddy guide email-mailboxes");
+    fn eligible_account(requirements: Vec<types::AgreementRequirement>) -> types::EligibleAccount {
+        types::EligibleAccount {
+            account_id: types::Uuid("acct-1".to_owned()),
+            account_name: None,
+            default: false,
+            mailbox_type: types::MailboxType("TITAN".to_owned()),
+            requirements,
+        }
     }
 
     #[test]
-    fn next_actions_still_point_at_create_when_no_eligible_accounts() {
-        let data = json!({ "isEligible": false, "ineligibleReasons": ["NO_ELIGIBLE_ACCOUNT"] });
+    fn next_actions_prefill_email_and_account_id_when_present() {
+        let data = types::EligibilityResult {
+            is_eligible: true,
+            eligible_accounts: vec![eligible_account(vec![])],
+        };
         let actions = eligibility_next_actions("someone@example.com", &data);
         assert_eq!(actions.len(), 2);
-        assert_eq!(actions[0].command, "gddy email create");
-        assert_eq!(actions[1].command, "gddy guide email-mailboxes");
+        assert_eq!(
+            actions[0].command,
+            "gddy email create --email <email> --account-id <account-id>"
+        );
+        assert_eq!(actions[1].command, "gddy guide email");
+    }
+
+    #[test]
+    fn next_actions_omit_create_when_no_eligible_accounts() {
+        let data = types::EligibilityResult {
+            is_eligible: false,
+            eligible_accounts: vec![],
+        };
+        let actions = eligibility_next_actions("someone@example.com", &data);
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].command, "gddy guide email");
+    }
+
+    #[test]
+    fn email_plan_not_available_fix_points_at_shopping_catalog() {
+        use cli_engine::build_error_envelope;
+
+        let body = r#"{"message":"no plan","details":[{"issue":"EMAIL_PLAN_NOT_AVAILABLE"}]}"#;
+        let err = client_err_with_fix(
+            ClientError::Http {
+                status: 422,
+                body: body.to_owned(),
+            },
+            "Run: 'gddy shopping catalog search --query titan' \
+             to see available email plans, select one to purchase, then retry.",
+        );
+        let envelope = build_error_envelope(&err, "email");
+        assert!(
+            envelope
+                .fix
+                .as_deref()
+                .is_some_and(|f| f.contains("shopping catalog search")),
+            "{envelope:?}"
+        );
+    }
+
+    #[test]
+    fn email_plan_not_eligible_fix_points_at_the_dashboard() {
+        use cli_engine::build_error_envelope;
+
+        // Per the email guide's "Eligibility failure reasons" table:
+        // `EMAIL_PLAN_NOT_ELIGIBLE` (this domain's plan can't provision via
+        // this API) is a distinct failure from `EMAIL_PLAN_NOT_AVAILABLE`
+        // (no plan at all) and needs a different fix — the dashboard, not
+        // the shopping catalog.
+        let body = r#"{"message":"not eligible","details":[{"issue":"EMAIL_PLAN_NOT_ELIGIBLE"}]}"#;
+        let err = client_err_with_fix(
+            ClientError::Http {
+                status: 422,
+                body: body.to_owned(),
+            },
+            "Go to the GoDaddy Email dashboard \
+             (https://productivity.godaddy.com/addnewemail) to create the \
+             mailbox manually — this domain's plan doesn't support \
+             provisioning via this API.",
+        );
+        let envelope = build_error_envelope(&err, "email");
+        assert!(
+            envelope
+                .fix
+                .as_deref()
+                .is_some_and(|f| f.contains("productivity.godaddy.com")),
+            "{envelope:?}"
+        );
+    }
+
+    #[test]
+    fn next_actions_include_consent_flags_for_outstanding_requirements() {
+        let data = types::EligibilityResult {
+            is_eligible: true,
+            eligible_accounts: vec![eligible_account(vec![types::AgreementRequirement {
+                reference: None,
+                title: None,
+                type_: "FREETRIAL_AUTORENEW".to_owned(),
+            }])],
+        };
+        let actions = eligibility_next_actions("someone@example.com", &data);
+        assert_eq!(actions.len(), 2);
+        assert_eq!(
+            actions[0].command,
+            "gddy email create --email <email> --account-id <account-id> --consent FREETRIAL_AUTORENEW"
+        );
+        assert_eq!(actions[1].command, "gddy guide email");
     }
 }

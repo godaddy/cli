@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::graphql::{CatalogGraphqlSchema, load_graphql_schema};
 
-const HTTP_METHODS: &[&str] = &[
+pub(crate) const HTTP_METHODS: &[&str] = &[
     "get", "post", "put", "patch", "delete", "options", "head", "trace",
 ];
 

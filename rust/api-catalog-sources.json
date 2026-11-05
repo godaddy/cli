@@ -2,6 +2,14 @@
   "version": 1,
   "remote": [
     {
+      "domain": "app-registry",
+      "repository": "app-registry-api",
+      "org": "gdcorp-commerce",
+      "specPath": "apis/graphql/schema.graphql",
+      "baseUrl": "https://api.godaddy.com",
+      "endpointPath": "/v1/apps/app-registry-subgraph"
+    },
+    {
       "domain": "bulk-operations",
       "repository": "commerce.bulk-operations-specification"
     },
@@ -28,6 +36,10 @@
     {
       "domain": "fulfillments",
       "repository": "commerce.fulfillments-specification"
+    },
+    {
+      "domain": "hosting",
+      "repository": "hosting.application-lifecycle-specification"
     },
     {
       "domain": "location-addresses",
@@ -66,6 +78,11 @@
       "repository": "commerce.shipping-specification"
     },
     {
+      "domain": "shopping",
+      "repository": "shopping.ucp-specification",
+      "catalog": false
+    },
+    {
       "domain": "stores",
       "repository": "commerce.stores-specification"
     },
@@ -84,12 +101,11 @@
     {
       "domain": "domains",
       "repository": "domains.domain-lifecycle-specification"
+    },
+    {
+      "domain": "email",
+      "repository": "email.mailbox-lifecycle-specification"
     }
   ],
-  "local": [
-    {
-      "domain": "hosting-nodejs",
-      "path": "schemas/openapi/hosting-nodejs-public-v1.yaml"
-    }
-  ]
+  "local": []
 }

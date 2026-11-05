@@ -6,9 +6,9 @@ use cli_engine::{CliCoreError, Result};
 /// forbidden-host-code-point + IDNA checks, then layers RFC 1035/1123 shape
 /// rules a real domain always satisfies: not a bare IP literal, >=2
 /// dot-separated LDH labels, each 1-63 bytes, total <=253 bytes, and a TLD
-/// that isn't all-numeric (ICANN disallows those). Returns the original
-/// trimmed input — not `Host::parse`'s ASCII/punycode form — so an
-/// already-working Unicode domain's wire format is unchanged.
+/// that isn't all-numeric (ICANN disallows those). Returns the ASCII
+/// (punycode, lowercase) form `Host::parse` computed, so a name typed as
+/// Unicode or pre-encoded reaches the API identically.
 pub(crate) fn validate_domain_name(raw: &str) -> Result<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -37,7 +37,7 @@ pub(crate) fn validate_domain_name(raw: &str) -> Result<String> {
             "{trimmed:?} doesn't look like a valid domain name (expected something like example.com)"
         )));
     }
-    Ok(trimmed.to_owned())
+    Ok(ascii)
 }
 
 /// Normalize and validate a TLD label for `--tld` / `--tlds` flags.
@@ -91,6 +91,7 @@ pub(crate) fn validate_quote_token(raw: &str) -> Result<String> {
     Ok(trimmed.to_owned())
 }
 /// Normalize and validate an async operation ID (UUID).
+#[allow(dead_code)] // used by interactive operation helpers kept for a future path
 pub(crate) fn validate_operation_id(raw: &str) -> Result<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -106,7 +107,7 @@ pub(crate) fn validate_operation_id(raw: &str) -> Result<String> {
 /// Validate every value of a repeatable `--nameserver`-style flag as a
 /// domain-shaped hostname, wrapping [`validate_domain_name`]'s generic error
 /// with the flag's own name — used by both `quote` (the registration
-/// profile's nameservers) and `nameservers set` (the target domain's
+/// profile's nameservers) and `nameserver set` (the target domain's
 /// nameservers) so a bad host isn't reported as if it were some other
 /// (already-valid) domain argument.
 pub(crate) fn validate_nameserver_hosts(raw: Vec<String>) -> Result<Vec<String>> {
@@ -209,21 +210,24 @@ mod tests {
     }
 
     #[test]
-    fn validate_domain_name_accepts_unicode_and_returns_original_not_punycode() {
-        // A real Unicode domain must pass (IDNA-processed for the shape check)
-        // but the returned string is the user's original input, not
-        // `Host::parse`'s ASCII/punycode form — no wire-format change for
-        // domains that already work today.
-        let input = "café.com";
+    fn validate_domain_name_returns_punycode_for_unicode_input() {
         assert_eq!(
-            validate_domain_name(input).expect("valid unicode domain"),
-            input
+            validate_domain_name("münchen.de").expect("valid unicode domain"),
+            "xn--mnchen-3ya.de"
+        );
+    }
+
+    #[test]
+    fn validate_domain_name_accepts_pre_encoded_and_unicode_forms_alike() {
+        assert_eq!(
+            validate_domain_name("xn--mnchen-3ya.de").expect("valid punycode domain"),
+            validate_domain_name("münchen.de").expect("valid unicode domain"),
         );
     }
 
     #[test]
     fn validate_nameserver_hosts_rejects_bad_shape_with_flag_context() {
-        // Regression: `quote`'s and `nameservers set`'s `--nameserver` values
+        // Regression: `quote`'s and `nameserver set`'s `--nameserver` values
         // must go through the same shape check as a domain arg, but the error
         // must say `--nameserver`, not claim the bad value is "the domain".
         let err = validate_nameserver_hosts(vec!["bad ns".to_string()])

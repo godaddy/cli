@@ -227,12 +227,15 @@ pub(crate) fn validate_presentation(
         }
         SettingPresentation::Link(link) => {
             let capability_set: HashSet<&str> = capabilities.iter().map(String::as_str).collect();
-            if capabilities.len() != 2
+            if capability_set.len() != capabilities.len()
                 || !capability_set.contains("read")
                 || !capability_set.contains("open")
+                || capabilities.iter().any(|capability| {
+                    !matches!(capability.as_str(), "read" | "open" | "config" | "delete")
+                })
             {
                 errors.push(format!(
-                    "{path}: a settings-link-v1 presentation requires exactly the read and open capabilities"
+                    "{path}: a settings-link-v1 presentation requires the read and open capabilities and only allows config and delete in addition"
                 ));
             }
             validate_link_presentation(link, errors, path);
@@ -547,6 +550,24 @@ mod tests {
     }
 
     #[test]
+    fn validate_presentation_accepts_link_with_config_and_delete() {
+        let presentation = link("Configure PayPal", "new-window");
+        let mut errors = Vec::new();
+        validate_presentation(
+            &presentation,
+            &[
+                "read".to_owned(),
+                "open".to_owned(),
+                "config".to_owned(),
+                "delete".to_owned(),
+            ],
+            &mut errors,
+            "settings[0].presentation",
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
     fn validate_presentation_rejects_link_without_exact_read_open_capabilities() {
         let presentation = link("Configure PayPal", "new-window");
         let mut errors = Vec::new();
@@ -559,9 +580,32 @@ mod tests {
         assert!(
             errors
                 .iter()
-                .any(|e| e.contains("requires exactly the read and open capabilities")),
+                .any(|e| e.contains("requires the read and open capabilities")),
             "{errors:?}"
         );
+    }
+
+    #[test]
+    fn validate_presentation_rejects_link_with_form_or_duplicate_capabilities() {
+        let presentation = link("Configure PayPal", "new-window");
+        for capabilities in [
+            vec!["read".to_owned(), "open".to_owned(), "write".to_owned()],
+            vec!["read".to_owned(), "open".to_owned(), "open".to_owned()],
+        ] {
+            let mut errors = Vec::new();
+            validate_presentation(
+                &presentation,
+                &capabilities,
+                &mut errors,
+                "settings[0].presentation",
+            );
+            assert!(
+                errors
+                    .iter()
+                    .any(|error| error.contains("only allows config and delete")),
+                "{errors:?}"
+            );
+        }
     }
 
     #[test]

@@ -197,7 +197,8 @@
       ],
       "properties": {
         "authentication": {
-          "$ref": "#/$defs/CallbackAuthentication"
+          "$ref": "#/$defs/CallbackAuthentication",
+          "description": "Optional authentication configuration for callback requests.\nIf not provided, no authentication headers will be sent.\nHMAC authentication is recommended for production environments.\n"
         },
         "events": {
           "description": "Array of payment request status values that should trigger callback notifications.\nEvents correspond to PaymentRequestStatus transitions.\n\nAvailable Events (from PaymentRequestStatus):\n- RECEIVED: When payment request is initially received\n- QUEUED: When payment request is queued for processing\n- IN_PROGRESS: When payment request processing begins\n- COMPLETED: When payment request processing is successfully completed\n- FAILED: When payment request processing fails\n",
@@ -212,7 +213,8 @@
           "type": "array"
         },
         "payloadConfig": {
-          "$ref": "#/$defs/CallbackPayloadConfiguration"
+          "$ref": "#/$defs/CallbackPayloadConfiguration",
+          "description": "Configuration for what data to include in callback payloads"
         },
         "url": {
           "description": "HTTPS callback URL where notifications will be sent",
@@ -337,7 +339,8 @@
           "type": "integer"
         },
         "currency": {
-          "$ref": "#/$defs/Currency"
+          "$ref": "#/$defs/Currency",
+          "description": "Amount currency"
         },
         "fees": {
           "description": "Fees if any",
@@ -352,7 +355,9 @@
           "type": "integer"
         },
         "tip": {
-          "$ref": "#/$defs/TipAmount"
+          "$ref": "#/$defs/TipAmount",
+          "description": "Tip amount details",
+          "nullable": true
         },
         "total": {
           "description": "Total amount",
@@ -541,10 +546,12 @@
           "type": "array"
         },
         "amount": {
-          "$ref": "#/$defs/Amount"
+          "$ref": "#/$defs/Amount",
+          "description": "Payment amount with currency information"
         },
         "callbackConfig": {
-          "$ref": "#/$defs/CallbackConfiguration"
+          "$ref": "#/$defs/CallbackConfiguration",
+          "description": "Optional configuration for async status notifications"
         },
         "createdAt": {
           "description": "Created time in RFC 3339 format",
@@ -572,13 +579,29 @@
           "type": "string"
         },
         "originalTransactionId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "Transaction ID to be refunded. This attribute is used in case the terminal needs to read the card \nwhen issuing referenced refunds. This is not applicable for non-referenced refunds.\n",
+          "example": "b2c3d4e5-f6a7-8901-bcde-f123456789ab"
         },
         "paymentInstructions": {
-          "$ref": "#/$defs/Dictionary"
+          "$ref": "#/$defs/Dictionary",
+          "description": "Non-sensitive payment instructions passed to the device (e.g. skip signature, force PIN entry)",
+          "example": {
+            "enableContactless": true,
+            "forcePIN": false,
+            "maxTipAmount": 100.5,
+            "receiptType": "email",
+            "skipSignature": true,
+            "timeoutSeconds": 120,
+            "tipEnabled": true,
+            "tipPercentage": 18
+          }
         },
         "paymentRequestId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "Server-generated unique identifier for this payment request",
+          "example": "a1b2c3d4-e5f6-4789-9abc-def123456789",
+          "readOnly": true
         },
         "references": {
           "description": "External system references for tracking",
@@ -599,10 +622,16 @@
           "type": "array"
         },
         "status": {
-          "$ref": "#/$defs/PaymentRequestStatus"
+          "$ref": "#/$defs/PaymentRequestStatus",
+          "description": "Current status of the payment request in its lifecycle",
+          "example": "RECEIVED",
+          "readOnly": true
         },
         "storeId": {
-          "$ref": "#/$defs/uuid"
+          "$ref": "#/$defs/uuid",
+          "description": "Store identifier for this payment request",
+          "example": "12345678-90ab-cdef-1234-567890abcdef",
+          "readOnly": true
         },
         "transactionIds": {
           "description": "Transaction IDs created from this payment request (populated after processing)",
@@ -700,7 +729,8 @@
           "type": "integer"
         },
         "currency": {
-          "$ref": "#/$defs/Currency"
+          "$ref": "#/$defs/Currency",
+          "description": "Transaction currency"
         }
       },
       "required": [
@@ -821,7 +851,8 @@
         "links": {
           "description": "An array of error-related HATEOAS links.",
           "items": {
-            "$ref": "#/$defs/link-description"
+            "$ref": "#/$defs/link-description",
+            "readOnly": true
           },
           "readOnly": true,
           "type": "array"

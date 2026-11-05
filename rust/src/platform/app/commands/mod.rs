@@ -1,0 +1,152 @@
+//! `gddy platform app` — register, configure, and deploy GoDaddy
+//! developer-platform applications described by a godaddy.toml manifest.
+
+use cli_engine::{GroupSpec, NextAction, NextActionParam, RuntimeGroupSpec};
+
+use crate::http::api_url_for_env;
+use crate::next_action::{next_action, required_value};
+
+/// Feature-flag key for native-app CLI surfaces. `Stage::Experimental`.
+/// `platform app add native-extension` declares it. `platform app release`
+/// consults it before attaching `nativeExtensions`.
+pub(crate) const NATIVE_APPS_FLAG_KEY: &str = "native-apps";
+
+mod add;
+mod add_extension;
+mod config;
+mod deploy;
+mod enablements;
+mod import;
+mod info;
+mod init;
+mod lifecycle;
+mod list;
+mod onboard;
+mod release;
+mod schemas;
+mod update;
+mod validate;
+
+async fn make_client(
+    ctx: &cli_engine::CommandContext,
+) -> cli_engine::Result<crate::platform::app::client::ApplicationClient> {
+    // Same idempotent registration `domain`/`email`/`shopping` do in their own
+    // `make_client` — without it, App Registry GraphQL traffic is invisible to
+    // `--debug transport` unless some other generated client happened to
+    // register the (process-wide) observer first.
+    crate::http::ensure_generated_client_transport_observer_registered();
+    // Lazily resolve the credential; this triggers the auth flow only for
+    // commands that actually call the API.
+    let token = ctx.credential().await?.token;
+    let base_url = api_url_for_env(&ctx.middleware.env)?;
+    Ok(crate::platform::app::client::ApplicationClient::new(
+        base_url, token,
+    ))
+}
+
+fn client_err(e: crate::platform::app::client::ClientError) -> cli_engine::CliCoreError {
+    crate::error::GddyError::from(e).into_cli_error()
+}
+
+fn validation_err(message: impl Into<String>) -> cli_engine::CliCoreError {
+    crate::error::GddyError::validation(message).into_cli_error()
+}
+
+/// Add the optional manifest field to a create/update input without collapsing
+/// the meaningful distinction between an omitted key and an explicit empty list.
+fn add_redirect_uris_to_input(input: &mut serde_json::Value, redirect_uris: Option<&[String]>) {
+    if let Some(redirect_uris) = redirect_uris {
+        input["redirectUris"] = serde_json::json!(redirect_uris);
+    }
+}
+
+/// Next-actions after mutating local godaddy.toml (add action/subscription/extension).
+fn add_config_next_actions(app_name: &str) -> Vec<NextAction> {
+    let name_param = if app_name.is_empty() {
+        NextActionParam::required()
+    } else {
+        required_value(app_name)
+    };
+    vec![
+        next_action(
+            "platform app validate <name>",
+            "Validate remote application configuration",
+        )
+        .with_param("name", name_param),
+        next_action(
+            "platform app release --application-id <application-id> --version <version>",
+            "Create a new release",
+        )
+        .with_param("application-id", NextActionParam::required())
+        .with_param("version", NextActionParam::required()),
+    ]
+}
+
+pub fn application_group() -> RuntimeGroupSpec {
+    RuntimeGroupSpec::new(
+        GroupSpec::new("app", "Manage GoDaddy Platform apps")
+            .with_long(
+                "Manage GoDaddy developer-platform applications. A GoDaddy application is a \
+                developer-platform app described by a godaddy.toml manifest in your working \
+                directory. Use `gddy platform app onboard` once to accept the developer \
+                agreements, `gddy platform app init` to create one, `gddy platform app \
+                import <name>` to sync an already-registered app's config into a local \
+                manifest, `gddy platform app config validate` to check the local manifest, \
+                `gddy platform app validate <name>` to check remote application state, and \
+                `gddy platform app deploy` to publish it.",
+            )
+            .with_alias("application")
+            .with_alias("apps"),
+    )
+    .with_command(list::command())
+    .with_command(info::command())
+    .with_command(onboard::command())
+    .with_command(init::command())
+    .with_command(import::command())
+    .with_command(validate::command())
+    .with_command(update::command())
+    .with_command(lifecycle::enable_command())
+    .with_command(lifecycle::disable_command())
+    .with_command(enablements::command())
+    .with_command(lifecycle::archive_command())
+    .with_command(release::command())
+    .with_command(deploy::command())
+    .with_group(add::group())
+    .with_group(config::group())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn reused_next_action_helpers_have_expected_size() {
+        assert_eq!(super::add_config_next_actions("app").len(), 2);
+        assert_eq!(super::deploy::deploy_next_actions("app").len(), 3);
+    }
+
+    #[test]
+    fn add_config_next_actions_skips_empty_name_prefill() {
+        let actions = super::add_config_next_actions("");
+        let name = &actions[0].params["name"];
+        assert!(name.required);
+        assert_eq!(name.value.as_deref(), None);
+    }
+
+    #[test]
+    fn redirect_uri_input_preserves_omitted_vs_empty() {
+        let mut omitted = serde_json::json!({});
+        super::add_redirect_uris_to_input(&mut omitted, None);
+        assert!(omitted.get("redirectUris").is_none());
+
+        let mut clear = serde_json::json!({});
+        super::add_redirect_uris_to_input(&mut clear, Some(&[]));
+        assert_eq!(clear["redirectUris"], serde_json::json!([]));
+
+        let mut populated = serde_json::json!({});
+        let redirects = vec!["https://auth.example.net/callback".to_owned()];
+        super::add_redirect_uris_to_input(&mut populated, Some(&redirects));
+        assert_eq!(
+            populated["redirectUris"],
+            serde_json::json!(["https://auth.example.net/callback"])
+        );
+    }
+}

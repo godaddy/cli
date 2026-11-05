@@ -1,0 +1,173 @@
+//! Cross-cutting HTTP helpers shared across command groups — not tied to any
+//! one product API. Kept separate from any single command's `common.rs`
+//! because callers span multiple top-level modules (`email`, `hosting`,
+//! `platform`, `api`).
+
+use std::sync::{Arc, Once};
+
+use cli_engine::transport::{TimeoutPolicy, default_user_agent, reqwest_client_builder_with};
+use generated_client_support::TransportObserver;
+use reqwest::header::HeaderMap;
+use reqwest::{Client, ClientBuilder, Request, StatusCode};
+
+// Every client built here shares the engine's process-wide identity
+// (User-Agent and attribution headers); what differs per situation is the
+// timeout policy, defined once below. `reqwest` cannot unset a timeout, so a
+// situation that needs different timeouts gets its own builder instead of
+// adjusting another one afterwards.
+
+/// Timeouts for ordinary API calls: the engine default (5s connect, 30s read).
+///
+/// The read timeout also bounds the wait for response headers, so an API that
+/// legitimately takes longer than this to start responding needs its own
+/// situation rather than a raised default.
+pub fn api_timeouts() -> TimeoutPolicy {
+    TimeoutPolicy::default()
+}
+
+/// Timeouts for uploads: the engine's connect timeout and no read timeout.
+///
+/// An upload's response (S3 acknowledging a presigned PUT, a multipart import)
+/// arrives only after the whole body has been sent, and a read timeout runs
+/// from the start of the request without being reset by upload progress. A
+/// large bundle on a slow link would otherwise be cut off at the read timeout
+/// even while bytes are flowing.
+pub fn upload_timeouts() -> TimeoutPolicy {
+    TimeoutPolicy::uploads()
+}
+
+/// A `reqwest` builder for ordinary API calls; see [`api_timeouts`]. Pass it to
+/// a generated client's `client_with_builder`.
+pub fn api_client_builder() -> ClientBuilder {
+    reqwest_client_builder_with(api_timeouts())
+}
+
+/// A `reqwest` builder for uploads to a GoDaddy API (a multipart import); see
+/// [`upload_timeouts`]. Carries the same identity and attribution headers as
+/// [`api_client_builder`].
+pub fn api_upload_client_builder() -> ClientBuilder {
+    reqwest_client_builder_with(upload_timeouts())
+}
+
+/// A `reqwest` builder for uploads to presigned storage URLs; see
+/// [`upload_timeouts`].
+///
+/// A presigned URL names a storage host the CLI does not own, so this carries
+/// the engine's user-agent but not the attribution headers that
+/// [`api_client_builder`] sends: the session correlation header should not reach
+/// it. Use [`api_upload_client_builder`] for an upload to a GoDaddy API.
+pub fn storage_upload_client_builder() -> ClientBuilder {
+    upload_timeouts()
+        .apply(Client::builder())
+        .user_agent(default_user_agent())
+}
+
+/// A `reqwest` client for ordinary API calls.
+pub fn make_http_client() -> Client {
+    api_client_builder()
+        .build()
+        .expect("failed to build HTTP client")
+}
+
+/// An API client with a tight read timeout, for tests that prove another code
+/// path (an upload) is *not* subject to the API timeouts.
+#[cfg(test)]
+pub(crate) fn make_api_client_with_read_timeout(read: std::time::Duration) -> Client {
+    reqwest_client_builder_with(api_timeouts().with_read(Some(read)))
+        .build()
+        .expect("failed to build test HTTP client")
+}
+
+/// A `reqwest` client for uploads to a GoDaddy API; see
+/// [`api_upload_client_builder`]. Build it where it is used (it is cheap to skip
+/// for commands that never upload), not alongside the API client.
+pub fn make_api_upload_http_client() -> Client {
+    api_upload_client_builder()
+        .build()
+        .expect("failed to build API upload HTTP client")
+}
+
+/// A `reqwest` client for uploads to presigned storage URLs; see
+/// [`storage_upload_client_builder`]. Build it where it is used.
+pub fn make_storage_upload_http_client() -> Client {
+    storage_upload_client_builder()
+        .build()
+        .expect("failed to build storage upload HTTP client")
+}
+
+/// Bridges `generated-client-support::TransportObserver` (shared by every
+/// progenitor-generated client crate: `domains-client`, `shopping-client`,
+/// `email-client`, ...) into cli-engine's `--debug transport` logger. One
+/// registration for every generated client, rather than one per command
+/// module — they'd all just forward to the same
+/// `cli_engine::transport::debug_log_reqwest_*` calls anyway.
+struct CliEngineTransportObserver;
+
+impl TransportObserver for CliEngineTransportObserver {
+    fn on_request(&self, request: &Request) {
+        cli_engine::transport::debug_log_reqwest_request(request);
+    }
+
+    fn on_response(&self, status: StatusCode, headers: &HeaderMap, body: &[u8]) {
+        cli_engine::transport::debug_log_reqwest_response(status, headers, body);
+    }
+}
+
+static GENERATED_CLIENT_TRANSPORT_OBSERVER_INIT: Once = Once::new();
+
+/// Registers the shared transport observer the first time any generated
+/// client is constructed. Idempotent and cheap to call from every
+/// `make_client`-style helper (`domain`, `email`, `shopping`, ...).
+pub(crate) fn ensure_generated_client_transport_observer_registered() {
+    GENERATED_CLIENT_TRANSPORT_OBSERVER_INIT.call_once(|| {
+        generated_client_support::set_transport_observer(Some(Arc::new(
+            CliEngineTransportObserver,
+        )));
+    });
+}
+
+/// The API base URL for `env`.
+///
+/// # Errors
+///
+/// Returns an error when `env` fails to resolve — for example a malformed
+/// `environments.toml` override. Propagated rather than silently retrying
+/// against a different environment or a hardcoded default: `env` is
+/// normally already validated (by `--env` parsing or the persisted active
+/// environment), so a failure here means the environment's *config* is
+/// broken, and every other `environments::resolve` consumer in this crate
+/// treats that as a hard error rather than something to paper over.
+pub fn api_url_for_env(env: &str) -> cli_engine::Result<String> {
+    crate::environments::resolve(env).map(|e| e.api_url)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn api_url_for_builtins_resolve_to_a_url() {
+        // The exact host mapping is covered deterministically in
+        // `environments::tests`. Here we only assert the built-ins resolve to a
+        // URL — a dev machine may legitimately override a built-in's URL via
+        // env var / local config, so don't hard-code the host.
+        //
+        // `environments::resolve` validates every field, so this races
+        // against any test elsewhere in the crate that mutates a GDDY_*
+        // override var — see `ENV_LOCK`'s doc.
+        let _g = crate::environments::test_support::ENV_LOCK.blocking_lock();
+        for env in ["prod", "ote"] {
+            let url = api_url_for_env(env).expect("resolves");
+            assert!(url.contains("://"), "{env} -> {url:?}");
+        }
+    }
+
+    #[test]
+    fn api_url_for_env_rejects_an_unknown_env() {
+        // An unrecognized env is a hard error now, not a silent fallback to
+        // some other environment's URL.
+        let err = api_url_for_env("definitely-not-a-real-env-xyz")
+            .expect_err("unknown env must not resolve");
+        assert!(err.to_string().contains("definitely-not-a-real-env-xyz"));
+    }
+}

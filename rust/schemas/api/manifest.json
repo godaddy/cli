@@ -1,6 +1,11 @@
 {
-  "generated": "2026-08-26T18:46:42.423872066+00:00",
+  "generated": "2026-11-04T09:44:31.519327336+00:00",
   "domains": {
+    "app-registry": {
+      "file": "app-registry.json",
+      "title": "app-registry GraphQL API",
+      "endpointCount": 1
+    },
     "bulk-operations": {
       "file": "bulk-operations.json",
       "title": "Bulk Operations API",
@@ -9,7 +14,7 @@
     "businesses": {
       "file": "businesses.json",
       "title": "Commerce Business API",
-      "endpointCount": 8
+      "endpointCount": 4
     },
     "catalog-products": {
       "file": "catalog-products.json",
@@ -28,23 +33,28 @@
     },
     "customer-profiles": {
       "file": "customer-profiles.json",
-      "title": "Customers API",
-      "endpointCount": 9
+      "title": "Customer GraphQL API",
+      "endpointCount": 1
     },
     "domains": {
       "file": "domains.json",
       "title": "Domain Lifecycle Management API",
-      "endpointCount": 16
+      "endpointCount": 15
+    },
+    "email": {
+      "file": "email.json",
+      "title": "GoDaddy Business Email Management API",
+      "endpointCount": 4
     },
     "fulfillments": {
       "file": "fulfillments.json",
       "title": "Fulfillment Service",
       "endpointCount": 4
     },
-    "hosting-nodejs": {
-      "file": "hosting-nodejs.json",
-      "title": "Node.js Hosting Public API",
-      "endpointCount": 20
+    "hosting": {
+      "file": "hosting.json",
+      "title": "Hosted Application Lifecycle Management API",
+      "endpointCount": 26
     },
     "location-addresses": {
       "file": "location-addresses.json",
@@ -109,7 +119,7 @@
     "transactions": {
       "file": "transactions.json",
       "title": "Transactions API",
-      "endpointCount": 17
+      "endpointCount": 12
     }
   }
 }

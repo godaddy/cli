@@ -186,7 +186,7 @@ async fn refine_periods_with_quote_limit(state: &mut WizardState, ctx: &StepCont
         .ok_or_else(|| CliCoreError::message("invalid registration period"))?;
 
     let client = make_client_with_cred(&ctx.env, &ctx.credential)?;
-    let profile = types::InlineRegistrationProfile {
+    let profile = types::Profile {
         auto_renew: Some(state.auto_renew),
         contacts: None,
         name_servers: None,

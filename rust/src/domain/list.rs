@@ -12,6 +12,7 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{api_error, comma_joined, make_client};
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::scopes::DOMAINS_READ;
 
@@ -24,7 +25,8 @@ const DEFAULT_VISIBLE_GROUPS: [&str; 3] = ["PENDING", "REGISTERED", "PENDING_TER
 /// v3's max `pageSize` (the spec's `maximum: 200`). Requesting it on every
 /// page minimizes round trips against an API observed to rate-limit as
 /// tightly as 5 requests per period.
-const MAX_PAGE_SIZE: u64 = 200;
+const MAX_PAGE_SIZE: std::num::NonZeroU64 =
+    std::num::NonZeroU64::new(200).expect("MAX_PAGE_SIZE is nonzero");
 
 /// Defensive cap on pages fetched for one invocation. No real account should
 /// ever approach `MAX_PAGE_SIZE * MAX_PAGES` (10,000) domains; hitting this
@@ -123,6 +125,9 @@ struct ListArgs {
     /// Include domains hidden by default, e.g. cancelled or confiscated.
     #[arg(long)]
     show_hidden: bool,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 /// The result of looking for a `rel=next` link in a page's `links`. Per the
@@ -197,11 +202,10 @@ async fn fetch_domains(
     stop_at: Option<usize>,
     debug: bool,
 ) -> Result<Vec<types::Domain>> {
-    let page_size = std::num::NonZeroU64::new(MAX_PAGE_SIZE).expect("nonzero constant");
     let mut items = Vec::new();
     let mut page_token = None;
     for _ in 0..MAX_PAGES {
-        let mut req = client.list_domains().page_size(page_size);
+        let mut req = client.list_domains().page_size(MAX_PAGE_SIZE);
         if !statuses.is_empty() {
             // `statuses` is `style: form, explode: false` — one
             // comma-joined value, not repeated `statuses=` pairs
@@ -279,10 +283,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_default_fields("domain,status,expiresAt,autoRenew")
             .with_json_schema::<types::Domain>()
             .with_scopes(&[DOMAINS_READ])
-            .with_pagination(PaginationConfig {
-                max_limit: 500,
-                ..Default::default()
-            }),
+            .with_pagination(PaginationConfig::new(0, 500)),
         |ctx, args: ListArgs| async move {
             let debug = !ctx.middleware.debug.is_empty();
             let statuses = resolve_statuses(&ctx, args.status)?;
@@ -303,13 +304,17 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .unwrap_or(usize::MAX)
             });
             let items = fetch_domains(&client, &statuses, visible_only, stop_at, debug).await?;
-            let domains: Vec<serde_json::Value> = items
+            let mut domains: Vec<serde_json::Value> = items
                 .iter()
                 .map(serde_json::to_value)
                 .collect::<std::result::Result<_, _>>()
                 .map_err(|e| {
                     CliCoreError::message(format!("failed to serialize domain list: {e}"))
                 })?;
+            let domain_format = args.domain_format.form(&ctx)?;
+            for domain in &mut domains {
+                domain_format.convert_fields(domain, &["domain", "nameServers"]);
+            }
             Ok(CommandResult::new(json!(domains)).with_next_actions(vec![
                 next_action("dns list <domain>", "View a domain's DNS records")
                     .with_param("domain", NextActionParam::required()),
@@ -334,10 +339,7 @@ mod tests {
     fn opts_into_pagination_with_no_default_and_a_max_limit() {
         assert_eq!(
             command().spec.pagination,
-            Some(PaginationConfig {
-                max_limit: 500,
-                ..Default::default()
-            })
+            Some(PaginationConfig::new(0, 500))
         );
     }
 
@@ -377,9 +379,13 @@ mod tests {
                     .json_body(serde_json::json!({ "items": [] }));
             })
             .await;
-        let client =
-            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
-                .expect("build client");
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
 
         let statuses =
             super::super::common::comma_joined(vec!["ACTIVE".to_string(), "EXPIRED".to_string()]);
@@ -407,9 +413,13 @@ mod tests {
                     .json_body(serde_json::json!({ "items": [] }));
             })
             .await;
-        let client =
-            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
-                .expect("build client");
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
 
         let groups = super::super::common::comma_joined(
             super::DEFAULT_VISIBLE_GROUPS
@@ -527,9 +537,13 @@ mod tests {
                 }));
             })
             .await;
-        let client =
-            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
-                .expect("build client");
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
 
         let items = fetch_domains(&client, &[], false, None, false)
             .await
@@ -565,9 +579,13 @@ mod tests {
                 }));
             })
             .await;
-        let client =
-            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
-                .expect("build client");
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
 
         let items = fetch_domains(&client, &[], false, Some(2), false)
             .await
@@ -599,9 +617,13 @@ mod tests {
                 }));
             })
             .await;
-        let client =
-            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
-                .expect("build client");
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
 
         let err = fetch_domains(&client, &[], false, None, false)
             .await
@@ -628,9 +650,13 @@ mod tests {
                 }));
             })
             .await;
-        let client =
-            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
-                .expect("build client");
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
 
         let err = fetch_domains(&client, &[], false, None, false)
             .await

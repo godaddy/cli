@@ -52,7 +52,7 @@ pub(crate) fn format_api_error(
     if status == 402 {
         msg.push_str(
             "\n\nThis usually means your account has no usable payment method. Add one with \
-             `gddy payment-methods add` (a credit card or Good-as-Gold balance is required for domain \
+             `gddy payment-method add` (a credit card or Good-as-Gold balance is required for domain \
              purchases), then try again.",
         );
     }
@@ -242,7 +242,7 @@ mod tests {
             false,
         );
         assert!(msg.contains("402 Payment Required"), "{msg}");
-        assert!(msg.contains("gddy payment-methods add"), "{msg}");
+        assert!(msg.contains("gddy payment-method add"), "{msg}");
     }
 
     #[test]

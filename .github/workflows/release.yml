@@ -29,8 +29,10 @@ jobs:
     name: Release Please
     runs-on: ubuntu-latest
     outputs:
-      releases_created: ${{ steps.release.outputs.releases_created }}
+      rust_release_created: ${{ steps.release.outputs['rust--release_created'] }}
       tag_name: ${{ steps.release.outputs['rust--tag_name'] }}
+      action_release_created: ${{ steps.release.outputs['action--release_created'] }}
+      action_tag_name: ${{ steps.release.outputs['action--tag_name'] }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 #v5.0.0
         id: release
@@ -40,10 +42,38 @@ jobs:
           manifest-file: .release-please-manifest.json
           target-branch: main
 
+  action-release:
+    name: Finalize action release
+    needs: release-please
+    if: needs.release-please.outputs.action_release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      # This release has no binaries attached — it must never become the
+      # repo's "latest" release, or the CLI's own
+      # `releases/latest/download/install.sh` one-liner 404s.
+      - name: Keep gddy as the repo's "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${{ needs.release-please.outputs.action_tag_name }}" --latest=false
+
+      - name: Move floating major tag
+        run: |
+          TAG="${{ needs.release-please.outputs.action_tag_name }}"
+          MAJOR="action-v$(echo "$TAG" | sed -E 's/^action-v([0-9]+)\..*/\1/')"
+          git tag -f "$MAJOR" "$TAG"
+          git push origin "$MAJOR" --force
+
   build:
     name: Build ${{ matrix.target }}
     needs: release-please
-    if: needs.release-please.outputs.releases_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_only == true)
+    if: needs.release-please.outputs.rust_release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_only == true)
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -94,6 +124,114 @@ jobs:
           else
             cargo build --release --target ${{ matrix.target }}
           fi
+
+      # macOS code signing + notarization. Gated on the signing secrets being
+      # present so releases keep working unsigned until they're provisioned:
+      #   SIGNING_CERTIFICATE_P12       base64 Developer ID Application .p12
+      #   SIGNING_CERTIFICATE_PASSWORD  password for that .p12
+      #   NOTARIZATION_API_KEY          base64 App Store Connect API .p8 key
+      #   NOTARIZATION_KEY_ID           key ID for the above
+      #   NOTARIZATION_ISSUER_ID        issuer ID for the above
+      #
+      # gddy ships as a flat binary (no .app bundle, no sibling helper
+      # processes sharing keychain access), so unlike gocode-client this
+      # needs no bundle staging, provisioning profile, or entitlements —
+      # signing alone gives gddy a stable code identity across releases,
+      # which is what lets macOS Keychain remember "Always Allow" instead of
+      # re-prompting on every version bump.
+      - name: Set up signing keychain (macOS)
+        id: signing_keychain
+        if: matrix.os == 'macos-latest'
+        env:
+          P12_BASE64: ${{ secrets.SIGNING_CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
+        shell: bash
+        run: |
+          if [ -z "$P12_BASE64" ] || [ -z "$P12_PASSWORD" ]; then
+            echo "::warning::SIGNING_CERTIFICATE_P12 / _PASSWORD are not set - shipping an unsigned macOS binary"
+            exit 0
+          fi
+          KEYCHAIN_PATH="$RUNNER_TEMP/sign.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          P12_PATH="$RUNNER_TEMP/cert.p12"
+          printf '%s' "$P12_BASE64" | base64 -D > "$P12_PATH"
+          security import "$P12_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$P12_PASSWORD" \
+            -T /usr/bin/codesign
+          rm -f "$P12_PATH"
+
+          existing_keychains=()
+          while IFS= read -r keychain; do
+            [ -n "$keychain" ] && existing_keychains+=("$keychain")
+          done < <(security list-keychains -d user | sed -e 's/^[[:space:]]*//' -e 's/"//g')
+          security list-keychains -d user -s "$KEYCHAIN_PATH" "${existing_keychains[@]}"
+
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          echo "keychain_path=$KEYCHAIN_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Codesign gddy (macOS)
+        if: matrix.os == 'macos-latest' && steps.signing_keychain.outputs.keychain_path != ''
+        shell: bash
+        run: |
+          BIN="target/${{ matrix.target }}/release/gddy"
+          codesign --force --sign "Developer ID Application: GoDaddy Mobile LLC (7UMADG39Z9)" \
+            --options runtime --timestamp "$BIN"
+          codesign --verify --strict --verbose=2 "$BIN"
+
+      - name: Notarize gddy (macOS)
+        if: matrix.os == 'macos-latest' && steps.signing_keychain.outputs.keychain_path != ''
+        shell: bash
+        env:
+          API_KEY_BASE64: ${{ secrets.NOTARIZATION_API_KEY }}
+          KEY_ID: ${{ secrets.NOTARIZATION_KEY_ID }}
+          ISSUER_ID: ${{ secrets.NOTARIZATION_ISSUER_ID }}
+        run: |
+          if [ -z "$API_KEY_BASE64" ] || [ -z "$KEY_ID" ] || [ -z "$ISSUER_ID" ]; then
+            echo "::error::gddy was signed but NOTARIZATION_API_KEY / NOTARIZATION_KEY_ID / NOTARIZATION_ISSUER_ID are missing"
+            exit 1
+          fi
+          KEY_PATH="$RUNNER_TEMP/notary_key.p8"
+          printf '%s' "$API_KEY_BASE64" | base64 -D > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+
+          NOTARY_ZIP="$RUNNER_TEMP/notarize.zip"
+          ditto -c -k --sequesterRsrc "target/${{ matrix.target }}/release/gddy" "$NOTARY_ZIP"
+
+          xcrun notarytool submit "$NOTARY_ZIP" \
+            --key "$KEY_PATH" \
+            --key-id "$KEY_ID" \
+            --issuer "$ISSUER_ID" \
+            --wait
+
+          rm -f "$KEY_PATH" "$NOTARY_ZIP"
+
+      - name: Tear down signing keychain (macOS)
+        if: always() && matrix.os == 'macos-latest' && steps.signing_keychain.outputs.keychain_path != ''
+        shell: bash
+        run: security delete-keychain "${{ steps.signing_keychain.outputs.keychain_path }}" || true
+
+      # Windows Authenticode signing via DigiCert KeyLocker is temporarily
+      # disabled — tracked in DEVEX-1081. No SM_HOST/SM_API_KEY/etc. secrets
+      # or ENABLE_WINDOWS_SIGNING/KEYLOCKER_KEYPAIR_ALIAS vars exist on this
+      # repo yet. Re-enable once those land (see .github/workflows/Sign-WithKeyLocker.ps1).
+      # - name: Sign gddy.exe (DigiCert KeyLocker)
+      #   if: matrix.os == 'windows-latest' && vars.ENABLE_WINDOWS_SIGNING == '1'
+      #   shell: pwsh
+      #   env:
+      #     SM_HOST: ${{ secrets.SM_HOST }}
+      #     SM_API_KEY: ${{ secrets.SM_API_KEY }}
+      #     SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+      #     SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE }}
+      #   run: ../.github/workflows/Sign-WithKeyLocker.ps1 -Path "target/${{ matrix.target }}/release/gddy.exe" -KeypairAlias "${{ vars.KEYLOCKER_KEYPAIR_ALIAS }}"
 
       - name: Package gddy
         shell: bash
@@ -160,8 +298,8 @@ jobs:
             dist/gddy-*.tar.gz \
             dist/gddy-*.zip \
             dist/gddy-checksums-sha256.txt \
-            install.sh \
-            install.ps1 \
+            action/install.sh \
+            action/install.ps1 \
             --clobber
           # Publish only now assets are complete; stays a draft if build fails.
           gh release edit "$TAG" --draft=false --latest

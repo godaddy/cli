@@ -10,7 +10,7 @@
 //!
 //! gddy's global default (set on `CliConfig` in `main.rs`) keeps
 //! `min_stage` at `Stage::Ga`, hiding any module/command flagged below GA
-//! (e.g. `hosting` = Beta; `platform` = Experimental).
+//! (e.g. `db` = Experimental).
 //! An `environments.toml` entry can permanently opt a specific environment
 //! into those pre-release commands via the *same* recognized keys cli-engine
 //! reads generically off every environment's merged TOML table:
@@ -29,7 +29,7 @@ mod catalog;
 mod config;
 mod devx_core;
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;
 
 use std::sync::{Arc, LazyLock, OnceLock};
 
@@ -72,13 +72,6 @@ static BUILTIN_ENVS: LazyLock<Vec<(&'static str, BaseEnvConfig)>> = LazyLock::ne
     ]
 });
 
-/// Scopes requested at login by default.
-pub const DEFAULT_OAUTH_SCOPES: &[&str] = &[
-    crate::scopes::APP_REGISTRY_READ,
-    crate::scopes::DOMAINS_READ,
-    crate::scopes::OFFLINE_ACCESS,
-];
-pub const REDIRECT_URI: &str = "http://localhost:7443/callback";
 pub const APP_ID: &str = "gddy";
 
 pub fn env_prefix(name: &str) -> String {
@@ -160,9 +153,7 @@ mod tests {
         // Resolves through `register()`, which sets `app_id` — so it checks
         // `GDDY_*` overrides and must be serialized against tests that set
         // them (see `ENV_LOCK`'s own doc).
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
         let file = dir.path().join("environments.toml");
         std::fs::write(
@@ -181,6 +172,7 @@ devx_core_url = "https://api.developer.commerce.dev-godaddy.com"
 
         assert_eq!(resolved.domains_api_url, "https://api.dev-godaddy.com");
         assert_eq!(resolved.account_url, "https://account.dev-godaddy.com");
+        assert_eq!(resolved.developer_url, "https://developer.dev-godaddy.com");
         assert_eq!(
             resolved.devx_core_url,
             "https://api.developer.commerce.dev-godaddy.com"
@@ -189,9 +181,7 @@ devx_core_url = "https://api.developer.commerce.dev-godaddy.com"
 
     #[test]
     fn register_rejects_a_file_only_environments_malformed_api_url() {
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
         let file = dir.path().join("environments.toml");
         std::fs::write(
@@ -213,9 +203,7 @@ client_id = "dev-client"
 
     #[test]
     fn register_rejects_a_malformed_file_layer_devx_core_url() {
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
         let file = dir.path().join("environments.toml");
         std::fs::write(
@@ -238,9 +226,7 @@ devx_core_url = "not-a-url"
 
     #[test]
     fn register_resolves_builtin_devx_core_urls() {
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
         let missing_file = dir.path().join("environments.toml");
         let envs = register(Environments::new("prod").with_config_file_path_override(missing_file));
@@ -261,9 +247,7 @@ devx_core_url = "not-a-url"
 
     #[test]
     fn register_file_layer_overrides_builtin_devx_core_url() {
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
         let file = dir.path().join("environments.toml");
         std::fs::write(
@@ -296,9 +280,7 @@ devx_core_url = "https://core.prod-override.example.test"
 
     #[test]
     fn register_rejects_a_malformed_file_layer_auth_url_override_for_a_builtin() {
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK.blocking_lock();
         let dir = tempfile::tempdir().expect("tempdir");
         let file = dir.path().join("environments.toml");
         std::fs::write(
@@ -328,9 +310,7 @@ auth_url = "not-a-url"
         // A corrupted/stale `.gdenv` value that resolves to nothing (no
         // compiled/file entry) must not become the CLI's real startup
         // default.
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK.blocking_lock();
         let envs = resolve_default_environments("totally-bogus-env-name");
         assert_eq!(envs.default_env(), DEFAULT_ENV);
         assert!(envs.source(DEFAULT_ENV).is_ok());
@@ -344,9 +324,7 @@ auth_url = "not-a-url"
         // required fields (so `.resolve()` fails). Checking only `.source()`
         // would let a misconfigured persisted default stick, instead of
         // falling back to `DEFAULT_ENV`.
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK.blocking_lock();
         // A file-path override pointing at a nonexistent path, not a bare
         // `register(...)` — without it this would pick up a real developer's
         // own `~/.config/gddy/environments.toml` `[dev]` entry (if any),
@@ -367,9 +345,7 @@ auth_url = "not-a-url"
 
     #[test]
     fn resolve_default_environments_keeps_a_resolvable_gdenv_value() {
-        let _g = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK.blocking_lock();
         let envs = resolve_default_environments("prod");
         assert_eq!(envs.default_env(), "prod");
     }

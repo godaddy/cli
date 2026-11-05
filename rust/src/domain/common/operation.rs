@@ -1,4 +1,19 @@
+use cli_engine::{NextAction, NextActionParam};
 use domains_client::types;
+
+use crate::next_action::next_action;
+
+/// Points at the completed order, which is where the total actually charged
+/// (including tax) can be read — the registration and operation records only
+/// carry the quoted price. `--wait` because a new order takes a few seconds to
+/// become visible.
+pub(crate) fn order_next_action(order_id: String) -> NextAction {
+    next_action(
+        "shopping order get <order-id> --wait",
+        "See the total charged, including any taxes and fees",
+    )
+    .with_param("order-id", NextActionParam::value(order_id))
+}
 
 /// Whether an async domain-operation status is terminal (no further polling).
 /// Only `COMPLETED`/`FAILED` are terminal; every other status (e.g. `SUBMITTED`,
@@ -26,6 +41,17 @@ pub(crate) fn format_operation_error(error: Option<&types::Error>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn order_next_action_uses_a_structured_param_and_waits_for_the_order() {
+        let action = order_next_action("2211623318".to_owned());
+        assert_eq!(action.command, "gddy shopping order get <order-id> --wait");
+        assert_eq!(
+            action.params["order-id"].value.as_deref(),
+            Some("2211623318")
+        );
+        assert!(action.description.contains("taxes and fees"));
+    }
 
     #[test]
     fn terminal_status_detection() {

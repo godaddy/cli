@@ -22,3 +22,6 @@ __pycache__
 **/.claude/scheduled_tasks.lock
 **/.claude/scheduled_tasks.json
 .cursor/
+
+# Local end-to-end test evidence
+stash/

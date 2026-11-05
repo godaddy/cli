@@ -1,0 +1,255 @@
+//! `gddy platform app enablement` — list apps enabled on a commerce store.
+
+use cli_engine::{
+    CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, TableColumn, Tier,
+};
+use platform_app_client::enabled_store_applications::EnabledStoreApplicationsEnabledStoreApplications;
+use serde_json::{Value, json};
+
+use super::schemas::StoreEnablement;
+use crate::next_action::{next_action, required_value};
+use crate::scopes::APP_REGISTRY_READ;
+
+#[derive(Debug, Clone, clap::Args)]
+struct EnablementsArgs {
+    /// Commerce store ID whose enablements to list.
+    #[arg(long = "store-id", value_name = "STORE_ID")]
+    store_id: String,
+}
+
+fn view_columns() -> Vec<TableColumn> {
+    vec![
+        TableColumn::new("name", "Name").essential(true),
+        TableColumn::new("status", "Status"),
+        TableColumn::new("releaseVersion", "Release"),
+        TableColumn::new("label", "Label"),
+        TableColumn::new("id", "ID"),
+    ]
+}
+
+/// Flatten App Registry enablement rows for CLI output.
+///
+/// Lifts `release.version` to top-level `releaseVersion` so defaults can show
+/// the version string without embedding the whole `release` object (dotted
+/// `--fields` paths like `release.version` are not supported).
+fn flatten_enablements(rows: Vec<EnabledStoreApplicationsEnabledStoreApplications>) -> Value {
+    let flattened: Vec<Value> = rows
+        .into_iter()
+        .map(|row| {
+            json!({
+                "id": row.id,
+                "name": row.name,
+                "label": row.label,
+                "status": row.status,
+                "releaseVersion": row.release.map(|r| r.version),
+            })
+        })
+        .collect();
+    json!(flattened)
+}
+
+pub(super) fn command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_typed_with_context::<EnablementsArgs, _, _, _>(
+        CommandSpec::from_args::<EnablementsArgs>(
+            "enablement",
+            "List applications enabled on a store",
+        )
+        .with_alias("enablements")
+        .with_long(
+            "List GoDaddy developer-platform applications currently enabled on \
+            a specific commerce store. This is the read counterpart to \
+            `gddy platform app enable` / `disable`. Requires a store ID; returns \
+            an empty list when nothing is enabled. Application status is the \
+            registry lifecycle (usually ACTIVE), not the enablement itself — \
+            presence in this list means the app is enabled on the store. Defaults \
+            show name, status, and releaseVersion; pass `--fields id,label,...` \
+            (or `--fields all`) to include the application id and/or label.",
+        )
+        .with_system("applications")
+        .with_tier(Tier::Read)
+        .with_scopes(&[APP_REGISTRY_READ])
+        .with_default_fields("name,status,releaseVersion")
+        .with_output_schema::<StoreEnablement>()
+        .with_view(view_columns()),
+        |ctx, args: EnablementsArgs| async move {
+            let store_id = args.store_id;
+            let client = super::make_client(&ctx).await?;
+            let data = client
+                .list_enabled_store_applications(&store_id)
+                .await
+                .map_err(super::client_err)?;
+            Ok(
+                CommandResult::new(flatten_enablements(data)).with_next_actions(vec![
+                    next_action(
+                        "platform app enable <name> --store-id <store-id>",
+                        "Enable an application on this store",
+                    )
+                    .with_param("name", NextActionParam::required())
+                    .with_param("store-id", required_value(&store_id)),
+                    next_action(
+                        "platform app disable <name> --store-id <store-id>",
+                        "Disable an application on this store",
+                    )
+                    .with_param("name", NextActionParam::required())
+                    .with_param("store-id", required_value(&store_id)),
+                    next_action(
+                        "platform app info --name <name>",
+                        "Inspect a listed application",
+                    )
+                    .with_param("name", NextActionParam::required()),
+                ]),
+            )
+        },
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use cli_engine::{Cli, CliConfig, Stage};
+    use platform_app_client::enabled_store_applications::{
+        ApplicationStatus, EnabledStoreApplicationsEnabledStoreApplications,
+        EnabledStoreApplicationsEnabledStoreApplicationsRelease,
+    };
+
+    use super::{command, flatten_enablements};
+
+    fn row(release: Option<&str>) -> EnabledStoreApplicationsEnabledStoreApplications {
+        EnabledStoreApplicationsEnabledStoreApplications {
+            id: "app-1".to_owned(),
+            name: "my-app".to_owned(),
+            label: "My App".to_owned(),
+            status: ApplicationStatus::ACTIVE,
+            release: release.map(|version| {
+                EnabledStoreApplicationsEnabledStoreApplicationsRelease {
+                    id: "rel-1".to_owned(),
+                    version: version.to_owned(),
+                }
+            }),
+        }
+    }
+
+    #[test]
+    fn command_requires_store_id_flag() {
+        command()
+            .spec
+            .clap_command()
+            .try_get_matches_from(["enablements"])
+            .expect_err("--store-id is required");
+    }
+
+    #[test]
+    fn command_accepts_store_id_flag() {
+        command()
+            .spec
+            .clap_command()
+            .try_get_matches_from(["enablements", "--store-id", "store-123"])
+            .expect("--store-id should be accepted");
+    }
+
+    #[test]
+    fn default_fields_are_name_status_release_version() {
+        assert_eq!(
+            command().spec.default_fields.as_deref(),
+            Some("name,status,releaseVersion")
+        );
+    }
+
+    #[test]
+    fn flatten_enablements_lifts_release_version_only() {
+        let flattened = flatten_enablements(vec![row(Some("1.2.3"))]);
+        assert_eq!(
+            flattened,
+            serde_json::json!([{
+                "id": "app-1",
+                "name": "my-app",
+                "label": "My App",
+                "status": "ACTIVE",
+                "releaseVersion": "1.2.3"
+            }])
+        );
+    }
+
+    #[test]
+    fn flatten_enablements_null_release_version_when_missing() {
+        let flattened = flatten_enablements(vec![row(None)]);
+        assert_eq!(flattened[0]["releaseVersion"], serde_json::json!(null));
+    }
+
+    #[tokio::test]
+    async fn platform_app_enablements_requires_auth() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Experimental)
+                .with_default_auth_provider("godaddy")
+                .with_module(crate::platform::module()),
+        );
+
+        let output = cli
+            .run([
+                "gddy",
+                "platform",
+                "app",
+                "enablement",
+                "--store-id",
+                "store-123",
+                "--output",
+                "json",
+            ])
+            .await;
+
+        const AUTH_FAILURE_EXIT: i32 = 2;
+        assert_eq!(
+            output.exit_code, AUTH_FAILURE_EXIT,
+            "platform app enablement must fail closed at auth resolution, got: {}",
+            output.rendered
+        );
+        let json: serde_json::Value =
+            serde_json::from_str(&output.rendered).expect("valid json output");
+        let message = json["error"]["message"].as_str().unwrap_or_default();
+        assert!(
+            message.contains("provider"),
+            "expected an auth-provider resolution error, got: {}",
+            output.rendered
+        );
+    }
+
+    /// The old plural leaf name must keep working as a hidden alias — not
+    /// just "any exit code 2" (clap also returns that for an unrecognized
+    /// subcommand), but the exact same rejection as the canonical command.
+    #[tokio::test]
+    async fn platform_app_enablements_plural_alias_requires_auth() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Experimental)
+                .with_default_auth_provider("godaddy")
+                .with_module(crate::platform::module()),
+        );
+
+        let canonical = cli
+            .run([
+                "gddy",
+                "platform",
+                "app",
+                "enablement",
+                "--store-id",
+                "store-123",
+                "--output",
+                "json",
+            ])
+            .await;
+        let aliased = cli
+            .run([
+                "gddy",
+                "platform",
+                "app",
+                "enablements",
+                "--store-id",
+                "store-123",
+                "--output",
+                "json",
+            ])
+            .await;
+        assert_eq!(aliased.exit_code, 2, "{}", aliased.rendered);
+        assert_eq!(aliased.rendered, canonical.rendered);
+    }
+}

@@ -8,13 +8,13 @@ use dialoguer::{Confirm, Select};
 
 use domains_client::types;
 
-use crate::contacts::Role;
+use crate::domain::contacts_file::Role;
 use crate::domain::common::{
     api_error, clamp_registration_periods, format_api_error, format_money, is_period_limit_error,
     make_client_with_cred, parse_max_registration_period, period_label, validate_nameserver_hosts,
 };
 use crate::environments;
-use crate::quote_cache;
+use crate::domain::quote_cache;
 
 use crate::retry::with_retry;
 
@@ -67,7 +67,7 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
     // Resolve contacts from the wizard state.
     let contacts = build_contacts_for_profile(&state.contacts)?;
 
-    let profile = types::InlineRegistrationProfile {
+    let profile = types::Profile {
         auto_renew: Some(state.auto_renew),
         contacts,
         name_servers,
@@ -276,7 +276,7 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
         &quote_token,
         quote_cache::CachedQuote {
             domain: quote.domain.clone().unwrap_or_else(|| domain.clone()),
-            period: quote.period.map_or(state.period, |p| p.get()),
+            period: quote.period.get(),
             price: price_str.clone(),
             currency: Some(currency.clone()),
             agreement_titles: agreement_titles.clone(),
@@ -330,7 +330,7 @@ pub(crate) async fn run_non_interactive(
 
     let contacts = build_contacts_for_profile(&state.contacts)?;
 
-    let profile = types::InlineRegistrationProfile {
+    let profile = types::Profile {
         auto_renew: Some(state.auto_renew),
         contacts,
         name_servers,
@@ -408,7 +408,7 @@ pub(crate) async fn run_non_interactive(
         &quote_token,
         quote_cache::CachedQuote {
             domain: quote.domain.clone().unwrap_or_else(|| domain.clone()),
-            period: quote.period.map_or(state.period, |p| p.get()),
+            period: quote.period.get(),
             price: price_str.clone(),
             currency: Some(currency.clone()),
             agreement_titles: agreement_titles.clone(),

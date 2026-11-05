@@ -1,0 +1,712 @@
+use httpmock::prelude::*;
+use serde_json::json;
+
+use super::*;
+
+fn client(base_url: &str) -> HostingClient {
+    HostingClient::new(base_url, "test-token")
+}
+
+#[tokio::test]
+async fn list_apps_sends_app_type_query_param() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/v1/hosting/apps")
+                .query_param("appType", "NODEJS")
+                .header("authorization", "Bearer test-token");
+            then.status(200)
+                .json_body(json!({ "items": [], "links": [] }));
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .list_apps("NODEJS", None, None)
+        .await
+        .expect("list apps");
+
+    mock.assert_async().await;
+    assert_eq!(body["items"], json!([]));
+}
+
+#[tokio::test]
+async fn list_apps_sends_page_token_and_limit() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/v1/hosting/apps")
+                .query_param("appType", "NODEJS")
+                .query_param("pageToken", "tok-1")
+                .query_param("pageSize", "5");
+            then.status(200)
+                .json_body(json!({ "items": [], "links": [] }));
+        })
+        .await;
+
+    client(&server.base_url())
+        .list_apps("NODEJS", Some("tok-1"), Some(5))
+        .await
+        .expect("list apps with pagination");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn get_app_sends_bearer_auth() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/v1/hosting/apps/app-1")
+                .header("authorization", "Bearer test-token");
+            then.status(200).json_body(json!({ "id": "app-1" }));
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .get_app("app-1")
+        .await
+        .expect("get app");
+
+    mock.assert_async().await;
+    assert_eq!(body["id"], "app-1");
+}
+
+#[tokio::test]
+async fn create_app_sends_app_type_query_and_json_body() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/hosting/apps")
+                .query_param("appType", "NODEJS")
+                .json_body(json!({ "name": "my-app" }));
+            then.status(202)
+                .json_body(json!({ "operationId": "op-1", "status": "PENDING" }));
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .create_app("NODEJS", json!({ "name": "my-app" }))
+        .await
+        .expect("create app");
+
+    mock.assert_async().await;
+    assert_eq!(body["operationId"], "op-1");
+}
+
+#[tokio::test]
+async fn update_app_sends_json_patch_content_type() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(PATCH)
+                .path("/v1/hosting/apps/app-1")
+                .header("content-type", "application/json-patch+json");
+            then.status(200).json_body(json!({ "id": "app-1" }));
+        })
+        .await;
+
+    let patch = json!([{ "op": "replace", "path": "/name", "value": "new-name" }]);
+    let body = client(&server.base_url())
+        .update_app("app-1", patch)
+        .await
+        .expect("update app");
+
+    mock.assert_async().await;
+    assert_eq!(body["id"], "app-1");
+}
+
+#[tokio::test]
+async fn delete_app_returns_null_on_204() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(DELETE).path("/v1/hosting/apps/app-1");
+            then.status(204);
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .delete_app("app-1")
+        .await
+        .expect("delete app");
+
+    mock.assert_async().await;
+    assert_eq!(body, json!(null));
+}
+
+#[tokio::test]
+async fn get_app_status_hits_correct_path() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/v1/hosting/apps/app-1/status");
+            then.status(200).json_body(json!({
+                "status": "ACTIVE",
+                "variants": [
+                    { "variant": "PREVIEW", "status": "ACTIVE" },
+                    { "variant": "PUBLISH", "status": "IDLE" }
+                ]
+            }));
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .get_app_status("app-1")
+        .await
+        .expect("get app status");
+
+    mock.assert_async().await;
+    assert!(body.get("variants").is_some());
+}
+
+#[tokio::test]
+async fn set_publish_state_puts_published_only() {
+    for published in [true, false] {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(PUT)
+                    .path("/v1/hosting/apps/MHWP-a1b2c3d4e5/publish-state")
+                    .json_body(json!({ "published": published }));
+                then.status(202).json_body(json!({
+                    "operationId": "MHWP-p9x8y7z6", "status": "PENDING",
+                    "links": [{"rel": "self", "href": "/v1/hosting/app-operations/MHWP-p9x8y7z6"}]
+                }));
+            })
+            .await;
+
+        let body = client(&server.base_url())
+            .set_publish_state("MHWP-a1b2c3d4e5", published)
+            .await
+            .expect("set publish state");
+
+        mock.assert_async().await;
+        assert_eq!(body["operationId"], "MHWP-p9x8y7z6");
+    }
+}
+
+#[tokio::test]
+async fn set_publish_state_surfaces_the_error_body() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path("/v1/hosting/apps/MHWP-a1b2c3d4e5/publish-state");
+            then.status(422).json_body(json!({
+                "name": "UnprocessableEntity", "correlationId": "c1",
+                "message": "Maximum 0 published sites allowed on the current plan",
+                "details": [{"issue": "PUBLISH_LIMIT_EXCEEDED"}]
+            }));
+        })
+        .await;
+
+    let err = client(&server.base_url())
+        .set_publish_state("MHWP-a1b2c3d4e5", true)
+        .await
+        .expect_err("cap breach is an error");
+
+    let ClientError::Http { status, body } = err else {
+        unreachable!("a 422 is an HTTP error: {err:?}");
+    };
+    assert_eq!(status, 422);
+    assert!(body.contains("PUBLISH_LIMIT_EXCEEDED"), "{body}");
+}
+
+#[tokio::test]
+async fn restart_app_sends_variant_body() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/hosting/apps/app-1/restarts")
+                .json_body(json!({ "variant": "PREVIEW" }));
+            then.status(200).json_body(json!({}));
+        })
+        .await;
+
+    client(&server.base_url())
+        .restart_app("app-1", "PREVIEW")
+        .await
+        .expect("restart app");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn list_deployments_hits_correct_path() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/v1/hosting/apps/app-1/deployments")
+                .header("authorization", "Bearer test-token");
+            then.status(200)
+                .json_body(json!({ "items": [], "links": [] }));
+        })
+        .await;
+
+    client(&server.base_url())
+        .list_deployments("app-1", None, None)
+        .await
+        .expect("list deployments");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn get_deployment_hits_correct_path() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/v1/hosting/apps/app-1/deployments/dep-1");
+            then.status(200)
+                .json_body(json!({ "deploymentId": "dep-1" }));
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .get_deployment("app-1", "dep-1")
+        .await
+        .expect("get deployment");
+
+    mock.assert_async().await;
+    assert_eq!(body["deploymentId"], "dep-1");
+}
+
+#[tokio::test]
+async fn create_deployment_posts_empty_json_body() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/hosting/apps/app-1/deployments")
+                .json_body(json!({}));
+            then.status(202)
+                .json_body(json!({ "deploymentId": "dep-1", "status": "PENDING" }));
+        })
+        .await;
+
+    client(&server.base_url())
+        .create_deployment("app-1")
+        .await
+        .expect("create deployment");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn get_operation_hits_correct_path() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/v1/hosting/app-operations/op-1");
+            then.status(200)
+                .json_body(json!({ "operationId": "op-1", "status": "COMPLETED" }));
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .get_operation("op-1")
+        .await
+        .expect("get operation");
+
+    mock.assert_async().await;
+    assert_eq!(body["operationId"], "op-1");
+}
+
+/// `AppOperationType` is an open enum in the contract, so the generated
+/// client decodes an operation kind it has never heard of instead of
+/// failing the whole response.
+#[tokio::test]
+async fn get_operation_decodes_an_unknown_operation_type() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/v1/hosting/app-operations/op-2");
+            then.status(200).json_body(json!({
+                "operationId": "op-2",
+                "type": "DELETE_APP",
+                "status": "IN_PROGRESS",
+                "links": []
+            }));
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .get_operation("op-2")
+        .await
+        .expect("an unlisted operation type still decodes");
+
+    mock.assert_async().await;
+    assert_eq!(body["type"], "DELETE_APP");
+}
+
+#[tokio::test]
+async fn create_import_sends_repo_and_branch() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/hosting/apps/app-1/imports")
+                .json_body(json!({ "repositoryFullName": "acme/my-app", "branch": "main" }));
+            then.status(202).json_body(json!({ "id": "imp-1" }));
+        })
+        .await;
+
+    client(&server.base_url())
+        .create_import("app-1", "acme/my-app", "main")
+        .await
+        .expect("create import");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn get_import_hits_correct_path() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/v1/hosting/apps/app-1/imports/imp-1");
+            then.status(200).json_body(json!({ "id": "imp-1" }));
+        })
+        .await;
+
+    client(&server.base_url())
+        .get_import("app-1", "imp-1")
+        .await
+        .expect("get import");
+
+    mock.assert_async().await;
+}
+
+/// A zip import's response arrives only after the whole upload, and a read
+/// timeout runs from the start of the request, so the API client's read
+/// timeout would cut off a large archive on a slow link.
+#[tokio::test]
+async fn create_import_zip_is_not_cut_off_by_the_api_read_timeout() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST).path("/v1/hosting/apps/app-1/imports");
+            then.status(202)
+                .json_body(json!({ "id": "imp-zip-1" }))
+                .delay(std::time::Duration::from_millis(500));
+        })
+        .await;
+    let hosting = HostingClient::with_clients(
+        server.base_url(),
+        "test-token",
+        crate::http::make_api_client_with_read_timeout(std::time::Duration::from_millis(100)),
+        make_api_upload_http_client(),
+    );
+    let tmp = tempfile::NamedTempFile::new().expect("tmp file");
+
+    // Control: the API client really is that tight against this server.
+    assert!(
+        hosting
+            .http
+            .post(format!(
+                "{}/v1/hosting/apps/app-1/imports",
+                server.base_url()
+            ))
+            .body("x")
+            .send()
+            .await
+            .is_err(),
+        "the API client should time out against the slow server"
+    );
+    let result = hosting
+        .create_import_zip("app-1", tmp.path())
+        .await
+        .expect("the upload client has no read timeout");
+
+    assert_eq!(result["id"], "imp-zip-1");
+}
+
+#[tokio::test]
+async fn create_import_zip_sends_multipart_to_imports_path() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/hosting/apps/app-1/imports")
+                .header_exists("content-type");
+            then.status(202).json_body(json!({ "id": "imp-zip-1" }));
+        })
+        .await;
+
+    let tmp = tempfile::NamedTempFile::new().expect("tmp file");
+    let result = client(&server.base_url())
+        .create_import_zip("app-1", tmp.path())
+        .await
+        .expect("create import zip");
+
+    mock.assert_async().await;
+    assert_eq!(result["id"], "imp-zip-1");
+}
+
+#[tokio::test]
+async fn list_secrets_sends_variant_query_param() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/v1/hosting/apps/app-1/secrets")
+                .query_param("variant", "PUBLISH");
+            then.status(200).json_body(json!({ "items": [] }));
+        })
+        .await;
+
+    client(&server.base_url())
+        .list_secrets("app-1", Some("PUBLISH"))
+        .await
+        .expect("list secrets");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn patch_secrets_sends_json_patch() {
+    let server = MockServer::start_async().await;
+    let patch = json!([{ "op": "add", "path": "/MY_SECRET", "value": "val" }]);
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(PATCH)
+                .path("/v1/hosting/apps/app-1/secrets")
+                .query_param("variant", "PREVIEW")
+                .header("content-type", "application/json-patch+json")
+                .json_body(patch.clone());
+            then.status(200).json_body(json!({ "items": [] }));
+        })
+        .await;
+
+    client(&server.base_url())
+        .patch_secrets("app-1", "PREVIEW", patch)
+        .await
+        .expect("patch secrets");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn list_logs_sends_target_query_param() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/v1/hosting/apps/app-1/logs")
+                .query_param("target", "PREVIEW");
+            then.status(200)
+                .json_body(json!({ "items": [], "links": [] }));
+        })
+        .await;
+
+    client(&server.base_url())
+        .list_logs("app-1", Some("PREVIEW"), None, None, None, None, None)
+        .await
+        .expect("list logs");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn get_runtime_hits_correct_path() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/v1/hosting/apps/app-1/runtime");
+            then.status(200).json_body(json!([{
+                "runtime": "NODEJS",
+                "version": "22.11.0"
+            }]));
+        })
+        .await;
+
+    client(&server.base_url())
+        .get_runtime("app-1")
+        .await
+        .expect("get runtime");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn list_domains_hits_correct_path() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/v1/hosting/apps/app-1/domains");
+            then.status(200)
+                .json_body(json!({ "items": [], "links": [] }));
+        })
+        .await;
+
+    client(&server.base_url())
+        .list_domains("app-1", None, None)
+        .await
+        .expect("list domains");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn attach_domain_sends_hostname() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/hosting/apps/app-1/domains")
+                .json_body(json!({ "hostname": "www.example.com" }));
+            then.status(200).json_body(json!({ "id": "dom-1" }));
+        })
+        .await;
+
+    client(&server.base_url())
+        .attach_domain("app-1", "www.example.com")
+        .await
+        .expect("attach domain");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn detach_domain_returns_null_on_204() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(DELETE)
+                .path("/v1/hosting/apps/app-1/domains/dom-1");
+            then.status(204);
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .detach_domain("app-1", "dom-1")
+        .await
+        .expect("detach domain");
+
+    mock.assert_async().await;
+    assert_eq!(body, json!(null));
+}
+
+#[tokio::test]
+async fn list_subscriptions_hits_correct_path() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/v1/hosting/subscriptions")
+                .query_param("hostingProduct", "WEB_HOSTING");
+            then.status(200)
+                .json_body(json!({ "items": [], "links": [] }));
+        })
+        .await;
+
+    client(&server.base_url())
+        .list_subscriptions(None, None, "WEB_HOSTING")
+        .await
+        .expect("list subscriptions");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn attach_subscription_sends_subscription_id() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path("/v1/hosting/apps/app-1/subscription")
+                .json_body(json!({ "subscriptionId": "sub-1" }));
+            then.status(200)
+                .json_body(json!({ "subscriptionId": "sub-1" }));
+        })
+        .await;
+
+    client(&server.base_url())
+        .attach_subscription("app-1", "sub-1")
+        .await
+        .expect("attach subscription");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn http_error_is_returned_as_client_error() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/v1/hosting/apps/not-found");
+            then.status(404)
+                .json_body(json!({ "code": "NOT_FOUND", "message": "app not found" }));
+        })
+        .await;
+
+    let err = client(&server.base_url())
+        .get_app("not-found")
+        .await
+        .expect_err("expected 404 error");
+
+    assert!(matches!(err, ClientError::Http { status: 404, .. }));
+}
+
+#[tokio::test]
+async fn get_agent_token_posts_empty_body_and_returns_url_and_token() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/hosting/apps/NODEJS-app-1/agent-token")
+                .header("authorization", "Bearer test-token")
+                .json_body(json!({}));
+            then.status(200).json_body(json!({
+                "agentUrl": "https://app-1.agent.example",
+                "token": "minted-agent-jwt"
+            }));
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .get_agent_token("app-1", "NODEJS")
+        .await
+        .expect("get agent token");
+
+    mock.assert_async().await;
+    assert_eq!(body["agentUrl"], "https://app-1.agent.example");
+    assert_eq!(body["token"], "minted-agent-jwt");
+}
+
+#[tokio::test]
+async fn ensure_database_tunnel_session_posts_to_prefixed_app_path() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/hosting/apps/MHWP-app-1/database-tunnel")
+                .header("authorization", "Bearer test-token")
+                .json_body(json!({}));
+            then.status(200).json_body(json!({
+                "sessionId": "s1",
+                "url": "https://dbt-s1.c1.pma.example",
+                "pollUrl": "https://dbt-s1.c1.pma.example/healthz",
+                "token": "relay-token"
+            }));
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .ensure_database_tunnel_session("app-1", "MHWP")
+        .await
+        .expect("ensure database tunnel session");
+
+    mock.assert_async().await;
+    assert_eq!(body["url"], "https://dbt-s1.c1.pma.example");
+    assert_eq!(body["pollUrl"], "https://dbt-s1.c1.pma.example/healthz");
+    assert_eq!(body["token"], "relay-token");
+}

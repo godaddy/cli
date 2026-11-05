@@ -5,8 +5,8 @@
 //! the command validates them and executes directly without prompts.
 
 use cli_engine::{
-    CliCoreError, CommandContext, CommandResult, CommandSpec, Envelope, NextActionParam, Result,
-    RuntimeCommandSpec, TableColumn, Tier, render_human_with_view,
+    CliCoreError, CommandContext, CommandResult, CommandSpec, NextActionParam, Result,
+    RuntimeCommandSpec, TableColumn, Tier, preview_human_view,
 };
 use serde_json::json;
 
@@ -329,9 +329,23 @@ pub(crate) fn present_for_host_command(
         return result;
     }
 
-    let envelope =
-        Envelope::success(result.data, "domain").with_next_actions(result.metadata.next_actions);
-    let rendered = render_human_with_view(&envelope, Some(&view_columns()), "");
+    let mut rendered = preview_human_view(&result.data, &view_columns());
+    if !result.metadata.next_actions.is_empty() {
+        rendered.push_str("\nNext steps:\n");
+        for action in &result.metadata.next_actions {
+            let mut command = action.command.clone();
+            for (key, param) in &action.params {
+                if let Some(value) = &param.value {
+                    command = command.replace(&format!("<{key}>"), value);
+                }
+            }
+            rendered.push_str("  ");
+            rendered.push_str(&command);
+            rendered.push_str("\n      ");
+            rendered.push_str(&action.description);
+            rendered.push('\n');
+        }
+    }
     // Write the correctly shaped register summary now; middleware will then
     // render the empty-string placeholder below (a blank line), not the host
     // command's mismatched table. Use Write rather than print! so the
@@ -440,8 +454,7 @@ mod tests {
             "price": "12.99",
             "currency": "USD",
         });
-        let envelope = Envelope::success(payload, "domain");
-        let rendered = render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = preview_human_view(payload, &view_columns());
         assert!(rendered.contains("Domain:"), "{rendered}");
         assert!(rendered.contains("example.com"), "{rendered}");
         assert!(rendered.contains("Status:"), "{rendered}");

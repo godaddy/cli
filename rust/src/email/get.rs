@@ -1,4 +1,5 @@
-use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use cli_engine::{CliCoreError, CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use email_client::types;
 
 use crate::email::{client_err, make_client};
 use crate::scopes::EMAIL_READ;
@@ -14,13 +15,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::from_args::<GetArgs>("get", "Get a mailbox by ID")
             .with_system("email")
             .with_tier(Tier::Read)
+            .with_json_schema::<types::Mailbox>()
             .with_scopes(&[EMAIL_READ]),
         |ctx, args: GetArgs| async move {
             let client = make_client(&ctx, &[EMAIL_READ]).await?;
-            let data = client
+            let mailbox = client
                 .get_mailbox(&args.mailbox_id)
                 .await
                 .map_err(client_err)?;
+            let data = serde_json::to_value(&mailbox)
+                .map_err(|e| CliCoreError::message(format!("failed to serialize mailbox: {e}")))?;
             Ok(CommandResult::new(data))
         },
     )

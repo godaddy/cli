@@ -38,16 +38,16 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Check
-        run: cargo check
+        run: cargo check --workspace
 
       - name: Format
         run: cargo fmt --check
 
       - name: Lint
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
-        run: cargo test
+        run: cargo test --workspace
 
       - name: Smoke test
         run: ./scripts/smoke-test.sh
@@ -61,9 +61,6 @@ jobs:
         with:
           working-directory: rust
           token: ${{ secrets.GITHUB_TOKEN }}
-          # RUSTSEC-2026-0194/0195: quick-xml DoS advisories, pulled in transitively via
-          # phonenumber's capped version range; no fix available until phonenumber bumps it.
-          ignore: RUSTSEC-2026-0194,RUSTSEC-2026-0195
 
       - name: Check API catalog for unresolved external $refs
         working-directory: .

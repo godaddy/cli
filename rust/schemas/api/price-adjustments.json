@@ -57,10 +57,12 @@
       "description": "Price Adjustment Entity; contains all the information about a price adjustment",
       "properties": {
         "amount": {
-          "$ref": "#/$defs/simple-money"
+          "$ref": "#/$defs/simple-money",
+          "description": "the currency code & amount of currency that makes up the amount discounted or charged for this price adjustment. Present if amountType = AMOUNT, else not present"
         },
         "amountType": {
-          "$ref": "#/$defs/AmountType"
+          "$ref": "#/$defs/AmountType",
+          "type": "string"
         },
         "appliedBeforeTax": {
           "description": "flag for if the price adjustment should be applied pre- or post- tax",
@@ -73,7 +75,9 @@
           "type": "string"
         },
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The datetime when the entity was created",
+          "readOnly": true
         },
         "description": {
           "description": "The user friendly description of the price adjustment",
@@ -110,7 +114,8 @@
           "type": "string"
         },
         "ratePercentage": {
-          "$ref": "#/$defs/percentage"
+          "$ref": "#/$defs/percentage",
+          "description": "the percentage that makes up the amount discounted or charged for this price adjustment. Present id amountType = PERCENTAGE, else not present"
         },
         "storeId": {
           "description": "The storeId that this price adjustment belongs to",
@@ -119,10 +124,14 @@
           "type": "string"
         },
         "type": {
-          "$ref": "#/$defs/PriceAdjustmentType"
+          "$ref": "#/$defs/PriceAdjustmentType",
+          "description": "The type of the price adjustment",
+          "example": "DISCOUNT"
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The datetime when the entity was last updated",
+          "readOnly": true
         }
       },
       "title": "PriceAdjustment",
@@ -134,7 +143,9 @@
       "description": "Price Adjustment Association Entity; contains all the information about a price adjustment association",
       "properties": {
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The datetime when the entity was created",
+          "readOnly": true
         },
         "externalIds": {
           "items": {
@@ -192,7 +203,9 @@
           "$ref": "#/$defs/PriceAdjustmentAssociationType"
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The datetime when the entity was last updated",
+          "readOnly": true
         }
       },
       "title": "PriceAdjustmentAssociation",

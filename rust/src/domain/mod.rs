@@ -4,8 +4,9 @@
 //! host (see the [`domains_client`] crate):
 //!
 //! * **v3** (Domain Lifecycle Management API) — `available`, `suggest`, `get`,
-//!   `quote`, `purchase` (quote → register), and `nameservers set`.
-//! * **v1** — `list` (the shopper's domains) and `agreements` (a TLD's legal
+//!   `quote`, `purchase` (quote → register), `nameserver set`, `auto-renew set`,
+//!   and `transfer-lock set`.
+//! * **v1** — `list` (the shopper's domains) and `agreement` (a TLD's legal
 //!   agreements), which v3 does not yet serve.
 //!
 //! All of these authenticate with an OAuth bearer token from
@@ -19,21 +20,38 @@
 use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 
 mod agreements;
+mod auto_renew;
 mod available;
-mod common;
+pub(crate) mod common;
 mod contacts;
+mod contacts_file;
 mod get;
 mod list;
 mod nameservers;
 mod operation;
 mod purchase;
 mod quote;
+mod quote_cache;
 mod register;
 mod suggest;
+mod transfer_lock;
 
 // Shared with the `dns` module, which builds the same Domains API client and
 // reuses the repeatable-argument helper.
 pub(crate) use common::{api_error, format_api_error, make_client};
+
+/// Shown wherever an AI assistant driving `purchase` might look — its help
+/// text, the `--confirm`/`--agree` gate error messages, and the `next_action`
+/// from `quote` that points at it — so a purchase's price is always relayed to
+/// the end user before the account is actually charged. See AGENTS.md's
+/// "Purchase confirmation" section.
+pub(crate) const AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS: &str = "AI assistants: Before using --agree or --confirm, show the end user the \
+    quoted price from `domain quote`, including any disclosed fees. Tell them \
+    that taxes and fees such as the ICANN fee are added on top, so the total \
+    charged will be higher. Also, show each required legal agreement's title and \
+    URL, and obtain the user's explicit confirmation to proceed. The user must \
+    be able to click through and read the agreements. Do not infer confirmation \
+    from a general request to buy or register a domain.";
 
 pub fn module() -> Module {
     Module::new("Domains", |_ctx| {
@@ -42,19 +60,23 @@ pub fn module() -> Module {
                 "domain",
                 "List your domains, check availability, and register new ones",
             )
+            .with_alias("domains")
             .with_long(
                 "Work with domains on your GoDaddy account and the public registry.\n\
              \n\
-             • list / get        — your existing domains and their details\n\
+             • list / get         — your existing domains and their details\n\
              • available / suggest — find a name to register\n\
              • register          — interactive wizard: discover, configure, and buy\n\
              • quote / purchase  — scripted two-step registration (quote then buy)\n\
-             • nameservers set   — point a domain at custom nameservers\n\
-             • operation          — check on an async operation (e.g. a pending purchase)\n\
+             • nameserver set     — point a domain at custom nameservers\n\
+             • auto-renew set     — toggle automatic renewal before expiration\n\
+             • transfer-lock set  — lock or unlock a domain against transfers\n\
+             • operation status   — check on an async operation (e.g. a pending purchase)\n\
              \n\
              Reads need the `domains.domain:read` scope; purchase/register also\n\
-             need `domains.domain:create`, and `nameservers set` needs\n\
-             `domains.nameserver:update`. Manage a domain's DNS with `gddy dns`.",
+             need `domains.domain:create`, `nameserver set` needs\n\
+             `domains.nameserver:update`, and `auto-renew set`/`transfer-lock set`\n\
+             need `domains.domain:update`. Manage a domain's DNS with `gddy dns`.",
             ),
         )
         .with_command(list::command())
@@ -67,7 +89,9 @@ pub fn module() -> Module {
         .with_command(register::command())
         .with_group(nameservers::group())
         .with_group(contacts::group())
-        .with_command(operation::command())
+        .with_group(operation::group())
+        .with_group(auto_renew::group())
+        .with_group(transfer_lock::group())
     })
     .with_guides_from_markdown([
         (
@@ -77,6 +101,10 @@ pub fn module() -> Module {
         (
             "domain-register.md",
             include_bytes!("guides/domain-register.md").as_slice(),
+        ),
+        (
+            "domain-settings.md",
+            include_bytes!("guides/domain-settings.md").as_slice(),
         ),
     ])
 }
@@ -94,7 +122,7 @@ mod tests {
     #[tokio::test]
     async fn domain_commands_require_auth() {
         const AUTH_FAILURE_EXIT: i32 = 2;
-        let cases: [&[&str]; 10] = [
+        let cases: [&[&str]; 12] = [
             &["gddy", "domain", "list", "--output", "json"],
             &["gddy", "domain", "get", "example.com", "--output", "json"],
             &[
@@ -145,7 +173,28 @@ mod tests {
                 "gddy",
                 "domain",
                 "operation",
+                "status",
                 "dummy-op-id",
+                "--output",
+                "json",
+            ],
+            &[
+                "gddy",
+                "domain",
+                "auto-renew",
+                "set",
+                "example.com",
+                "--enable",
+                "--output",
+                "json",
+            ],
+            &[
+                "gddy",
+                "domain",
+                "transfer-lock",
+                "set",
+                "example.com",
+                "--enable",
                 "--output",
                 "json",
             ],

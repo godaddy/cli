@@ -18,7 +18,10 @@
 //! refresh and re-merge the spec.
 //!
 //! The lint allowances are scoped to the generated module so the hand-written
-//! code below (`client_with_auth`, `BuildError`) is still linted normally.
+//! code below (`client_with_builder`, the `ClientHooks` bridge) is still linted
+//! normally. `BuildError`/`TransportObserver`/`set_transport_observer` are
+//! shared with every other generated client crate — see
+//! `generated-client-support`.
 
 /// progenitor-generated client + types. Exempt from the workspace's strict
 /// style/rustdoc lints (it's machine-generated); the rest of the crate is not.
@@ -32,110 +35,55 @@ mod generated {
 }
 
 pub use generated::*;
-
-/// Error building the authenticated HTTP client.
-#[derive(Debug, thiserror::Error)]
-pub enum BuildError {
-    #[error("invalid header value: {0}")]
-    Header(#[from] reqwest::header::InvalidHeaderValue),
-    #[error("failed to build HTTP client: {0}")]
-    Http(#[from] reqwest::Error),
-}
-
-/// Observes every generated request/response, independent of any particular
-/// logging backend. This crate has no compile-time dependency on cli-engine
-/// (or any other framework) — the *caller* pushes an implementation in via
-/// [`set_transport_observer`] rather than this crate pulling one in.
-pub trait TransportObserver: Send + Sync {
-    fn on_request(&self, request: &reqwest::Request);
-    fn on_response(&self, status: reqwest::StatusCode, headers: &reqwest::header::HeaderMap);
-}
-
-static TRANSPORT_OBSERVER: std::sync::RwLock<Option<std::sync::Arc<dyn TransportObserver>>> =
-    std::sync::RwLock::new(None);
-
-/// Registers (or clears, with `None`) the process-wide transport observer.
-/// The main crate calls this with an adapter around its own logging
-/// framework — e.g. cli-engine's `--debug transport` bridge — before making
-/// any request through a [`Client`].
-pub fn set_transport_observer(observer: Option<std::sync::Arc<dyn TransportObserver>>) {
-    *TRANSPORT_OBSERVER
-        .write()
-        .expect("lock is never held across a panic") = observer;
-}
+pub use generated_client_support::{BuildError, TransportObserver, set_transport_observer};
 
 /// Bridges generated requests/responses into the registered
 /// [`TransportObserver`], if any.
-///
-/// progenitor generates every call as `client.pre(...)`, `client.exec(...)`,
-/// `client.post(...)` (see [`progenitor_client::ClientHooks`]); the default
-/// impl (for `&Client`) is a no-op. Implementing the trait for `Client`
-/// (without the reference) overrides it via progenitor's "auto-ref
-/// specialization" — this is the sanctioned extension point, not a hack.
-///
-/// `post` only gets `&reqwest::Result<Response>` (a reference, pre-body-read),
-/// so response bodies aren't capturable here without consuming the body ahead
-/// of the generated code's own deserialization — this reports status/headers
-/// only for responses; request bodies are reported in full via `pre`.
 impl progenitor_client::ClientHooks<()> for Client {
     async fn pre<E>(
         &self,
         request: &mut reqwest::Request,
         _info: &progenitor_client::OperationInfo,
     ) -> Result<(), progenitor_client::Error<E>> {
-        let observer = TRANSPORT_OBSERVER
-            .read()
-            .expect("lock is never held across a panic")
-            .clone();
-        if let Some(observer) = observer {
-            observer.on_request(request);
-        }
+        generated_client_support::notify_request(request);
         Ok(())
     }
 
-    async fn post<E>(
+    async fn exec(
         &self,
-        result: &reqwest::Result<reqwest::Response>,
+        request: reqwest::Request,
         _info: &progenitor_client::OperationInfo,
-    ) -> Result<(), progenitor_client::Error<E>> {
-        let observer = TRANSPORT_OBSERVER
-            .read()
-            .expect("lock is never held across a panic")
-            .clone();
-        if let Ok(response) = result
-            && let Some(observer) = observer
-        {
-            observer.on_response(response.status(), response.headers());
-        }
-        Ok(())
+    ) -> reqwest::Result<reqwest::Response> {
+        generated_client_support::execute_and_observe(self.client(), request).await
     }
 }
 
-/// Build a [`Client`] whose every request carries a pre-set `Authorization`
+/// Builds a [`Client`] whose every request carries a pre-set `Authorization`
 /// header and `x-request-id`.
 ///
-/// `authorization` is the full header value the domain endpoints expect — e.g.
-/// `"Bearer <token>"`. Keeping the `reqwest::Client` construction here means
-/// callers never name reqwest's types, so the main crate is unaffected by this
-/// crate's reqwest version.
-pub fn client_with_auth(
+/// `builder` carries the host application's shared transport policy
+/// (user-agent, timeouts, default headers); `authorization` is the full header
+/// value the API expects, e.g. `"Bearer <token>"`. The builder is a `reqwest`
+/// type, so the caller's `reqwest` must resolve to the same version as this
+/// crate's.
+///
+/// # Errors
+///
+/// [`BuildError`] if `base_url` is not HTTPS (plain HTTP is allowed only on a
+/// loopback host), if a header value is invalid, or if the client cannot be
+/// built.
+pub fn client_with_builder(
+    builder: reqwest::ClientBuilder,
     base_url: &str,
     authorization: &str,
-    user_agent: &str,
     request_id: &str,
 ) -> Result<Client, BuildError> {
-    use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
-
-    let mut headers = HeaderMap::new();
-    headers.insert(AUTHORIZATION, HeaderValue::from_str(authorization)?);
-    headers.insert(
-        HeaderName::from_static("x-request-id"),
-        HeaderValue::from_str(request_id)?,
-    );
-    let http = reqwest::Client::builder()
-        .user_agent(user_agent)
-        .default_headers(headers)
-        .build()?;
+    generated_client_support::validate_base_url(base_url)?;
+    let http = generated_client_support::build_authenticated_http_client(
+        builder,
+        authorization,
+        request_id,
+    )?;
     Ok(Client::new_with_client(base_url, http))
 }
 
@@ -152,10 +100,10 @@ mod tests {
     // headers, and response deserialization. They run entirely offline.
 
     fn client_for(server: &MockServer) -> Client {
-        client_with_auth(
+        client_with_builder(
+            reqwest::Client::builder(),
             &server.base_url(),
             "Bearer tok",
-            "godaddy-cli/test",
             "req-1",
         )
         .expect("build client")
@@ -225,40 +173,6 @@ mod tests {
         assert_eq!(body.available, Some(true));
         let prices = body.prices.expect("prices present");
         assert_eq!(prices[0].price.as_ref().and_then(|m| m.value), Some(1199));
-    }
-
-    #[tokio::test]
-    async fn check_availability_batch_posts_domains_array() {
-        let server = MockServer::start_async().await;
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(POST)
-                    .path("/v3/domains/check-availability")
-                    .json_body(json!({ "domains": ["a.com", "b.com"], "optimizeFor": "SPEED" }));
-                then.status(200).json_body(json!({
-                    "items": [
-                        { "domain": "a.com", "available": true },
-                        { "domain": "b.com", "available": false }
-                    ]
-                }));
-            })
-            .await;
-
-        let body = client_for(&server)
-            .check_availability()
-            .body(types::AvailabilityCheckCriteria {
-                domains: vec!["a.com".to_string(), "b.com".to_string()],
-                optimize_for: types::OptimizationTarget::Speed,
-                isc_code: None,
-            })
-            .send()
-            .await
-            .expect("request succeeds")
-            .into_inner();
-
-        mock.assert_async().await;
-        assert_eq!(body.items.len(), 2);
-        assert_eq!(body.items[1].available, Some(false));
     }
 
     // --- v3: registration (quote → register → poll) -------------------------
@@ -361,9 +275,9 @@ mod tests {
                         actor: None,
                         ip: Some("127.0.0.1".to_string()),
                         principal: "shopper-42".to_string(),
-                        type_: types::ConsentActorType::Direct,
+                        type_: types::ConsentActorType("DIRECT".to_string()),
                     }),
-                    agreement_types: vec![types::AgreementType::ApiDpa],
+                    agreement_types: vec![types::AgreementType("API_DPA".to_string())],
                     acknowledged_fees: vec![],
                 },
                 created_at: None,
@@ -471,9 +385,14 @@ mod tests {
             .create_dns_record()
             .zone("example.com")
             .body(types::DnsRecord {
-                data: "1.2.3.4".to_string(),
+                certificate_data: None,
+                matching_type: None,
+                selector: None,
+                usage: None,
+                data: Some("1.2.3.4".to_string()),
                 flag: None,
                 name: "www".to_string(),
+                parameters: None,
                 port: None,
                 priority: None,
                 protocol: None,
@@ -540,7 +459,7 @@ mod tests {
                 when.method(GET)
                     .path("/v1/domains/agreements")
                     .query_param("tlds", "com")
-                    .query_param("privacy", "false");
+                    .query_param("v1-privacy", "false");
                 then.status(200).json_body(json!([
                     { "agreementKey": "DNRA", "title": "Registration Agreement", "url": "https://x" }
                 ]));
@@ -550,7 +469,7 @@ mod tests {
         let agreements = client_for(&server)
             .agreements()
             .tlds(vec!["com".to_string()])
-            .privacy(false)
+            .v1_privacy(false)
             .send()
             .await
             .expect("request succeeds")
@@ -600,7 +519,7 @@ mod tests {
         let items = body.items.expect("items present");
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].record_id.as_deref(), Some("rec-1"));
-        assert_eq!(items[0].data, "1.2.3.4");
+        assert_eq!(items[0].data.as_deref(), Some("1.2.3.4"));
     }
 
     #[tokio::test]
@@ -630,7 +549,7 @@ mod tests {
     #[derive(Debug, Default)]
     struct RecordingObserver {
         requests: std::sync::Mutex<Vec<String>>,
-        responses: std::sync::Mutex<Vec<u16>>,
+        responses: std::sync::Mutex<Vec<(u16, Vec<u8>)>>,
     }
 
     impl TransportObserver for RecordingObserver {
@@ -641,11 +560,16 @@ mod tests {
                 .push(request.method().to_string());
         }
 
-        fn on_response(&self, status: reqwest::StatusCode, _headers: &reqwest::header::HeaderMap) {
+        fn on_response(
+            &self,
+            status: reqwest::StatusCode,
+            _headers: &reqwest::header::HeaderMap,
+            body: &[u8],
+        ) {
             self.responses
                 .lock()
                 .expect("lock is never held across a panic")
-                .push(status.as_u16());
+                .push((status.as_u16(), body.to_vec()));
         }
     }
 
@@ -674,7 +598,7 @@ mod tests {
     // without this crate depending on that framework. Assert the bridge
     // actually fires, not just that the request/response round-trips.
     #[tokio::test]
-    async fn client_hooks_feed_the_registered_observer() {
+    async fn client_hooks_feed_request_and_response_events_to_the_registered_observer() {
         let _test_lock = TRANSPORT_OBSERVER_TEST_LOCK.lock().await;
         let _clear = ClearTransportObserver;
 
@@ -689,13 +613,16 @@ mod tests {
             })
             .await;
 
-        client_for(&server)
+        let suggestions = client_for(&server)
             .suggest_domains()
             .query("coffee")
             .send()
             .await
-            .expect("request succeeds");
+            .expect("request succeeds")
+            .into_inner();
         mock.assert_async().await;
+
+        assert!(suggestions.items.is_empty());
 
         let requests = observer
             .requests
@@ -710,8 +637,11 @@ mod tests {
             .lock()
             .expect("lock is never held across a panic");
         assert!(
-            responses.contains(&200),
-            "expected a response event, got: {responses:?}"
+            responses
+                .iter()
+                .any(|(status, body)| *status == 200
+                    && String::from_utf8_lossy(body).contains("items")),
+            "expected a response event carrying the real body, got: {responses:?}"
         );
     }
 

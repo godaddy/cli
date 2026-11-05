@@ -1,13 +1,16 @@
-use std::{
-    collections::HashSet,
-    path::{Path, PathBuf},
-};
+use std::collections::HashSet;
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use indexmap::IndexMap;
 use serde_json::Value;
 
 use crate::github::parse_yaml_or_json;
+use crate::ref_paths::{
+    has_conflicting_namesake, id_ref_to_file_ref, locate_ref_file, normalize_path,
+    specification_root,
+};
+use crate::visibility;
 
 // ---------------------------------------------------------------------------
 // $ref resolution
@@ -75,22 +78,39 @@ fn derive_defs_key_for_path(ref_str: &str) -> String {
     };
     let base_key = sanitize_defs_key(stem);
 
-    // A `#/properties/<name>` fragment (optionally nested, e.g. `#/properties/a/properties/b`)
-    // selects one property's schema out of the file, not the file's root schema — fold the
-    // property path into the key so two refs into the same file for different properties
-    // don't collide under one bare file-stem key. Each segment has its literal `_` doubled
-    // before joining on a single `_`, so a property literally named `a_b` can't collide with
-    // nested segments `a` + `b` (both would otherwise sanitize to the same `a_b` suffix).
-    match frag.and_then(|f| f.strip_prefix("#/properties/")) {
-        Some(rest) => {
-            let suffix = rest
-                .split("/properties/")
-                .map(|seg| seg.replace('_', "__"))
-                .collect::<Vec<_>>()
-                .join("_");
-            sanitize_defs_key(&format!("{base_key}_{suffix}"))
+    // A fragment selecting one schema from a multi-schema document needs its
+    // own key. Without it, every UCP ref through `ucp-refs.schema.json` would
+    // collide under one definition and silently produce incorrect generated types.
+    match frag.and_then(|f| f.strip_prefix("#/$defs/")) {
+        Some(name) => sanitize_defs_key(&format!("{base_key}_{name}")),
+        None => match frag.and_then(|f| f.strip_prefix("#/properties/")) {
+            Some(rest) => {
+                let suffix = rest
+                    .split("/properties/")
+                    .map(|seg| seg.replace('_', "__"))
+                    .collect::<Vec<_>>()
+                    .join("_");
+                sanitize_defs_key(&format!("{base_key}_{suffix}"))
+            }
+            None => base_key,
+        },
+    }
+}
+
+/// Prefix `key` with the file's parent directory when another schema file in
+/// the specification has the same name but a different `$id` (e.g.
+/// `product-metadata/base.schema.json` and
+/// `variant-metadata/base.schema.json`); otherwise they would share one `$defs`
+/// entry and whichever was seen first would silently win.
+fn qualify_ambiguous_key(key: String, ref_str: &str, spec_dir: &Path) -> String {
+    let file = normalize_path(&spec_dir.join(ref_str.split('#').next().unwrap_or(ref_str)));
+    let file = file.as_path();
+    let qualifier = file.parent().and_then(Path::file_name);
+    match (qualifier, specification_root(spec_dir)) {
+        (Some(qualifier), Some(root)) if has_conflicting_namesake(&root.join("schemas"), file) => {
+            sanitize_defs_key(&format!("{}_{key}", qualifier.to_string_lossy()))
         }
-        None => base_key,
+        _ => key,
     }
 }
 
@@ -108,39 +128,137 @@ fn sanitize_defs_key(s: &str) -> String {
     sanitized.trim_matches('_').to_owned()
 }
 
+/// Builds the `{"$ref": "#/$defs/<key>"}` that replaces a lifted `$ref`,
+/// keeping the keywords that sat beside it. JSON Schema 2020-12 applies
+/// sibling keywords alongside a `$ref`, so dropping them loses constraints
+/// (e.g. `positive-money` refines `simple-money` with `value.minimum: 0`) and
+/// per-use annotations such as `description` and `readOnly`.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "threads the same resolution context as `dereference`"
+)]
+fn lifted_ref_with_siblings(
+    key: &str,
+    original: &serde_json::Map<String, Value>,
+    root: &Value,
+    spec_dir: &Path,
+    common_types_dir: Option<&Path>,
+    qualify_namesakes: bool,
+    defs: &mut IndexMap<String, Value>,
+    depth: usize,
+) -> Value {
+    let mut lifted = serde_json::Map::new();
+    lifted.insert(
+        "$ref".to_owned(),
+        Value::String(format!("#/$defs/{}", json_pointer_escape(key))),
+    );
+    let siblings: serde_json::Map<String, Value> = original
+        .iter()
+        // A schema-level `required` must be an array of property names; a
+        // boolean there is the OpenAPI 2 parameter form, misplaced upstream.
+        .filter(|(name, value)| {
+            name.as_str() != "$ref" && !(name.as_str() == "required" && !value.is_array())
+        })
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect();
+    if !siblings.is_empty()
+        && let Value::Object(siblings) = dereference(
+            root,
+            Value::Object(siblings),
+            spec_dir,
+            common_types_dir,
+            qualify_namesakes,
+            defs,
+            depth + 1,
+        )
+    {
+        lifted.extend(siblings);
+    }
+    Value::Object(lifted)
+}
+
 fn dereference(
     root: &Value,
     current: Value,
     spec_dir: &Path,
     common_types_dir: Option<&Path>,
+    qualify_namesakes: bool,
     defs: &mut IndexMap<String, Value>,
     depth: usize,
 ) -> Value {
-    if depth > 64 {
+    // Backstop only: circular refs are caught by the `defs` placeholder below. Depth
+    // counts structural nesting plus every external file hop, and real spec chains
+    // (e.g. UCP schemas routed through a shared refs document) run past 90.
+    if depth > 256 {
         return current;
     }
     match current {
         Value::Object(mut map) => {
             if let Some(Value::String(ref_str)) = map.get("$ref").cloned() {
+                // Key and resolve `$id` URLs by the file that declares them, so lifted
+                // `$defs` keys follow file names rather than generic URL tails.
+                let ref_str = id_ref_to_file_ref(&ref_str, spec_dir).unwrap_or(ref_str);
                 if let Some(key) = should_lift_to_defs(&ref_str) {
-                    // Already registered — return the local pointer immediately (dedup)
+                    let key = if qualify_namesakes && !ref_str.starts_with('#') {
+                        qualify_ambiguous_key(key, &ref_str, spec_dir)
+                    } else {
+                        key
+                    };
+                    // Already registered — dedup, unless the target is a private file
                     if defs.contains_key(&key) {
-                        return serde_json::json!({"$ref": format!("#/$defs/{}", json_pointer_escape(&key))});
+                        if visibility::ref_targets_private_file(&ref_str, spec_dir) {
+                            return Value::Object(map);
+                        }
+                        return lifted_ref_with_siblings(
+                            &key,
+                            &map,
+                            root,
+                            spec_dir,
+                            common_types_dir,
+                            qualify_namesakes,
+                            defs,
+                            depth,
+                        );
                     }
                     // Insert null placeholder before resolving (circular ref guard)
                     defs.insert(key.clone(), Value::Null);
                     let resolved_opt = if ref_str.starts_with('#') {
                         // Local component ref: resolve from this spec's root
                         resolve_local_ref(root, &ref_str).cloned().map(|v| {
-                            dereference(root, v, spec_dir, common_types_dir, defs, depth + 1)
+                            dereference(
+                                root,
+                                v,
+                                spec_dir,
+                                common_types_dir,
+                                qualify_namesakes,
+                                defs,
+                                depth + 1,
+                            )
                         })
                     } else {
                         // External file/URL ref
-                        resolve_ref(root, &ref_str, spec_dir, common_types_dir, defs, depth + 1)
+                        resolve_ref(
+                            root,
+                            &ref_str,
+                            spec_dir,
+                            common_types_dir,
+                            qualify_namesakes,
+                            defs,
+                            depth + 1,
+                        )
                     };
                     if let Some(content) = resolved_opt {
                         defs.insert(key.clone(), content);
-                        return serde_json::json!({"$ref": format!("#/$defs/{}", json_pointer_escape(&key))});
+                        return lifted_ref_with_siblings(
+                            &key,
+                            &map,
+                            root,
+                            spec_dir,
+                            common_types_dir,
+                            qualify_namesakes,
+                            defs,
+                            depth,
+                        );
                     }
                     // Resolution failed — remove placeholder and preserve original $ref
                     // so collect_unresolved_refs() will catch it.
@@ -148,21 +266,54 @@ fn dereference(
                     return Value::Object(map);
                 }
                 // Non-liftable local ref (e.g. #/paths/...) — inline as before
-                let resolved =
-                    resolve_ref(root, &ref_str, spec_dir, common_types_dir, defs, depth + 1);
+                let resolved = resolve_ref(
+                    root,
+                    &ref_str,
+                    spec_dir,
+                    common_types_dir,
+                    qualify_namesakes,
+                    defs,
+                    depth + 1,
+                );
                 return resolved
-                    .map(|v| dereference(root, v, spec_dir, common_types_dir, defs, depth + 1))
+                    .map(|v| {
+                        dereference(
+                            root,
+                            v,
+                            spec_dir,
+                            common_types_dir,
+                            qualify_namesakes,
+                            defs,
+                            depth + 1,
+                        )
+                    })
                     .unwrap_or(Value::Object(map));
             }
             // Recurse into all values
             for v in map.values_mut() {
-                *v = dereference(root, v.take(), spec_dir, common_types_dir, defs, depth + 1);
+                *v = dereference(
+                    root,
+                    v.take(),
+                    spec_dir,
+                    common_types_dir,
+                    qualify_namesakes,
+                    defs,
+                    depth + 1,
+                );
             }
             Value::Object(map)
         }
         Value::Array(mut arr) => {
             for v in &mut arr {
-                *v = dereference(root, v.take(), spec_dir, common_types_dir, defs, depth + 1);
+                *v = dereference(
+                    root,
+                    v.take(),
+                    spec_dir,
+                    common_types_dir,
+                    qualify_namesakes,
+                    defs,
+                    depth + 1,
+                );
             }
             Value::Array(arr)
         }
@@ -175,11 +326,16 @@ fn resolve_ref(
     ref_str: &str,
     spec_dir: &Path,
     common_types_dir: Option<&Path>,
+    qualify_namesakes: bool,
     defs: &mut IndexMap<String, Value>,
     depth: usize,
 ) -> Option<Value> {
     if ref_str.starts_with("#/") {
         return resolve_local_ref(root, ref_str).cloned();
+    }
+
+    if ref_str == "https://json-schema.org/draft/2020-12/schema" {
+        return Some(serde_json::json!(true));
     }
 
     if ref_str.starts_with("https://schemas.api.godaddy.com/") {
@@ -194,7 +350,43 @@ fn resolve_ref(
                     .unwrap_or(""),
             );
         let local_path = ct_dir.join(url_path.trim_start_matches('/'));
-        return load_external_ref(&local_path, common_types_dir, defs, depth);
+        return load_external_ref(
+            &local_path,
+            common_types_dir,
+            qualify_namesakes,
+            defs,
+            depth,
+        );
+    }
+
+    if let Some(url_path) = ref_str.strip_prefix("https://godaddy.com/ucp/schemas/") {
+        let (file_part, fragment) = split_external_ref(url_path);
+        let local_path = specification_root(spec_dir)?
+            .join("schemas")
+            .join(file_part);
+        return resolve_external_fragment(
+            &local_path,
+            fragment,
+            common_types_dir,
+            qualify_namesakes,
+            defs,
+            depth,
+        );
+    }
+
+    if let Some(url_path) = ref_str.strip_prefix("https://ucp.dev/schemas/shopping/") {
+        let (file_part, fragment) = split_external_ref(url_path);
+        let local_path = specification_root(spec_dir)?
+            .join("schemas/ucp/shopping")
+            .join(file_part);
+        return resolve_external_fragment(
+            &local_path,
+            fragment,
+            common_types_dir,
+            qualify_namesakes,
+            defs,
+            depth,
+        );
     }
 
     // Relative file reference — strip fragment
@@ -212,12 +404,19 @@ fn resolve_ref(
     // Some repos store model files alongside the `schemas/` directory rather than
     // inside it (e.g. `v2/models/` instead of `v2/schemas/models/`).  Try the
     // parent of spec_dir as a fallback so both layouts resolve correctly.
-    let external_root =
-        load_external_ref(&file_path, common_types_dir, defs, depth).or_else(|| {
-            spec_dir.parent().and_then(|parent| {
-                load_external_ref(&parent.join(file_part), common_types_dir, defs, depth)
-            })
-        })?;
+    // Only a file that can't be located falls back, never one found and rejected.
+    let external_root = match locate_ref_file(&file_path, common_types_dir) {
+        Some(found) => load_ref_file(&found, common_types_dir, qualify_namesakes, defs, depth),
+        None => spec_dir.parent().and_then(|parent| {
+            load_external_ref(
+                &parent.join(file_part),
+                common_types_dir,
+                qualify_namesakes,
+                defs,
+                depth,
+            )
+        }),
+    }?;
 
     if let Some(frag) = fragment
         && !frag.is_empty()
@@ -227,134 +426,62 @@ fn resolve_ref(
     Some(external_root)
 }
 
-fn load_external_ref(
+fn split_external_ref(reference: &str) -> (&str, Option<&str>) {
+    match reference.find('#') {
+        Some(index) => (&reference[..index], Some(&reference[index..])),
+        None => (reference, None),
+    }
+}
+
+fn resolve_external_fragment(
     path: &Path,
+    fragment: Option<&str>,
     common_types_dir: Option<&Path>,
+    qualify_namesakes: bool,
     defs: &mut IndexMap<String, Value>,
     depth: usize,
 ) -> Option<Value> {
-    // Normalize path (resolve .. segments) so the common-types check below works on
-    // paths like ./models/../common-types/v1/schemas/yaml/uuid.yaml
-    let normalized = normalize_path(path);
-    let resolved = if normalized.exists() {
-        normalized.clone()
-    } else if let Some(fallback) = resolve_common_types_path(&normalized, common_types_dir) {
-        fallback
-    } else if let Some(ci) = resolve_case_insensitive(&normalized) {
-        // Spec files authored on case-insensitive filesystems (macOS) sometimes
-        // have mismatched filename casing.  Accept the match but warn so the
-        // spec repo can be fixed.
-        eprintln!(
-            "WARNING: case-insensitive match for {}: using {}",
-            path.display(),
-            ci.display()
-        );
-        ci
-    } else {
-        eprintln!(
-            "WARNING: cannot read ref file {}: No such file or directory (os error 2)",
-            path.display()
-        );
-        return None;
-    };
+    let root = load_external_ref(path, common_types_dir, qualify_namesakes, defs, depth)?;
+    fragment.map_or(Some(root.clone()), |fragment| {
+        resolve_local_ref(&root, fragment).cloned()
+    })
+}
 
-    let src = std::fs::read_to_string(&resolved)
+fn load_external_ref(
+    path: &Path,
+    common_types_dir: Option<&Path>,
+    qualify_namesakes: bool,
+    defs: &mut IndexMap<String, Value>,
+    depth: usize,
+) -> Option<Value> {
+    let resolved = locate_ref_file(path, common_types_dir)?;
+    load_ref_file(&resolved, common_types_dir, qualify_namesakes, defs, depth)
+}
+
+fn load_ref_file(
+    resolved: &Path,
+    common_types_dir: Option<&Path>,
+    qualify_namesakes: bool,
+    defs: &mut IndexMap<String, Value>,
+    depth: usize,
+) -> Option<Value> {
+    let src = std::fs::read_to_string(resolved)
         .map_err(|e| eprintln!("WARNING: cannot read ref file {}: {e}", resolved.display()))
         .ok()?;
-    let parsed = parse_yaml_or_json(&src, &resolved)
+    let mut parsed = parse_yaml_or_json(&src, resolved)
         .map_err(|e| eprintln!("WARNING: cannot parse ref file {}: {e}", resolved.display()))
         .ok()?;
-    let dir = resolved.parent().unwrap_or(&resolved);
+    visibility::prune_ref_file(resolved, &mut parsed)?;
+    let dir = resolved.parent().unwrap_or(resolved);
     Some(dereference(
         &parsed.clone(),
         parsed,
         dir,
         common_types_dir,
+        qualify_namesakes,
         defs,
         depth + 1,
     ))
-}
-
-/// Try to find `path` in its parent directory with a case-insensitive filename match.
-/// Returns the first candidate whose lowercased name equals the lowercased target,
-/// or `None` if no unique match is found.
-fn resolve_case_insensitive(path: &Path) -> Option<PathBuf> {
-    let dir = path.parent()?;
-    let target = path.file_name()?.to_string_lossy().to_lowercase();
-    let mut matches: Vec<PathBuf> = std::fs::read_dir(dir)
-        .ok()?
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_name().to_string_lossy().to_lowercase() == target)
-        .map(|e| e.path())
-        .collect();
-    if matches.len() == 1 {
-        matches.pop()
-    } else {
-        None
-    }
-}
-
-/// Normalize a path by resolving `.` and `..` components without hitting the filesystem.
-fn normalize_path(path: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for component in path.components() {
-        match component {
-            std::path::Component::ParentDir => {
-                out.pop();
-            }
-            std::path::Component::CurDir => {}
-            c => out.push(c),
-        }
-    }
-    out
-}
-
-/// When a path contains a `common-types` segment and does not exist, try to locate the
-/// file in the standalone common-types-specification clone. Mirrors the TypeScript
-/// `resolveCommonTypesFile` helper.
-fn resolve_common_types_path(path: &Path, common_types_dir: Option<&Path>) -> Option<PathBuf> {
-    let ct_dir = common_types_dir?;
-    let path_str = path.to_string_lossy();
-    let ct_marker = "common-types/";
-    let idx = path_str.find(ct_marker)?;
-
-    let rel = &path_str[idx + ct_marker.len()..];
-    // 1. Try path as-is relative to the clone root
-    let direct = ct_dir.join(rel);
-    if direct.exists() {
-        return Some(direct);
-    }
-
-    // 2. Try v1/schemas/{yaml,json}/<basename> (covering both extension variants)
-    let basename = path.file_name()?;
-    let basename_str = basename.to_string_lossy();
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let (primary_sub, alt_sub, alt_ext) = if ext == "json" {
-        ("json", "yaml", "yaml")
-    } else {
-        ("yaml", "json", "json")
-    };
-
-    let nested = ct_dir
-        .join("v1")
-        .join("schemas")
-        .join(primary_sub)
-        .join(basename_str.as_ref());
-    if nested.exists() {
-        return Some(nested);
-    }
-    let stem = path.file_stem()?.to_string_lossy();
-    let alt_name = format!("{stem}.{alt_ext}");
-    let alt = ct_dir
-        .join("v1")
-        .join("schemas")
-        .join(alt_sub)
-        .join(&alt_name);
-    if alt.exists() {
-        return Some(alt);
-    }
-
-    None
 }
 
 /// Walk a dereferenced value and collect any remaining external `$ref` strings.
@@ -447,9 +574,28 @@ pub(crate) fn load_and_dereference(
     spec_file: &Path,
     common_types_dir: Option<&Path>,
 ) -> Result<(Value, IndexMap<String, Value>)> {
+    load_and_dereference_with(spec_file, common_types_dir, false)
+}
+
+/// Like [`load_and_dereference`], but lifts schema files that share a file name yet
+/// declare different `$id`s under distinct `$defs` keys instead of letting one
+/// silently replace the other. Opt-in so specs already generated keep their keys.
+pub(crate) fn load_and_dereference_distinguishing_namesakes(
+    spec_file: &Path,
+    common_types_dir: Option<&Path>,
+) -> Result<(Value, IndexMap<String, Value>)> {
+    load_and_dereference_with(spec_file, common_types_dir, true)
+}
+
+fn load_and_dereference_with(
+    spec_file: &Path,
+    common_types_dir: Option<&Path>,
+    qualify_namesakes: bool,
+) -> Result<(Value, IndexMap<String, Value>)> {
     let src = std::fs::read_to_string(spec_file)
         .with_context(|| format!("failed to read {}", spec_file.display()))?;
-    let parsed = parse_yaml_or_json(&src, spec_file)?;
+    let mut parsed = parse_yaml_or_json(&src, spec_file)?;
+    visibility::prune_spec(spec_file, &mut parsed)?;
     let spec_dir = spec_file.parent().unwrap_or(spec_file);
     let mut defs = IndexMap::new();
     let mut dereffed = dereference(
@@ -457,6 +603,7 @@ pub(crate) fn load_and_dereference(
         parsed,
         spec_dir,
         common_types_dir,
+        qualify_namesakes,
         &mut defs,
         0,
     );
@@ -468,423 +615,10 @@ pub(crate) fn load_and_dereference(
     for v in defs.values_mut() {
         rewrite_discriminator_mappings(v, &def_keys);
     }
+    visibility::drop_emptied_paths_and_tags(&mut dereffed);
     Ok((dereffed, defs))
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-
-    #[test]
-    fn dereference_resolves_relative_file_ref() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let model_dir = dir.path().join("schemas").join("models");
-        fs::create_dir_all(&model_dir).expect("create model dir");
-
-        fs::write(
-            model_dir.join("Widget.yaml"),
-            "type: object\nproperties:\n  id:\n    type: string\n",
-        )
-        .expect("write model");
-
-        let spec_path = dir.path().join("schemas").join("openapi.yaml");
-        fs::write(
-            &spec_path,
-            "openapi: '3.0.0'\ncomponents:\n  schemas:\n    Widget:\n      $ref: './models/Widget.yaml'\n",
-        )
-        .expect("write spec");
-
-        let (result, _defs) = load_and_dereference(&spec_path, None).expect("dereference");
-        let unresolved = collect_unresolved_refs(&result);
-        assert!(
-            unresolved.is_empty(),
-            "expected zero unresolved $refs, got: {unresolved:?}"
-        );
-    }
-
-    #[test]
-    fn dereference_resolves_ref_in_sibling_of_schemas_dir() {
-        // Models at {dir}/models/ rather than {dir}/schemas/models/ (sibling layout)
-        let dir = tempfile::tempdir().expect("tempdir");
-        let model_dir = dir.path().join("models");
-        fs::create_dir_all(&model_dir).expect("create model dir");
-        let schemas_dir = dir.path().join("schemas");
-        fs::create_dir_all(&schemas_dir).expect("create schemas dir");
-
-        fs::write(
-            model_dir.join("Widget.yaml"),
-            "type: object\nproperties:\n  id:\n    type: string\n",
-        )
-        .expect("write model");
-
-        let spec_path = schemas_dir.join("openapi.yaml");
-        fs::write(
-            &spec_path,
-            "openapi: '3.0.0'\ncomponents:\n  schemas:\n    Widget:\n      $ref: './models/Widget.yaml'\n",
-        )
-        .expect("write spec");
-
-        let (result, _defs) = load_and_dereference(&spec_path, None).expect("dereference");
-        let unresolved = collect_unresolved_refs(&result);
-        assert!(
-            unresolved.is_empty(),
-            "expected zero unresolved $refs with sibling layout, got: {unresolved:?}"
-        );
-    }
-
-    #[test]
-    fn collect_unresolved_refs_finds_external_refs() {
-        let value = serde_json::json!({
-            "components": {
-                "schemas": {
-                    "Foo": { "$ref": "./models/Foo.yaml" },
-                    "Bar": { "$ref": "#/components/schemas/Baz" },
-                    "Qux": { "type": "string" }
-                }
-            }
-        });
-        let unresolved = collect_unresolved_refs(&value);
-        assert_eq!(unresolved, vec!["./models/Foo.yaml"]);
-    }
-
-    #[test]
-    fn collect_unresolved_refs_finds_external_discriminator_mapping() {
-        // A discriminator.mapping value pointing outside the document is unresolved,
-        // even though it is a plain string rather than a `$ref` object.
-        let value = serde_json::json!({
-            "$defs": {
-                "Channel": {
-                    "discriminator": {
-                        "propertyName": "kind",
-                        "mapping": {
-                            "DEFAULT": "./BasicChannel.yaml",
-                            "LOCAL": "#/$defs/LocalChannel"
-                        }
-                    }
-                }
-            }
-        });
-        let unresolved = collect_unresolved_refs(&value);
-        assert_eq!(unresolved, vec!["./BasicChannel.yaml"]);
-    }
-
-    #[test]
-    fn discriminator_mapping_rewritten_to_defs_pointer() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let schemas_dir = dir.path().join("schemas");
-        fs::create_dir_all(&schemas_dir).expect("create schemas dir");
-
-        fs::write(
-            schemas_dir.join("BasicChannel.yaml"),
-            "type: object\nproperties:\n  kind:\n    type: string\n",
-        )
-        .expect("write model");
-
-        // The oneOf `$ref` lifts BasicChannel into `$defs`; the discriminator.mapping
-        // carries the same target as a plain string that dereference() won't touch.
-        let spec_path = schemas_dir.join("openapi.yaml");
-        fs::write(
-            &spec_path,
-            concat!(
-                "openapi: '3.0.0'\n",
-                "components:\n",
-                "  schemas:\n",
-                "    Channel:\n",
-                "      oneOf:\n",
-                "        - $ref: './BasicChannel.yaml'\n",
-                "      discriminator:\n",
-                "        propertyName: kind\n",
-                "        mapping:\n",
-                "          DEFAULT: './BasicChannel.yaml'\n",
-            ),
-        )
-        .expect("write spec");
-
-        let (result, defs) = load_and_dereference(&spec_path, None).expect("dereference");
-
-        // No external refs remain — the mapping value now points inside the document.
-        let mut unresolved = collect_unresolved_refs(&result);
-        for def_val in defs.values() {
-            unresolved.extend(collect_unresolved_refs(def_val));
-        }
-        assert!(
-            unresolved.is_empty(),
-            "expected zero unresolved refs after mapping rewrite, got: {unresolved:?}"
-        );
-
-        // The mapping value is rewritten to the lifted def pointer.
-        let mapping =
-            result["components"]["schemas"]["Channel"]["discriminator"]["mapping"]["DEFAULT"]
-                .as_str()
-                .expect("mapping DEFAULT string");
-        assert_eq!(mapping, "#/$defs/BasicChannel");
-        assert!(defs.contains_key("BasicChannel"));
-    }
-
-    #[test]
-    fn discriminator_mapping_target_not_lifted_stays_external_and_fails_guard() {
-        // Safety branch: a mapping value whose target is NOT otherwise referenced
-        // (no oneOf/$ref lifts it into $defs) must be left external — never pointed
-        // at a missing #/$defs key — so collect_unresolved_refs then flags it and
-        // the build fails, rather than silently producing a dangling pointer.
-        let dir = tempfile::tempdir().expect("tempdir");
-        let schemas_dir = dir.path().join("schemas");
-        fs::create_dir_all(&schemas_dir).expect("create schemas dir");
-
-        // Note: no BasicChannel.yaml on disk and no oneOf/$ref to it — nothing lifts it.
-        let spec_path = schemas_dir.join("openapi.yaml");
-        fs::write(
-            &spec_path,
-            concat!(
-                "openapi: '3.0.0'\n",
-                "components:\n",
-                "  schemas:\n",
-                "    Channel:\n",
-                "      type: object\n",
-                "      discriminator:\n",
-                "        propertyName: kind\n",
-                "        mapping:\n",
-                "          DEFAULT: './BasicChannel.yaml'\n",
-            ),
-        )
-        .expect("write spec");
-
-        let (result, defs) = load_and_dereference(&spec_path, None).expect("dereference");
-
-        // The mapping value is left untouched (no matching def to point at)...
-        let mapping =
-            result["components"]["schemas"]["Channel"]["discriminator"]["mapping"]["DEFAULT"]
-                .as_str()
-                .expect("mapping DEFAULT string");
-        assert_eq!(mapping, "./BasicChannel.yaml");
-        assert!(!defs.contains_key("BasicChannel"));
-
-        // ...and the unresolved-ref guard flags it, so the build would fail.
-        let mut unresolved = collect_unresolved_refs(&result);
-        for def_val in defs.values() {
-            unresolved.extend(collect_unresolved_refs(def_val));
-        }
-        assert!(
-            unresolved.contains(&"./BasicChannel.yaml".to_owned()),
-            "expected the un-liftable mapping to be flagged as unresolved, got: {unresolved:?}"
-        );
-    }
-
-    #[test]
-    fn dereference_lifts_external_ref_to_defs() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let model_dir = dir.path().join("schemas").join("models");
-        fs::create_dir_all(&model_dir).expect("create model dir");
-
-        fs::write(
-            model_dir.join("Widget.yaml"),
-            "type: object\nproperties:\n  id:\n    type: string\n",
-        )
-        .expect("write model");
-
-        let spec_path = dir.path().join("schemas").join("openapi.yaml");
-        fs::write(
-            &spec_path,
-            "openapi: '3.0.0'\ncomponents:\n  schemas:\n    Widget:\n      $ref: './models/Widget.yaml'\n",
-        )
-        .expect("write spec");
-
-        let (_result, defs) = load_and_dereference(&spec_path, None).expect("dereference");
-        assert!(
-            defs.contains_key("Widget"),
-            "Widget should be lifted to $defs"
-        );
-        let widget = &defs["Widget"];
-        assert_eq!(widget.get("type").and_then(|v| v.as_str()), Some("object"));
-    }
-
-    #[test]
-    fn dereference_deduplicates_same_external_ref() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let model_dir = dir.path().join("schemas").join("models");
-        fs::create_dir_all(&model_dir).expect("create model dir");
-
-        fs::write(
-            model_dir.join("Tag.yaml"),
-            "type: object\nproperties:\n  name:\n    type: string\n",
-        )
-        .expect("write model");
-
-        // Spec references Tag from two different endpoints
-        let spec_path = dir.path().join("schemas").join("openapi.yaml");
-        fs::write(
-            &spec_path,
-            r#"openapi: '3.0.0'
-paths:
-  /a:
-    get:
-      operationId: getA
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: './models/Tag.yaml'
-  /b:
-    get:
-      operationId: getB
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: './models/Tag.yaml'
-"#,
-        )
-        .expect("write spec");
-
-        let (result, defs) = load_and_dereference(&spec_path, None).expect("dereference");
-        assert!(defs.contains_key("Tag"), "Tag should be in $defs");
-
-        // Both response schemas should be $ref pointers, not inlined
-        let paths = result.get("paths").expect("paths");
-        let schema_a =
-            paths["/a"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
-                .as_object()
-                .expect("schema_a object");
-        assert_eq!(
-            schema_a.get("$ref").and_then(|v| v.as_str()),
-            Some("#/$defs/Tag"),
-            "schema_a should be a local $defs ref"
-        );
-        let schema_b =
-            paths["/b"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
-                .as_object()
-                .expect("schema_b object");
-        assert_eq!(
-            schema_b.get("$ref").and_then(|v| v.as_str()),
-            Some("#/$defs/Tag"),
-            "schema_b should be a local $defs ref"
-        );
-    }
-
-    #[test]
-    fn dereference_lifts_component_schema_ref() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let spec_path = dir.path().join("openapi.yaml");
-        fs::write(
-            &spec_path,
-            r#"openapi: '3.0.0'
-components:
-  schemas:
-    Item:
-      type: object
-      properties:
-        id:
-          type: string
-paths:
-  /items:
-    get:
-      operationId: listItems
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Item'
-"#,
-        )
-        .expect("write spec");
-
-        let (result, defs) = load_and_dereference(&spec_path, None).expect("dereference");
-
-        // Item should be lifted to $defs
-        assert!(defs.contains_key("Item"), "Item should be in $defs");
-
-        // The response schema items should be a local $ref
-        let schema = result["paths"]["/items"]["get"]["responses"]["200"]["content"]
-            ["application/json"]["schema"]
-            .as_object()
-            .expect("schema object");
-        let items_ref = schema["items"]
-            .get("$ref")
-            .and_then(|v| v.as_str())
-            .expect("items.$ref");
-        assert_eq!(items_ref, "#/$defs/Item");
-    }
-
-    #[test]
-    fn dereference_circular_ref_guard() {
-        // Schema A references schema B which references schema A — must not infinite-loop
-        let dir = tempfile::tempdir().expect("tempdir");
-        let spec_path = dir.path().join("openapi.yaml");
-        fs::write(
-            &spec_path,
-            r#"openapi: '3.0.0'
-components:
-  schemas:
-    NodeA:
-      type: object
-      properties:
-        child:
-          $ref: '#/components/schemas/NodeB'
-    NodeB:
-      type: object
-      properties:
-        parent:
-          $ref: '#/components/schemas/NodeA'
-"#,
-        )
-        .expect("write spec");
-
-        // Must complete without stack overflow or panic
-        let (_result, defs) = load_and_dereference(&spec_path, None).expect("dereference");
-        assert!(defs.contains_key("NodeA") || defs.contains_key("NodeB"));
-    }
-
-    #[test]
-    fn derive_defs_key_for_path_extracts_stem() {
-        assert_eq!(derive_defs_key_for_path("./models/Order.yaml"), "Order");
-        assert_eq!(
-            derive_defs_key_for_path("../common-types/error.json"),
-            "error"
-        );
-        assert_eq!(
-            derive_defs_key_for_path("https://schemas.api.godaddy.com/v1/json/address.json"),
-            "address"
-        );
-        assert_eq!(
-            derive_defs_key_for_path("./Bulk_Ingestion.yaml"),
-            "Bulk_Ingestion"
-        );
-        // Fragment with component name takes precedence over file stem
-        assert_eq!(
-            derive_defs_key_for_path("./common.yaml#/components/schemas/Foo"),
-            "Foo"
-        );
-        assert_eq!(
-            derive_defs_key_for_path("./shared.yaml#/definitions/Bar"),
-            "Bar"
-        );
-        // A `#/properties/<name>` fragment picks out one property's schema, not the
-        // file's root schema — it must be folded into the key so two refs into the
-        // same file for different properties don't collide (DEVEX-965).
-        assert_eq!(
-            derive_defs_key_for_path("./models/FulfillmentPlan.yaml#/properties/storeId"),
-            "FulfillmentPlan_storeId"
-        );
-        assert_eq!(
-            derive_defs_key_for_path("./models/FulfillmentPlan.yaml#/properties/orderId"),
-            "FulfillmentPlan_orderId"
-        );
-        assert_eq!(
-            derive_defs_key_for_path("./models/Foo.yaml#/properties/a/properties/b"),
-            "Foo_a_b"
-        );
-        // A literal property named `a_b` must not collide with nested segments `a`
-        // then `b` — both would sanitize to the same "a_b" suffix without escaping
-        // the literal underscore first.
-        assert_ne!(
-            derive_defs_key_for_path("./models/Foo.yaml#/properties/a_b"),
-            derive_defs_key_for_path("./models/Foo.yaml#/properties/a/properties/b")
-        );
-    }
-}
+#[path = "dereference_tests.rs"]
+mod tests;

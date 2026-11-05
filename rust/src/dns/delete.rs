@@ -4,12 +4,15 @@ use cli_engine::{Alignment, CommandResult, CommandSpec, RuntimeCommandSpec, Tabl
 use serde_json::{Value, json};
 
 use crate::domain::{api_error, make_client};
+use crate::idn::DomainFormArgs;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_DNS_UPDATE;
 
 use domains_client::types;
 
-use super::records::{fetch_records, parse_write_type_arg, verify_with_list_action};
+use super::records::{
+    ZONE_AND_NAME, fetch_records, parse_write_type_arg, record_value, verified_result,
+};
 
 output_schema!(DnsDeleteResult {
     "domain": "string";
@@ -85,7 +88,7 @@ fn dry_run_delete_preview(
             } else {
                 "would fail (missing recordId)"
             };
-            json!({"recordId": rec.record_id, "data": rec.data, "status": status})
+            json!({"recordId": rec.record_id, "data": record_value(rec), "status": status})
         })
         .collect();
 
@@ -114,16 +117,19 @@ fn dry_run_delete_preview(
 #[derive(Debug, Clone, clap::Args)]
 struct DeleteArgs {
     /// Domain whose records to delete (e.g. example.com).
-    #[arg(value_name = "DOMAIN")]
+    #[arg(value_name = "DOMAIN", value_parser = crate::idn::parse_name_arg)]
     domain: String,
 
-    /// Record type (A, AAAA, ALIAS, CAA, CNAME, MX, SRV, TXT).
+    /// Record type (A, AAAA, ALIAS, CAA, CNAME, HTTPS, MX, SRV, SVCB, TLSA, TXT).
     #[arg(long = "type", value_name = "TYPE", value_parser = parse_write_type_arg)]
     record_type: String,
 
     /// Record name relative to the domain (e.g. www).
-    #[arg(long, value_name = "NAME")]
+    #[arg(long, value_name = "NAME", value_parser = crate::idn::parse_name_arg)]
     name: String,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 /// `records` only appears on the `--dry-run` preview (the real delete's
@@ -140,8 +146,8 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("action", "Action"),
         TableColumn::new("records", "Records").nested(vec![
             TableColumn::new("recordId", "Record ID"),
-            TableColumn::new("data", "Data"),
-            TableColumn::new("status", "Status"),
+            TableColumn::new("data", "Data").essential(true),
+            TableColumn::new("status", "Status").essential(true),
         ]),
     ]
 }
@@ -170,6 +176,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let domain = args.domain;
             let record_type = args.record_type;
             let name = args.name;
+            let domain_format = args.domain_format.form(&ctx)?;
 
             let debug = !ctx.middleware.debug.is_empty();
             let client = make_client(&ctx).await?;
@@ -185,13 +192,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .await?;
 
             if ctx.dry_run() {
-                return Ok(CommandResult::new(dry_run_delete_preview(
-                    &domain,
-                    &record_type,
-                    &name,
-                    &existing,
-                ))
-                .with_dry_run());
+                let mut preview = dry_run_delete_preview(&domain, &record_type, &name, &existing);
+                domain_format.convert_fields(&mut preview, ZONE_AND_NAME);
+                return Ok(CommandResult::new(preview).with_dry_run());
             }
 
             let mut outcomes = Vec::with_capacity(existing.len());
@@ -217,17 +220,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         }
                     },
                 };
-                outcomes.push((rec.data.clone(), err));
+                outcomes.push((record_value(rec).unwrap_or("(no data)").to_string(), err));
             }
 
             summarize_delete_outcomes(&domain, &record_type, &name, &outcomes)
-                .map(|v| {
-                    CommandResult::new(v).with_next_actions(vec![verify_with_list_action(
-                        &domain,
-                        &record_type,
-                        &name,
-                    )])
-                })
+                .map(|v| verified_result(domain_format, v, &domain, &record_type, &name))
                 .map_err(super::mutate_failed)
         },
     )
@@ -269,7 +266,11 @@ mod tests {
 
     fn test_record(record_id: &str, data: &str) -> types::DnsRecord {
         types::DnsRecord {
-            data: data.to_owned(),
+            certificate_data: None,
+            matching_type: None,
+            selector: None,
+            usage: None,
+            data: Some(data.to_owned()),
             flag: None,
             name: "www".to_owned(),
             parameters: None,
@@ -292,6 +293,17 @@ mod tests {
         }
     }
 
+    /// A TLSA record as `v3_record` actually builds one: its value lives in
+    /// `certificate_data`, not `data`.
+    fn test_tlsa_record(record_id: &str, cert: &str) -> types::DnsRecord {
+        types::DnsRecord {
+            certificate_data: Some(cert.to_owned()),
+            data: None,
+            type_: types::DnsRecordType("TLSA".to_owned()),
+            ..test_record(record_id, "")
+        }
+    }
+
     #[test]
     fn dry_run_delete_preview_lists_every_matched_record_without_deleting() {
         let existing = vec![test_record("r1", "1.2.3.4"), test_record("r2", "5.6.7.8")];
@@ -303,6 +315,18 @@ mod tests {
         assert_eq!(records.len(), 2);
         assert_eq!(records[0]["data"], "1.2.3.4");
         assert_eq!(records[0]["status"], "would delete");
+    }
+
+    /// TLSA's value lives in `certificate_data`, not `data` — the preview
+    /// must read through `record_value` to show it rather than reporting
+    /// null.
+    #[test]
+    fn dry_run_delete_preview_shows_tlsa_certificate_data_as_the_value() {
+        let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
+        let existing = vec![test_tlsa_record("r1", cert)];
+        let preview = dry_run_delete_preview("example.com", "TLSA", "www", &existing);
+        let records = preview["records"].as_array().expect("records array");
+        assert_eq!(records[0]["data"], cert);
     }
 
     /// A record without a recordId can't actually be deleted (the real
@@ -365,8 +389,7 @@ mod tests {
     fn dry_run_delete_preview_renders_records_as_a_nested_table() {
         let existing = vec![test_record("r1", "1.2.3.4")];
         let preview = dry_run_delete_preview("example.com", "A", "www", &existing);
-        let envelope = cli_engine::Envelope::success(preview, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(preview, &view_columns());
         assert!(rendered.contains("Records:"), "{rendered}");
         assert!(rendered.contains("RECORD ID"), "{rendered}");
         assert!(rendered.contains("r1"), "{rendered}");

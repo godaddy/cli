@@ -1,8 +1,11 @@
-use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
-use serde_json::{Value, json};
+use cli_engine::{
+    CliCoreError, CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
+};
+use email_client::types;
 
 use crate::email::client::ClientError;
-use crate::email::{client_err, client_err_with_fix, make_client};
+use crate::email::{body_has_issue, client_err, client_err_with_fix, make_client};
+use crate::next_action::next_action;
 use crate::scopes::EMAIL_CREATE;
 
 #[derive(Debug, Clone, clap::Args)]
@@ -12,7 +15,7 @@ struct CreateArgs {
     email: String,
     /// ID of an existing eligible account to provision this mailbox under,
     /// from `check-eligibility`'s `eligibleAccounts[].accountId` (see
-    /// `gddy guide email-mailboxes`). Not a shopper/customer ID.
+    /// `gddy guide email`). Not a shopper/customer ID.
     #[arg(long = "account-id", value_name = "ACCOUNT_ID")]
     account_id: Option<String>,
     /// First name of the mailbox owner.
@@ -21,28 +24,47 @@ struct CreateArgs {
     /// Last name of the mailbox owner.
     #[arg(long = "last-name", value_name = "LAST_NAME")]
     last_name: Option<String>,
-    /// Agreement types the caller has obtained consent for, e.g. `EMAIL_TOS`.
-    /// Repeatable: `--consent EMAIL_TOS --consent PRIVACY_POLICY`.
-    #[arg(long, value_name = "AGREEMENT_TYPE")]
+    /// Requirement types the caller has obtained consent for (from
+    /// `check-eligibility`'s `eligibleAccounts[].requirements[].type`), e.g.
+    /// `FREETRIAL_AUTORENEW`. Repeatable: `--consent FREETRIAL_AUTORENEW`.
+    #[arg(long, value_name = "REQUIREMENT_TYPE")]
     consent: Vec<String>,
 }
 
-fn request_body(args: &CreateArgs) -> Value {
-    let mut body = serde_json::Map::new();
-    body.insert("email".to_owned(), json!(args.email));
-    if let Some(account_id) = &args.account_id {
-        body.insert("accountId".to_owned(), json!(account_id));
+fn request_body(args: &CreateArgs) -> types::CreateMailboxBody {
+    types::CreateMailboxBody {
+        account_id: args.account_id.clone().map(types::Uuid),
+        consents: args
+            .consent
+            .iter()
+            .map(|type_| types::ConsentRequest {
+                type_: type_.clone(),
+            })
+            .collect(),
+        created_at: None,
+        display_name: None,
+        email_address: args.email.clone(),
+        first_name: args.first_name.clone(),
+        last_name: args.last_name.clone(),
+        links: vec![],
+        mailbox_id: None,
+        mailbox_type: None,
+        status: None,
+        updated_at: None,
     }
-    if let Some(first_name) = &args.first_name {
-        body.insert("firstName".to_owned(), json!(first_name));
-    }
-    if let Some(last_name) = &args.last_name {
-        body.insert("lastName".to_owned(), json!(last_name));
-    }
-    if !args.consent.is_empty() {
-        body.insert("consents".to_owned(), json!(args.consent));
-    }
-    Value::Object(body)
+}
+
+fn create_next_actions(data: &types::CreateMailboxResponse) -> Vec<NextAction> {
+    let Some(mailbox_id) = &data.mailbox_id else {
+        return Vec::new();
+    };
+    vec![
+        next_action(
+            "email get <mailbox-id>",
+            "Poll the mailbox until its status reaches COMPLETED",
+        )
+        .with_param("mailbox-id", NextActionParam::value(mailbox_id.to_string())),
+    ]
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -51,11 +73,32 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("email")
             .with_tier(Tier::Mutate)
             .mutates(true)
+            .with_json_schema::<types::CreateMailboxResponse>()
             .with_scopes(&[EMAIL_CREATE]),
         |ctx, args: CreateArgs| async move {
             let client = make_client(&ctx, &[EMAIL_CREATE]).await?;
             let body = request_body(&args);
             let data = client.create_mailbox(body).await.map_err(|e| match &e {
+                ClientError::Http { status, body }
+                    if *status == 422 && body_has_issue(body, "EMAIL_PLAN_NOT_AVAILABLE") =>
+                {
+                    client_err_with_fix(
+                        e,
+                        "Run: 'gddy shopping catalog search --query titan' \
+                         to see available email plans, select one to purchase, then retry.",
+                    )
+                }
+                ClientError::Http { status, body }
+                    if *status == 422 && body_has_issue(body, "EMAIL_PLAN_NOT_ELIGIBLE") =>
+                {
+                    client_err_with_fix(
+                        e,
+                        "Go to the GoDaddy Email dashboard \
+                         (https://productivity.godaddy.com/addnewemail) to create the \
+                         mailbox manually — this domain's plan doesn't support \
+                         provisioning via this API.",
+                    )
+                }
                 ClientError::Http { status, .. } if *status == 400 || *status == 422 => {
                     client_err_with_fix(
                         e,
@@ -68,7 +111,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
                 _ => client_err(e),
             })?;
-            Ok(CommandResult::new(data))
+            let next_actions = create_next_actions(&data);
+            let value = serde_json::to_value(&data)
+                .map_err(|e| CliCoreError::message(format!("failed to serialize mailbox: {e}")))?;
+            Ok(CommandResult::new(value).with_next_actions(next_actions))
         },
     )
 }
@@ -95,9 +141,96 @@ mod tests {
             consent: vec!["EMAIL_TOS".to_owned()],
         };
         let body = request_body(&args);
-        assert_eq!(body["email"], "someone@example.com");
-        assert_eq!(body["accountId"], "acct-1");
-        assert!(body.get("firstName").is_none());
-        assert_eq!(body["consents"], json!(["EMAIL_TOS"]));
+        assert_eq!(body.email_address, "someone@example.com");
+        assert_eq!(
+            body.account_id.map(|id| id.to_string()),
+            Some("acct-1".to_owned())
+        );
+        assert!(body.first_name.is_none());
+        assert_eq!(
+            body.consents
+                .into_iter()
+                .map(|c| c.type_)
+                .collect::<Vec<_>>(),
+            vec!["EMAIL_TOS".to_owned()]
+        );
+    }
+
+    #[test]
+    fn create_next_actions_points_at_get_when_mailbox_id_present() {
+        let data = types::CreateMailboxResponse {
+            mailbox_id: Some(types::Uuid("mb-1".to_owned())),
+            status: Some(types::MailboxStatus("EXECUTING".to_owned())),
+            ..Default::default()
+        };
+        let actions = create_next_actions(&data);
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].command, "gddy email get <mailbox-id>");
+        assert_eq!(
+            actions[0].params["mailbox-id"].value,
+            Some("mb-1".to_owned())
+        );
+    }
+
+    #[test]
+    fn create_next_actions_empty_when_mailbox_id_absent() {
+        let data = types::CreateMailboxResponse {
+            status: Some(types::MailboxStatus("EXECUTING".to_owned())),
+            ..Default::default()
+        };
+        assert!(create_next_actions(&data).is_empty());
+    }
+
+    #[test]
+    fn email_plan_not_available_fix_points_at_shopping_catalog() {
+        use cli_engine::build_error_envelope;
+
+        let body = r#"{"message":"no plan","details":[{"issue":"EMAIL_PLAN_NOT_AVAILABLE"}]}"#;
+        let err = client_err_with_fix(
+            ClientError::Http {
+                status: 422,
+                body: body.to_owned(),
+            },
+            "Run: 'gddy shopping catalog search --query titan' \
+             to see available email plans, select one to purchase, then retry.",
+        );
+        let envelope = build_error_envelope(&err, "email");
+        assert!(
+            envelope
+                .fix
+                .as_deref()
+                .is_some_and(|f| f.contains("shopping catalog search")),
+            "{envelope:?}"
+        );
+    }
+
+    #[test]
+    fn email_plan_not_eligible_fix_points_at_the_dashboard() {
+        use cli_engine::build_error_envelope;
+
+        // Per the email guide's "Create failure reasons" table:
+        // `EMAIL_PLAN_NOT_ELIGIBLE` (this domain's plan can't provision via
+        // this API) is a distinct failure from `EMAIL_PLAN_NOT_AVAILABLE`
+        // (no plan at all) and needs a different fix — the dashboard, not
+        // the shopping catalog.
+        let body = r#"{"message":"not eligible","details":[{"issue":"EMAIL_PLAN_NOT_ELIGIBLE"}]}"#;
+        let err = client_err_with_fix(
+            ClientError::Http {
+                status: 422,
+                body: body.to_owned(),
+            },
+            "Go to the GoDaddy Email dashboard \
+             (https://productivity.godaddy.com/addnewemail) to create the \
+             mailbox manually — this domain's plan doesn't support \
+             provisioning via this API.",
+        );
+        let envelope = build_error_envelope(&err, "email");
+        assert!(
+            envelope
+                .fix
+                .as_deref()
+                .is_some_and(|f| f.contains("productivity.godaddy.com")),
+            "{envelope:?}"
+        );
     }
 }

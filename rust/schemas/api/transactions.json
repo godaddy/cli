@@ -6,25 +6,39 @@
       "description": "Address verification result details obtained from processor",
       "properties": {
         "addressResult": {
-          "$ref": "#/$defs/AddressVerificationStatus"
+          "$ref": "#/$defs/AddressVerificationStatus",
+          "description": "Result of Address verification",
+          "readOnly": true
         },
         "cardHolderNameResult": {
-          "$ref": "#/$defs/AddressVerificationStatus"
+          "$ref": "#/$defs/AddressVerificationStatus",
+          "description": "Result of Card holder name verification",
+          "readOnly": true
         },
         "cityResult": {
-          "$ref": "#/$defs/AddressVerificationStatus"
+          "$ref": "#/$defs/AddressVerificationStatus",
+          "description": "Result of City verification",
+          "readOnly": true
         },
         "countryResult": {
-          "$ref": "#/$defs/AddressVerificationStatus"
+          "$ref": "#/$defs/AddressVerificationStatus",
+          "description": "Result of Country verification",
+          "readOnly": true
         },
         "phoneResult": {
-          "$ref": "#/$defs/AddressVerificationStatus"
+          "$ref": "#/$defs/AddressVerificationStatus",
+          "description": "Result of Phone verification",
+          "readOnly": true
         },
         "postalCodeResult": {
-          "$ref": "#/$defs/AddressVerificationStatus"
+          "$ref": "#/$defs/AddressVerificationStatus",
+          "description": "Result of Postal code verification",
+          "readOnly": true
         },
         "stateResult": {
-          "$ref": "#/$defs/AddressVerificationStatus"
+          "$ref": "#/$defs/AddressVerificationStatus",
+          "description": "Result of State verification",
+          "readOnly": true
         }
       },
       "title": "Address Verification Results",
@@ -49,10 +63,12 @@
       "description": "Represents Adjustment transaction against a payment",
       "properties": {
         "newAmount": {
-          "$ref": "#/$defs/Amount"
+          "$ref": "#/$defs/Amount",
+          "description": "Adjusted transaction amount"
         },
         "parentTransactionId": {
-          "$ref": "#/$defs/Id"
+          "$ref": "#/$defs/Id",
+          "description": "Parent transaction id"
         }
       },
       "required": [
@@ -103,7 +119,9 @@
       "description": "ApplePay Funding source",
       "properties": {
         "cardDetail": {
-          "$ref": "#/$defs/CardDetail"
+          "$ref": "#/$defs/CardDetail",
+          "description": "Card that was used with the Apple pay token",
+          "readOnly": true
         },
         "token": {
           "description": "Apple pay token",
@@ -212,7 +230,8 @@
       "description": "Represents a bank account-based financial instrument stored on file",
       "properties": {
         "bankAccount": {
-          "$ref": "#/$defs/BankAccount"
+          "$ref": "#/$defs/BankAccount",
+          "description": "Bank account details. Present in responses for BANK_ACCOUNT instruments. On create, supply raw details when `type` is BANK_ACCOUNT. Write-only fields (accountNumber, routingNumber) are never returned in responses.\n"
         },
         "type": {
           "description": "Discriminator value for this variant. Always BANK_ACCOUNT.",
@@ -245,7 +264,8 @@
       "description": "Represents capture transaction against a payment",
       "properties": {
         "parentTransactionId": {
-          "$ref": "#/$defs/Id"
+          "$ref": "#/$defs/Id",
+          "description": "Parent transaction id"
         }
       },
       "title": "Capture Transaction",
@@ -258,10 +278,13 @@
       "description": "Details of the card used for processing transaction",
       "properties": {
         "currency": {
-          "$ref": "#/$defs/Currency"
+          "$ref": "#/$defs/Currency",
+          "description": "Card's native currency code, when available."
         },
         "emvTags": {
-          "$ref": "#/$defs/Dictionary"
+          "$ref": "#/$defs/Dictionary",
+          "description": "Card EMV tags",
+          "writeOnly": true
         },
         "encrypted": {
           "default": true,
@@ -270,7 +293,8 @@
           "writeOnly": true
         },
         "entryDetails": {
-          "$ref": "#/$defs/CardEntryDetails"
+          "$ref": "#/$defs/CardEntryDetails",
+          "description": "Card entry details"
         },
         "expMonth": {
           "maximum": 12,
@@ -287,7 +311,9 @@
           "type": "string"
         },
         "interacMacDetail": {
-          "$ref": "#/$defs/InteracMac"
+          "$ref": "#/$defs/InteracMac",
+          "description": "Card Interacmac details",
+          "writeOnly": true
         },
         "keySerialNumber": {
           "description": "For DUKPT encryption",
@@ -299,7 +325,9 @@
           "type": "string"
         },
         "legacyData": {
-          "$ref": "#/$defs/LegacyCardDetailData"
+          "$ref": "#/$defs/LegacyCardDetailData",
+          "deprecated": true,
+          "description": "Contains card details represented by legacy system"
         },
         "number": {
           "description": "Card number. On create, supply the full PAN. In GET responses, returns a masked representation (e.g. ****9990) — not the full card number.\n",
@@ -409,7 +437,8 @@
       "description": "Represents a card-based financial instrument stored on file",
       "properties": {
         "card": {
-          "$ref": "#/$defs/PaymentCard"
+          "$ref": "#/$defs/PaymentCard",
+          "description": "Card details. Present in responses for CARD instruments. On create, supply raw card details when `type` is CARD. Write-only fields (number, track data, cvData) are never returned in responses.\n"
         },
         "type": {
           "description": "Discriminator value for this variant. Always CARD.",
@@ -449,7 +478,9 @@
       "description": "Verification data for the card used as funding source",
       "properties": {
         "cardHolderBillingAddress": {
-          "$ref": "#/$defs/address"
+          "$ref": "#/$defs/address",
+          "description": "Address for AVS",
+          "writeOnly": true
         },
         "cardPin": {
           "description": "Card pin block.",
@@ -512,13 +543,19 @@
           "type": "integer"
         },
         "avsResult": {
-          "$ref": "#/$defs/AddressVerificationResult"
+          "$ref": "#/$defs/AddressVerificationResult",
+          "description": "Address verifications result",
+          "readOnly": true
         },
         "cvResult": {
-          "$ref": "#/$defs/CVResultStatus"
+          "$ref": "#/$defs/CVResultStatus",
+          "description": "CVV verification result",
+          "readOnly": true
         },
         "emvTags": {
-          "$ref": "#/$defs/Dictionary"
+          "$ref": "#/$defs/Dictionary",
+          "description": "EMV tags obtained from the processor",
+          "readOnly": true
         },
         "interacMacResult": {
           "description": "Interac mac result (if interacMac is used)",
@@ -526,7 +563,9 @@
           "type": "string"
         },
         "legacyProcessorData": {
-          "$ref": "#/$defs/LegacyProcessorResponseData"
+          "$ref": "#/$defs/LegacyProcessorResponseData",
+          "deprecated": true,
+          "description": "Process response data used by legacy system"
         },
         "scaResult": {
           "description": "Represents a SCA status if it was triggered. Strong Customer Authentication (SCA) is a European regulatory requirement to reduce fraud and make online payments more secure.",
@@ -598,7 +637,9 @@
       "description": "Processor response for debit card",
       "properties": {
         "legacyProcessorData": {
-          "$ref": "#/$defs/LegacyProcessorResponseData"
+          "$ref": "#/$defs/LegacyProcessorResponseData",
+          "deprecated": true,
+          "description": "Process response data used by legacy system"
         },
         "remainingBalanceAmount": {
           "description": "Remaining balance amount",
@@ -620,7 +661,8 @@
           "type": "integer"
         },
         "currency": {
-          "$ref": "#/$defs/Currency"
+          "$ref": "#/$defs/Currency",
+          "description": "Amount currency"
         },
         "fees": {
           "description": "Fees if any",
@@ -635,7 +677,9 @@
           "type": "integer"
         },
         "tip": {
-          "$ref": "#/$defs/TipAmount"
+          "$ref": "#/$defs/TipAmount",
+          "description": "Tip amount details",
+          "nullable": true
         },
         "total": {
           "description": "Total amount",
@@ -669,7 +713,8 @@
       "description": "EBT Card",
       "properties": {
         "cardDetail": {
-          "$ref": "#/$defs/CardDetail"
+          "$ref": "#/$defs/CardDetail",
+          "description": "Card detail"
         },
         "cardType": {
           "description": "Type of EBT card used",
@@ -681,7 +726,8 @@
           "type": "string"
         },
         "cardVerificationData": {
-          "$ref": "#/$defs/VerificationData"
+          "$ref": "#/$defs/VerificationData",
+          "description": "Card verification data"
         },
         "eVoucherApprovalCode": {
           "description": "EVoucher Approval code if used with Electronic Voucher",
@@ -762,7 +808,9 @@
           "type": "string"
         },
         "id": {
-          "$ref": "#/$defs/Uuid"
+          "$ref": "#/$defs/Uuid",
+          "description": "Server-assigned unique identifier for this financial instrument",
+          "readOnly": true
         },
         "nonce": {
           "description": "Single-use tokenization nonce from a compliant card-capture SDK — alternative to supplying `card` or `bankAccount` directly (PCI-out-of-scope path). The server resolves this to a card or bank account before persistence; it is not a stored instrument type.\n",
@@ -791,7 +839,9 @@
           "type": "string"
         },
         "tokenContext": {
-          "$ref": "#/$defs/TokenContext"
+          "$ref": "#/$defs/TokenContext",
+          "description": "Store and application context for minting the first token. Required on create; never returned in responses. Only `storeId` is accepted — application identity is derived from the authorization credential.\n",
+          "writeOnly": true
         },
         "tokens": {
           "description": "Per-store charge handles. Populated on create when `tokenContext` is provided, and on list when `includeToken` is true (scoped to the required `storeId`). Each item includes the chargeable JWT in `token`. Use GET /financial-instruments/{id}/tokens to retrieve tokens explicitly.\n",
@@ -890,7 +940,9 @@
       "description": "GoDaddy Card-on-file Funding source",
       "properties": {
         "cardDetail": {
-          "$ref": "#/$defs/CardDetail"
+          "$ref": "#/$defs/CardDetail",
+          "description": "Card that was used with the Godaddy payment token",
+          "readOnly": true
         },
         "token": {
           "description": "Godaddy Payment token",
@@ -919,7 +971,9 @@
       "description": "GooglePay Funding source",
       "properties": {
         "cardDetail": {
-          "$ref": "#/$defs/CardDetail"
+          "$ref": "#/$defs/CardDetail",
+          "description": "Card that was used with the Google pay token",
+          "readOnly": true
         },
         "token": {
           "description": "Google pay token",
@@ -2050,10 +2104,12 @@
           "description": "This object shows a summary of the adjustment.",
           "properties": {
             "amountChanges": {
-              "$ref": "#/$defs/Amount"
+              "$ref": "#/$defs/Amount",
+              "description": "Total amount change in this adjustment."
             },
             "amounts": {
-              "$ref": "#/$defs/Amount"
+              "$ref": "#/$defs/Amount",
+              "description": "Total amount after this adjustment."
             },
             "createdAt": {
               "description": "This is a response field. The server time (in ISO-8601 format) at which this transaction was initially created. E.g. 2014-09-11T23:14:44Z.",
@@ -2126,7 +2182,8 @@
               "type": "object"
             },
             "processorResponse": {
-              "$ref": "#/$defs/ProcessorResponse"
+              "$ref": "#/$defs/ProcessorResponse",
+              "description": "This object includes some important response elements received from the processor."
             },
             "reason": {
               "description": "Reason for this adjustment.",
@@ -2405,10 +2462,12 @@
             "description": "This object shows a summary of the adjustment.",
             "properties": {
               "amountChanges": {
-                "$ref": "#/$defs/Amount"
+                "$ref": "#/$defs/Amount",
+                "description": "Total amount change in this adjustment."
               },
               "amounts": {
-                "$ref": "#/$defs/Amount"
+                "$ref": "#/$defs/Amount",
+                "description": "Total amount after this adjustment."
               },
               "createdAt": {
                 "description": "This is a response field. The server time (in ISO-8601 format) at which this transaction was initially created. E.g. 2014-09-11T23:14:44Z.",
@@ -2481,7 +2540,8 @@
                 "type": "object"
               },
               "processorResponse": {
-                "$ref": "#/$defs/ProcessorResponse"
+                "$ref": "#/$defs/ProcessorResponse",
+                "description": "This object includes some important response elements received from the processor."
               },
               "reason": {
                 "description": "Reason for this adjustment.",
@@ -2561,7 +2621,8 @@
           "type": "string"
         },
         "context": {
-          "$ref": "#/$defs/Dictionary"
+          "$ref": "#/$defs/Dictionary",
+          "description": "[Required] Contains context about the transaction.  TransmissionAtLocal must be provided.  All other fields are optional."
         },
         "customerLanguage": {
           "description": "The customer's language preference for the transaction.",
@@ -2711,7 +2772,8 @@
           "type": "object"
         },
         "processorOptions": {
-          "$ref": "#/$defs/Dictionary"
+          "$ref": "#/$defs/Dictionary",
+          "description": "A name/value pair list that could be persisted and later retreived - primarily to store additional payment related data that get passed through to the processor."
         },
         "processorTransactionId": {
           "description": "The capability to enter a transaction id along with approval code.",
@@ -3038,13 +3100,18 @@
       "description": "Payment card",
       "properties": {
         "cardDetail": {
-          "$ref": "#/$defs/CardDetail"
+          "$ref": "#/$defs/CardDetail",
+          "description": "Card detail"
         },
         "cardVerificationData": {
-          "$ref": "#/$defs/VerificationData"
+          "$ref": "#/$defs/VerificationData",
+          "description": "Verification data that can be used to verify the customer information",
+          "writeOnly": true
         },
         "processingInstruction": {
-          "$ref": "#/$defs/CardProcessingInstruction"
+          "$ref": "#/$defs/CardProcessingInstruction",
+          "description": "Processing instruction to use this funding source",
+          "writeOnly": true
         }
       },
       "required": [
@@ -3059,7 +3126,9 @@
       "description": "Payment Token Funding source",
       "properties": {
         "verificationData": {
-          "$ref": "#/$defs/VerificationData"
+          "$ref": "#/$defs/VerificationData",
+          "description": "Verification data",
+          "writeOnly": true
         }
       },
       "title": "Payment Token Funding Source",
@@ -3076,7 +3145,9 @@
       "description": "Paze Funding source",
       "properties": {
         "cardDetail": {
-          "$ref": "#/$defs/CardDetail"
+          "$ref": "#/$defs/CardDetail",
+          "description": "Card that was used with the Paze payment token",
+          "readOnly": true
         },
         "token": {
           "description": "Paze payment token",
@@ -3141,7 +3212,8 @@
       "description": "Represents refund transaction against a payment",
       "properties": {
         "parentTransactionId": {
-          "$ref": "#/$defs/Id"
+          "$ref": "#/$defs/Id",
+          "description": "Parent transaction id"
         }
       },
       "title": "Refund Transaction",
@@ -3165,37 +3237,6 @@
       "type": "object",
       "x-generic-type": "Transaction"
     },
-    "Signature": {
-      "$id": "https://godaddy.com/schemas/commerce/transaction/transaction/signature.v2",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "Representation of Customer signature received during transaction",
-      "properties": {
-        "createdAt": {
-          "description": "Created time in RFC 3339 format",
-          "example": "2022-07-21T17:32:28Z",
-          "format": "date-time",
-          "readOnly": true,
-          "type": "string"
-        },
-        "id": {
-          "$ref": "#/$defs/Uuid"
-        },
-        "signature": {
-          "description": "Signature data in Binary format",
-          "format": "binary",
-          "type": "string",
-          "writeOnly": true
-        },
-        "signatureUrl": {
-          "description": "URL of the image uploaded",
-          "format": "uri",
-          "readOnly": true,
-          "type": "string"
-        }
-      },
-      "title": "Customer Signature",
-      "type": "object"
-    },
     "SimpleAmount": {
       "$id": "https://godaddy.com/schemas/commerce/transaction/simple-amount.v2",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3207,7 +3248,8 @@
           "type": "integer"
         },
         "currency": {
-          "$ref": "#/$defs/Currency"
+          "$ref": "#/$defs/Currency",
+          "description": "Transaction currency"
         }
       },
       "required": [
@@ -3274,7 +3316,9 @@
           "type": "string"
         },
         "id": {
-          "$ref": "#/$defs/Uuid"
+          "$ref": "#/$defs/Uuid",
+          "description": "Unique identifier for this token",
+          "readOnly": true
         },
         "status": {
           "description": "Status of this token. Currently accepted values: ACTIVE, INACTIVE.",
@@ -3302,7 +3346,8 @@
       "description": "Context for minting a per-store token. Used when vaulting a financial instrument (first token) and when associating an existing instrument with a new store. `storeId` is required. Application identity is derived from the authorization credential — clients do not supply `applicationId`.\n",
       "properties": {
         "storeId": {
-          "$ref": "#/$defs/Uuid"
+          "$ref": "#/$defs/Uuid",
+          "description": "Store the token is minted for (required)"
         }
       },
       "required": [
@@ -3317,7 +3362,9 @@
       "description": "Verification data for the token used as funding source",
       "properties": {
         "billingAddress": {
-          "$ref": "#/$defs/address"
+          "$ref": "#/$defs/address",
+          "description": "Address for verification",
+          "writeOnly": true
         }
       },
       "title": "Token Verification Data",
@@ -3356,13 +3403,16 @@
       ],
       "properties": {
         "amount": {
-          "$ref": "#/$defs/Amount"
+          "$ref": "#/$defs/Amount",
+          "description": "Transaction amount"
         },
         "clientContext": {
-          "$ref": "#/$defs/Dictionary"
+          "$ref": "#/$defs/Dictionary",
+          "description": "non-sensitive context data that can be stored and fetched by client when needed"
         },
         "context": {
-          "$ref": "#/$defs/TransactionContext"
+          "$ref": "#/$defs/TransactionContext",
+          "description": "Transaction context"
         },
         "createdAt": {
           "description": "Created time in RFC 3339 format",
@@ -3371,10 +3421,13 @@
           "type": "string"
         },
         "fundingSource": {
-          "$ref": "#/$defs/FundingSource"
+          "$ref": "#/$defs/FundingSource",
+          "description": "Funding source"
         },
         "legacyMetadata": {
-          "$ref": "#/$defs/LegacyTransactionMetadata"
+          "$ref": "#/$defs/LegacyTransactionMetadata",
+          "deprecated": true,
+          "description": "Transaction metadata represented by legacy system"
         },
         "links": {
           "description": "Links associated with this transaction",
@@ -3389,10 +3442,13 @@
           "type": "string"
         },
         "processingInstructions": {
-          "$ref": "#/$defs/TransactionProcessingInstruction"
+          "$ref": "#/$defs/TransactionProcessingInstruction",
+          "description": "Processing instructions to be used while processing transaction"
         },
         "processorResponse": {
-          "$ref": "#/$defs/ProcessorResponse"
+          "$ref": "#/$defs/ProcessorResponse",
+          "description": "Processor response",
+          "readOnly": true
         },
         "references": {
           "description": "References to the transaction",
@@ -3405,10 +3461,14 @@
           "$ref": "#/$defs/TransactionStatus"
         },
         "storeId": {
-          "$ref": "#/$defs/Uuid"
+          "$ref": "#/$defs/Uuid",
+          "description": "Store identifier for this transaction",
+          "readOnly": true
         },
         "transactionId": {
-          "$ref": "#/$defs/Id"
+          "$ref": "#/$defs/Id",
+          "description": "Server generated identifier for this transaction",
+          "readOnly": true
         },
         "transactionRefNum": {
           "$ref": "#/$defs/RefNum"
@@ -3587,7 +3647,8 @@
               "type": "string"
             },
             "geoCoordinates": {
-              "$ref": "#/$defs/geo-coordinates"
+              "$ref": "#/$defs/geo-coordinates",
+              "description": "The latitude and longitude of the address. For example, `37.42242` and `-122.08585`."
             },
             "streetName": {
               "description": "The street name. Just `Drury` in `Drury Lane`.",
@@ -3649,7 +3710,8 @@
           "type": "string"
         },
         "countryCode": {
-          "$ref": "#/$defs/country-code"
+          "$ref": "#/$defs/country-code",
+          "description": "The [two-character ISO 3166-1 code](https://en.wikipedia.org/wiki/ISO_3166-1) that identifies the country or region. Note: The country code for Great Britain is `GB` and not `UK` as used in the top-level domain names for that country. Use country code `C2` for China for comparable uncontrolled price (CUP) method, bank-card, and cross-border transactions."
         },
         "postalCode": {
           "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
@@ -3705,7 +3767,8 @@
         "links": {
           "description": "An array of error-related HATEOAS links.",
           "items": {
-            "$ref": "#/$defs/link-description"
+            "$ref": "#/$defs/link-description",
+            "readOnly": true
           },
           "readOnly": true,
           "type": "array"
@@ -3856,21 +3919,6 @@
         },
         "totalPages": {
           "type": "integer"
-        }
-      }
-    },
-    "signatureList": {
-      "allOf": [
-        {
-          "$ref": "#/$defs/pagedList"
-        }
-      ],
-      "properties": {
-        "items": {
-          "items": {
-            "$ref": "#/$defs/Signature"
-          },
-          "type": "array"
         }
       }
     },
@@ -4869,280 +4917,6 @@
         "commerce.transaction:write"
       ],
       "summary": "Get transaction by ID"
-    },
-    {
-      "description": "Retrieve a transaction reference using the store ID, transaction ID and reference value.",
-      "method": "GET",
-      "operationId": "getTransactionReference",
-      "parameters": [
-        {
-          "in": "path",
-          "name": "storeId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/Uuid"
-          }
-        },
-        {
-          "in": "path",
-          "name": "transactionId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/Id"
-          }
-        },
-        {
-          "description": "Reference value",
-          "in": "path",
-          "name": "value",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "path": "/stores/{storeId}/transactions/{transactionId}/references/{value}",
-      "responses": {
-        "200": {
-          "description": "Transaction references by value",
-          "schema": {
-            "$ref": "#/$defs/TransactionReference"
-          }
-        }
-      },
-      "scopes": [
-        "commerce.transaction:read",
-        "commerce.transaction:write"
-      ],
-      "summary": "Get transaction reference"
-    },
-    {
-      "description": "Create a new transaction reference using the store ID, transaction ID and reference value.",
-      "method": "PUT",
-      "operationId": "createTransactionReference",
-      "parameters": [
-        {
-          "in": "path",
-          "name": "storeId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/Uuid"
-          }
-        },
-        {
-          "in": "path",
-          "name": "transactionId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/Id"
-          }
-        },
-        {
-          "description": "Reference value",
-          "in": "path",
-          "name": "value",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "path": "/stores/{storeId}/transactions/{transactionId}/references/{value}",
-      "requestBody": {
-        "contentType": "application/json",
-        "required": false,
-        "schema": {
-          "$ref": "#/$defs/TransactionReference"
-        }
-      },
-      "responses": {
-        "204": {
-          "description": "Resource created / updated successfully"
-        }
-      },
-      "scopes": [
-        "commerce.transaction:write"
-      ],
-      "summary": "Create transaction reference"
-    },
-    {
-      "description": "Delete a transaction reference using the store ID, transaction ID and reference value.",
-      "method": "DELETE",
-      "operationId": "deleteTransactionReference",
-      "parameters": [
-        {
-          "in": "path",
-          "name": "storeId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/Uuid"
-          }
-        },
-        {
-          "in": "path",
-          "name": "transactionId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/Id"
-          }
-        },
-        {
-          "description": "Reference value",
-          "in": "path",
-          "name": "value",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "path": "/stores/{storeId}/transactions/{transactionId}/references/{value}",
-      "responses": {
-        "200": {
-          "description": "Request was successful"
-        },
-        "404": {
-          "description": "Reference Not Found"
-        }
-      },
-      "scopes": [
-        "commerce.transaction:write"
-      ],
-      "summary": "Delete reference"
-    },
-    {
-      "description": "Get all transaction signatures using the store and transaction IDs.",
-      "method": "GET",
-      "operationId": "getTransactionSignaturesById",
-      "parameters": [
-        {
-          "in": "path",
-          "name": "storeId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/Uuid"
-          }
-        },
-        {
-          "in": "path",
-          "name": "transactionId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/Id"
-          }
-        },
-        {
-          "in": "header",
-          "name": "Request Id",
-          "required": false,
-          "schema": {
-            "format": "uuid",
-            "type": "string"
-          }
-        },
-        {
-          "in": "query",
-          "name": "page",
-          "required": false,
-          "schema": {
-            "default": 1,
-            "type": "integer"
-          }
-        },
-        {
-          "in": "query",
-          "name": "pageSize",
-          "required": false,
-          "schema": {
-            "default": 10,
-            "type": "integer"
-          }
-        },
-        {
-          "in": "query",
-          "name": "totalRequired",
-          "required": false,
-          "schema": {
-            "default": false,
-            "type": "boolean"
-          }
-        }
-      ],
-      "path": "/stores/{storeId}/transactions/{transactionId}/signatures",
-      "responses": {
-        "200": {
-          "description": "Transaction Signature list",
-          "schema": {
-            "$ref": "#/$defs/signatureList"
-          }
-        },
-        "default": {
-          "description": "Error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
-        }
-      },
-      "scopes": [
-        "commerce.transaction:read",
-        "commerce.transaction:write"
-      ],
-      "summary": "Get transaction signatures"
-    },
-    {
-      "description": "Add a transaction signature using the store and transaction IDs.",
-      "method": "POST",
-      "operationId": "addTransactionSignatureByTransactionId",
-      "parameters": [
-        {
-          "in": "path",
-          "name": "storeId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/Uuid"
-          }
-        },
-        {
-          "in": "path",
-          "name": "transactionId",
-          "required": true,
-          "schema": {
-            "$ref": "#/$defs/Id"
-          }
-        },
-        {
-          "in": "header",
-          "name": "Request Id",
-          "required": false,
-          "schema": {
-            "format": "uuid",
-            "type": "string"
-          }
-        }
-      ],
-      "path": "/stores/{storeId}/transactions/{transactionId}/signatures",
-      "requestBody": {
-        "contentType": "multipart/form-data",
-        "required": false,
-        "schema": {
-          "$ref": "#/$defs/Signature"
-        }
-      },
-      "responses": {
-        "200": {
-          "description": "Request was successful"
-        },
-        "default": {
-          "description": "Error",
-          "schema": {
-            "$ref": "#/$defs/error"
-          }
-        }
-      },
-      "scopes": [
-        "commerce.transaction:write"
-      ],
-      "summary": "Add transaction signature"
     }
   ],
   "name": "transactions",

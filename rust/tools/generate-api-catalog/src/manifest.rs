@@ -13,6 +13,27 @@ const SOURCE_MANIFEST_JSON: &str = include_str!("../../../api-catalog-sources.js
 pub(crate) struct RemoteCatalogSource {
     pub(crate) domain: String,
     pub(crate) repository: String,
+    #[serde(default = "default_catalog")]
+    pub(crate) catalog: bool,
+    #[serde(default = "default_org")]
+    pub(crate) org: String,
+    #[serde(default, rename = "specPath")]
+    pub(crate) spec_path: Option<String>,
+    /// Production API host for a GraphQL-only source (OpenAPI specs carry
+    /// their own `servers`). Required alongside `endpointPath` for GraphQL.
+    #[serde(default, rename = "baseUrl")]
+    pub(crate) base_url: Option<String>,
+    /// Path of the GraphQL endpoint under `baseUrl`.
+    #[serde(default, rename = "endpointPath")]
+    pub(crate) endpoint_path: Option<String>,
+}
+
+const fn default_catalog() -> bool {
+    true
+}
+
+fn default_org() -> String {
+    "gdcorp-platform".to_owned()
 }
 
 #[derive(Debug, Deserialize)]
@@ -34,6 +55,7 @@ impl CatalogSourceManifest {
         let mut domains: Vec<String> = self
             .remote
             .iter()
+            .filter(|source| source.catalog)
             .map(|source| source.domain.clone())
             .chain(self.local.iter().map(|source| source.domain.clone()))
             .collect();
@@ -70,15 +92,16 @@ mod tests {
         let manifest = load_source_manifest().expect("load source manifest");
         let expected = manifest.expected_domains();
 
-        assert_eq!(expected.len(), 22);
-        assert_eq!(manifest.remote.len(), 21);
+        assert_eq!(expected.len(), 24);
+        assert_eq!(manifest.remote.len(), 25);
         assert_eq!(
             manifest
-                .local
+                .remote
                 .iter()
-                .map(|source| source.domain.as_str())
-                .collect::<Vec<_>>(),
-            ["hosting-nodejs"]
+                .filter(|source| !source.catalog)
+                .count(),
+            1
         );
+        assert!(manifest.local.is_empty());
     }
 }

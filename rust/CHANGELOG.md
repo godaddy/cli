@@ -1,5 +1,294 @@
 # Changelog
 
+## [0.2.34](https://github.com/godaddy/cli/compare/v0.2.33...v0.2.34) (2026-11-02)
+
+
+### Features
+
+* **config:** add gddy config with punycode and currency preferences ([#336](https://github.com/godaddy/cli/issues/336)) ([e7b047b](https://github.com/godaddy/cli/commit/e7b047b45f8965f645dc0e9c6c7f6c53fa372eb6))
+* **platform-app:** add `app onboard` and explain accounts that haven't finished developer setup ([#343](https://github.com/godaddy/cli/issues/343)) ([7a01f77](https://github.com/godaddy/cli/commit/7a01f773efc33204d4129e00c7998fd9aad468a3))
+
+
+### Bug Fixes
+
+* **dns:** change a retained record's TTL by delete-then-create in dns set ([#352](https://github.com/godaddy/cli/issues/352)) ([46a97c5](https://github.com/godaddy/cli/commit/46a97c583f4eca5a2241c7ea440482c278a091f1))
+
+
+### Documentation
+
+* **domain:** add domain-settings guide for owned-domain management [GDDEVPLAT-481] ([#353](https://github.com/godaddy/cli/issues/353)) ([fcba0b8](https://github.com/godaddy/cli/commit/fcba0b8fcf6c49f43f0e43adaa5d99ef9be29d95))
+
+## [0.2.33](https://github.com/godaddy/cli/compare/v0.2.32...v0.2.33) (2026-11-02)
+
+
+### Features
+
+* **platform:** send manifest feature dependencies on app release. ([#351](https://github.com/godaddy/cli/issues/351)) ([5427df3](https://github.com/godaddy/cli/commit/5427df3b48df9c5d87a36827b825a92384081b9d))
+
+
+### Bug Fixes
+
+* **domain:** label renewal prices as auto-renewal prices ([#341](https://github.com/godaddy/cli/issues/341)) ([cad8a4d](https://github.com/godaddy/cli/commit/cad8a4d84ecaf2c50c6c96de3723ea5436ccdf3f))
+* **hosting:** mark app-type and hosting-product as required in help. ([77b824a](https://github.com/godaddy/cli/commit/77b824af7a66ba650ced77a2f6d671e78c12673f))
+* **update:** show the update notice to scripts and AI assistants ([#346](https://github.com/godaddy/cli/issues/346)) ([4763cee](https://github.com/godaddy/cli/commit/4763ceee25bf01edb394eeedfd730675a06cb30d))
+
+## [0.2.32](https://github.com/godaddy/cli/compare/v0.2.31...v0.2.32) (2026-10-23)
+
+
+### Features
+
+* **domain:** accept and show internationalized domain names ([#331](https://github.com/godaddy/cli/issues/331)) ([8313527](https://github.com/godaddy/cli/commit/8313527ab7ce9d44b81f2d56d2d444706678376c))
+* **domain:** add auto-renew and transfer-lock set commands [GDDEVPLAT-320] ([#348](https://github.com/godaddy/cli/issues/348)) ([841c7a0](https://github.com/godaddy/cli/commit/841c7a065cd5268f8ce8ba92428816e0ac7284f8))
+
+
+### Bug Fixes
+
+* **domain:** say quoted prices exclude taxes and fees, and show the order after purchase [GDDEVPLAT-389] ([#349](https://github.com/godaddy/cli/issues/349)) ([9671f97](https://github.com/godaddy/cli/commit/9671f970b1cb13fe0e02ce7b129d15a1cbfb8f98))
+* **shopping:** preserve API payment descriptions ([#347](https://github.com/godaddy/cli/issues/347)) ([6aa32df](https://github.com/godaddy/cli/commit/6aa32dff2b33e714a4683cc12d3f2ed941506f82))
+
+## [0.2.31](https://github.com/godaddy/cli/compare/v0.2.30...v0.2.31) (2026-10-21)
+
+
+### Features
+
+* **api:** add App Registry to the browsable API catalog [DEVEX-1173] ([#325](https://github.com/godaddy/cli/issues/325)) ([9815ba1](https://github.com/godaddy/cli/commit/9815ba1c64d1dcc2bb76c85aacca46967a1a5c59))
+* **platform-app:** convert App Registry GraphQL client to a spec-generated client ([#282](https://github.com/godaddy/cli/issues/282)) ([9442ee0](https://github.com/godaddy/cli/commit/9442ee0e3c434a40c264b21858dfdc38ebc2a032))
+
+
+### Bug Fixes
+
+* **api:** stop listing operations marked private in the API catalog ([#339](https://github.com/godaddy/cli/issues/339)) ([a6abc15](https://github.com/godaddy/cli/commit/a6abc1537494c66d5b544cf1a1217345a5637817))
+* **hosting:** make it easier for agents to buy a hosting plan before publishing Node.js apps ([#332](https://github.com/godaddy/cli/issues/332)) ([246d6f6](https://github.com/godaddy/cli/commit/246d6f66404f63d315510af7d6ce4fc309dbac6d))
+* **hosting:** show subscription list as a table and keep its totals independent of --limit ([#342](https://github.com/godaddy/cli/issues/342)) ([096f4c2](https://github.com/godaddy/cli/commit/096f4c2a57571d3caf29a7c5d5f49f94051cfc3e))
+
+
+### Miscellaneous
+
+* **platform-app:** add the generated App Registry GraphQL client crate [DEVEX-1173] ([#326](https://github.com/godaddy/cli/issues/326)) ([beb920e](https://github.com/godaddy/cli/commit/beb920e461e589ace043da17b7ff65f7aa2e7cd1))
+
+## [0.2.30](https://github.com/godaddy/cli/compare/v0.2.29...v0.2.30) (2026-10-20)
+
+
+### Features
+
+* **db:** add --product wordpress to db tunnel for Managed WordPress ([#312](https://github.com/godaddy/cli/issues/312)) ([8f3841b](https://github.com/godaddy/cli/commit/8f3841bc46d2c4c2bf714757f0740e300a3d0dec))
+* **http:** report the kind of caller to GoDaddy services and unify HTTP client setup [DEVEX-1150] ([#334](https://github.com/godaddy/cli/issues/334)) ([4d31249](https://github.com/godaddy/cli/commit/4d31249d9f554e1e2d0fea8fd98b17ffe561bb2f))
+
+
+### Bug Fixes
+
+* **deps:** distrust revoked emSign intermediates in TLS dependencies ([#337](https://github.com/godaddy/cli/issues/337)) ([8f42d51](https://github.com/godaddy/cli/commit/8f42d51fc0889e43c6b176390a080d41e03fee50))
+* **deps:** remove unmaintained serde_yaml and unsafe-libyaml ([#335](https://github.com/godaddy/cli/issues/335)) ([bdf895f](https://github.com/godaddy/cli/commit/bdf895f6a5141084e1518be25c32483474c91ebb))
+* **deps:** update zip to 9.0 to address three security advisories ([#333](https://github.com/godaddy/cli/issues/333)) ([3c05cab](https://github.com/godaddy/cli/commit/3c05cab359f2510e5aad5fd32d259aa0d6b3994d))
+
+
+### Code Refactoring
+
+* **auth:** declare each OAuth scope in a single list ([#329](https://github.com/godaddy/cli/issues/329)) ([8b1404d](https://github.com/godaddy/cli/commit/8b1404d416b192c121cc727ec4c2eaa79bdca58a))
+
+## [0.2.29](https://github.com/godaddy/cli/compare/v0.2.28...v0.2.29) (2026-10-14)
+
+
+### Bug Fixes
+
+* **api-catalog:** resync spec drift with the latest Domains, Customers and Bulk Operations APIs ([#321](https://github.com/godaddy/cli/issues/321)) ([d890a78](https://github.com/godaddy/cli/commit/d890a78364b0d7a4d6bab459cbad012460d3d1f4))
+* **deps:** update rustls to 0.23.46 to address four TLS security advisories ([#328](https://github.com/godaddy/cli/issues/328)) ([cbe9a0a](https://github.com/godaddy/cli/commit/cbe9a0a34d4ce1eef388eb578568505723738a38))
+* **domain:** fail quote when it can't be saved for purchase ([#324](https://github.com/godaddy/cli/issues/324)) ([89d8090](https://github.com/godaddy/cli/commit/89d8090acdc4bca00ce1b9af1fc850e1de1ea215))
+* **shopping:** include extra catalog metadata fields in JSON output ([#323](https://github.com/godaddy/cli/issues/323)) ([c85ec66](https://github.com/godaddy/cli/commit/c85ec66aa8f919cef8052a50fb152f2c44af4cd6))
+
+## [0.2.28](https://github.com/godaddy/cli/compare/v0.2.27...v0.2.28) (2026-10-12)
+
+
+### Features
+
+* **auth:** request a product-area scope bundle at login, step up only for sensitive scopes ([#317](https://github.com/godaddy/cli/issues/317)) ([cea21f5](https://github.com/godaddy/cli/commit/cea21f57f054620f134674288f5a648aa9a54f28))
+* **auth:** upgrade cli-engine to 0.10.1; log in with an ephemeral callback port and OIDC scopes ([#314](https://github.com/godaddy/cli/issues/314)) ([b30e3a1](https://github.com/godaddy/cli/commit/b30e3a1d985b12e2f188249250d2fadf4eb14b94))
+
+
+### Bug Fixes
+
+* **deps:** update quinn-proto and chacha20 to clear security advisories ([#318](https://github.com/godaddy/cli/issues/318)) ([306c921](https://github.com/godaddy/cli/commit/306c9210ec9a32e9f11b7c8012d813d51ab8147f))
+
+## [0.2.27](https://github.com/godaddy/cli/compare/v0.2.26...v0.2.27) (2026-10-12)
+
+
+### Bug Fixes
+
+* **api:** reject --field/--param on a non-object request body ([#315](https://github.com/godaddy/cli/issues/315)) ([51056a2](https://github.com/godaddy/cli/commit/51056a23e1f5e0c7655ee58e09acc9cb3ecc0e0f))
+* **output:** keep key columns visible on narrow terminals ([#311](https://github.com/godaddy/cli/issues/311)) ([a8ada02](https://github.com/godaddy/cli/commit/a8ada0255dd81dfecaaa5ebfb8f13972d9b92541))
+
+## [0.2.26](https://github.com/godaddy/cli/compare/v0.2.25...v0.2.26) (2026-10-08)
+
+
+### Features
+
+* **db:** mint tunnel token via product-prefixed app id, add --product ([4822eea](https://github.com/godaddy/cli/commit/4822eea3c8af6cfacac5b27952b7bc8be743b7fd))
+* **db:** mint tunnel token via product-prefixed app id, add --product ([3bf7dbe](https://github.com/godaddy/cli/commit/3bf7dbeb68ca1ce8fb23c8ddb072f7c5467a56f4))
+* **email:** convert Email API client to a spec-generated (progenitor) client ([#280](https://github.com/godaddy/cli/issues/280)) ([7cc2dbb](https://github.com/godaddy/cli/commit/7cc2dbbe10749e6fbe8c3351e9da0b8e9d92fa5d))
+* **platform:** add native Android extension support behind the native-apps flag ([#296](https://github.com/godaddy/cli/issues/296)) ([65888d4](https://github.com/godaddy/cli/commit/65888d416aa6bd159246949f6e2e438a6522a30a))
+
+
+### Bug Fixes
+
+* **dns:** pair retained values before position in the set plan ([#257](https://github.com/godaddy/cli/issues/257)) ([27a408b](https://github.com/godaddy/cli/commit/27a408b02f2327989874228022ecf59284505c7b))
+
+## [0.2.25](https://github.com/godaddy/cli/compare/v0.2.24...v0.2.25) (2026-10-01)
+
+
+### Features
+
+* **pat:** add gddy pat create to open the Developer Portal ([#306](https://github.com/godaddy/cli/issues/306)) ([354f3b8](https://github.com/godaddy/cli/commit/354f3b8d0fa5afa89ec462a9eb781359e68204c7))
+
+
+### Bug Fixes
+
+* **cli:** standardize noun pluralization and add plural aliases ([#305](https://github.com/godaddy/cli/issues/305)) ([0f679bd](https://github.com/godaddy/cli/commit/0f679bd15ee04b4475662115059161a0a2c506e8))
+
+## [0.2.24](https://github.com/godaddy/cli/compare/v0.2.23...v0.2.24) (2026-09-29)
+
+
+### Bug Fixes
+
+* **hosting:** allow hyphen-prefixed deployment IDs ([#302](https://github.com/godaddy/cli/issues/302)) ([2410e76](https://github.com/godaddy/cli/commit/2410e76a56f7a612afce60e291123ea0fa2cd1a4))
+
+## [0.2.23](https://github.com/godaddy/cli/compare/v0.2.22...v0.2.23) (2026-09-29)
+
+
+### Features
+
+* **import:** replace init from-existing with a dedicated import command ([#266](https://github.com/godaddy/cli/issues/266)) ([7c9d4db](https://github.com/godaddy/cli/commit/7c9d4db8e72a595461f18fe02bb6afb51b71ecb3))
+* **spec:** add dedicated command for full spec output ([#285](https://github.com/godaddy/cli/issues/285)) ([0551a80](https://github.com/godaddy/cli/commit/0551a802f9479abc491fa8643779d4eab59776ea))
+
+
+### Bug Fixes
+
+* **purchase:** tell AI assistants to confirm price before charging ([#299](https://github.com/godaddy/cli/issues/299)) ([7731ba2](https://github.com/godaddy/cli/commit/7731ba27df71eb1f53e6ebec432b2ef67fa15065))
+
+## [0.2.22](https://github.com/godaddy/cli/compare/v0.2.21...v0.2.22) (2026-09-28)
+
+
+### Features
+
+* **malware:** add gddy malware scan run command ([#290](https://github.com/godaddy/cli/issues/290)) ([c0ea763](https://github.com/godaddy/cli/commit/c0ea763cccfd495ce3842a242b13aaf6774347d5))
+
+
+### Bug Fixes
+
+* **domain:** surface premium domain fees in available/suggest/quote ([#294](https://github.com/godaddy/cli/issues/294)) ([ef30da1](https://github.com/godaddy/cli/commit/ef30da1bce310b57241e6e906d691b84258603eb))
+
+## [0.2.21](https://github.com/godaddy/cli/compare/v0.2.20...v0.2.21) (2026-09-24)
+
+
+### Features
+
+* **cli:** promote hosting, email, and shopping out of beta ([#287](https://github.com/godaddy/cli/issues/287)) ([39e4c3e](https://github.com/godaddy/cli/commit/39e4c3ec028937b0624d3d0169d7e5c1d9796129))
+* **db:** add experimental `db tunnel` (MySQL over WebSocket) ([#249](https://github.com/godaddy/cli/issues/249)) ([3b16c6b](https://github.com/godaddy/cli/commit/3b16c6bf6cd7326dbb4cc7b0de450a86a160a887))
+* **hosting:** add MHWP app type behind a feature flag ([#289](https://github.com/godaddy/cli/issues/289)) ([5c2597d](https://github.com/godaddy/cli/commit/5c2597d7a1c5a545df1decb1114e265b09b7fd27))
+* **platform:** support OAuth redirect URIs in manifests ([#288](https://github.com/godaddy/cli/issues/288)) ([1b1b7e2](https://github.com/godaddy/cli/commit/1b1b7e23f377b4744acf6a25d7886e3fdace1ffc))
+* **platform:** support settings config capability ([#284](https://github.com/godaddy/cli/issues/284)) ([c61e1bb](https://github.com/godaddy/cli/commit/c61e1bbfe2f6741830feb1ad352859d31fd19c12))
+
+
+### Bug Fixes
+
+* **email:** Email purchase as next action in eligibility check ([#281](https://github.com/godaddy/cli/issues/281)) ([4ee8b41](https://github.com/godaddy/cli/commit/4ee8b4149eacebb12386b9694d22388092646e8c))
+* **shopping:** instruct AI agents to require agreement review before checkout ([#286](https://github.com/godaddy/cli/issues/286)) ([ac72a5b](https://github.com/godaddy/cli/commit/ac72a5b3b51b952079f68c7cfddaa986d0b5ed5b))
+
+
+### Miscellaneous
+
+* **hosting:** import types at top of hosting client file ([#278](https://github.com/godaddy/cli/issues/278)) ([fd8e024](https://github.com/godaddy/cli/commit/fd8e024ff0982ae6bdd180889de5faed2a910ee4))
+
+## [0.2.20](https://github.com/godaddy/cli/compare/v0.2.19...v0.2.20) (2026-09-18)
+
+
+### Bug Fixes
+
+* **hosting:** use WEB_HOSTING as hosting-product flag in next … ([#275](https://github.com/godaddy/cli/issues/275)) ([1d9c005](https://github.com/godaddy/cli/commit/1d9c005318bbbb2b871aaf66b131bf9ef8b91adb))
+* **shopping:** restore product description field and use typed Shopping client throughout ([#272](https://github.com/godaddy/cli/issues/272)) ([38a2424](https://github.com/godaddy/cli/commit/38a2424b86fb8ef3e9447045b086330af006de35))
+
+
+### Code Refactoring
+
+* **hosting:** Generate spec-driven hosting schema for catalog and create HTTP client from schema ([#276](https://github.com/godaddy/cli/issues/276)) ([5320554](https://github.com/godaddy/cli/commit/5320554f17ce97a627a45541dfc13917bfe37034))
+
+## [0.2.19](https://github.com/godaddy/cli/compare/v0.2.18...v0.2.19) (2026-09-17)
+
+
+### Miscellaneous
+
+* **hosting:** Implement shopping hint in hosting guide when custome… ([#273](https://github.com/godaddy/cli/issues/273)) ([5b60267](https://github.com/godaddy/cli/commit/5b6026709893b6695d73bba40733e153342e2ba3))
+
+## [0.2.18](https://github.com/godaddy/cli/compare/v0.2.17...v0.2.18) (2026-09-17)
+
+
+### Features
+
+* **repo:** generate CODEOWNERS from a reviewer config and align source layout with product ownership ([#265](https://github.com/godaddy/cli/issues/265)) ([0f85459](https://github.com/godaddy/cli/commit/0f854596158c190f8a5f67cf4bb7c8ce16f702b6))
+
+
+### Bug Fixes
+
+* **api-catalog:** refresh upstream specs, fix duplicated bulk-operations path prefix ([#268](https://github.com/godaddy/cli/issues/268)) ([29bc626](https://github.com/godaddy/cli/commit/29bc626aa382bc593859b3843b1140ae8bf1b90f))
+
+
+### Documentation
+
+* Update email guide to call shopping CL for email purchase ([#271](https://github.com/godaddy/cli/issues/271)) ([ea97ddf](https://github.com/godaddy/cli/commit/ea97ddfdf5766684dd2a2a8bbac4631e5ef048e2))
+
+## [0.2.17](https://github.com/godaddy/cli/compare/v0.2.16...v0.2.17) (2026-09-16)
+
+
+### Features
+
+* **shopping:** add Order Management API commands ([#253](https://github.com/godaddy/cli/issues/253)) ([2611a7a](https://github.com/godaddy/cli/commit/2611a7a9aa7dc1c73134b0229848bf545b83f453))
+
+## [0.2.16](https://github.com/godaddy/cli/compare/v0.2.15...v0.2.16) (2026-09-16)
+
+
+### Bug Fixes
+
+* **domain:** unblock domain purchase for PAT-authenticated requests ([#264](https://github.com/godaddy/cli/issues/264)) ([bea9293](https://github.com/godaddy/cli/commit/bea9293a68414e92c4f735d6549a51070786a09b))
+
+## [0.2.15](https://github.com/godaddy/cli/compare/v0.2.14...v0.2.15) (2026-09-16)
+
+
+### Features
+
+* Add CLI command groups for Hosting API ([#248](https://github.com/godaddy/cli/issues/248)) ([0c5cea0](https://github.com/godaddy/cli/commit/0c5cea0dc58124238f6343b2ecf7efa207c4a5e6))
+
+## [0.2.14](https://github.com/godaddy/cli/compare/v0.2.13...v0.2.14) (2026-09-15)
+
+
+### Features
+
+* **platform:** add init from-existing flag to sync app config into godaddy.toml ([#254](https://github.com/godaddy/cli/issues/254)) ([4715518](https://github.com/godaddy/cli/commit/4715518e8fd859b8ab19d9b6e45e55103aa7039f))
+
+
+### Bug Fixes
+
+* **deps:** update rustls to patch TLS 1.3 handshake advisory ([#258](https://github.com/godaddy/cli/issues/258)) ([9124112](https://github.com/godaddy/cli/commit/9124112a33cb8319e4776feaf647866d5dd07414))
+* **dns:** enforce TLSA/CAA required fields for lower-case --type ([#256](https://github.com/godaddy/cli/issues/256)) ([bc308dc](https://github.com/godaddy/cli/commit/bc308dc3927ad14eeab4ca5ae8730120f4969031))
+
+## [0.2.13](https://github.com/godaddy/cli/compare/v0.2.12...v0.2.13) (2026-09-10)
+
+
+### Features
+
+* **dns:** add HTTPS, SVCB, and TLSA record support ([#246](https://github.com/godaddy/cli/issues/246)) ([ba6eace](https://github.com/godaddy/cli/commit/ba6eace045f9944a81c4be103f3bb0a38b68b6d8))
+* **platform:** add store app enablements command ([#251](https://github.com/godaddy/cli/issues/251)) ([b931877](https://github.com/godaddy/cli/commit/b931877db9f44fa93538b371da43908d5433a60a))
+
+
+### Bug Fixes
+
+* **api-catalog:** resync spec drift and support TLSA DNS records ([#244](https://github.com/godaddy/cli/issues/244)) ([fccd2fd](https://github.com/godaddy/cli/commit/fccd2fd24ff253d13475b195f826ce2aaa2db1de))
+* **api-catalog:** resync spec drift and test the whole workspace in CI ([#241](https://github.com/godaddy/cli/issues/241)) ([efe8749](https://github.com/godaddy/cli/commit/efe8749a93f038435820fb63387d038a64c7770b))
+* **email:** Updating to align with productivity panel api ([#245](https://github.com/godaddy/cli/issues/245)) ([d5bb34d](https://github.com/godaddy/cli/commit/d5bb34dbcb978e36acb7a3df1de05eb0564e486e))
+
+
+### Documentation
+
+* Updated the email guide ([#252](https://github.com/godaddy/cli/issues/252)) ([7139908](https://github.com/godaddy/cli/commit/7139908a7a330b2fc677f2bc845eaecb4ff0e4e2))
+
 ## [0.2.12](https://github.com/godaddy/cli/compare/v0.2.11...v0.2.12) (2026-09-01)
 
 

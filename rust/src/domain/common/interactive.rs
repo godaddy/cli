@@ -77,6 +77,9 @@ pub(crate) fn recoverable_tld_api_error(status: u16, body: &str) -> Option<Strin
 }
 
 /// User-facing hint when an operation lookup fails and the user can retry.
+/// Kept for a future interactive `operation status` path; the current group
+/// uses the non-interactive lookup from main.
+#[allow(dead_code)]
 pub(crate) fn recoverable_operation_api_error(status: u16, _body: &str) -> Option<String> {
     if status == 404 {
         Some("no operation found with that ID — check the operation ID and try again".to_owned())
@@ -95,6 +98,7 @@ pub(crate) fn recoverable_domain_lookup_api_error(status: u16, _body: &str) -> O
 }
 
 /// Prompt until the user enters a valid operation ID or cancels.
+#[allow(dead_code)]
 pub(crate) fn prompt_validated_operation_id(prompt: &str) -> Result<String> {
     use dialoguer::Input;
 
@@ -112,6 +116,7 @@ pub(crate) fn prompt_validated_operation_id(prompt: &str) -> Result<String> {
 
 /// Validate an operation ID, re-prompting interactively when input is invalid.
 #[allow(clippy::print_stderr)]
+#[allow(dead_code)]
 pub(crate) fn resolve_operation_id(
     ctx: &CommandContext,
     raw: &str,
@@ -317,6 +322,7 @@ where
 
 /// Re-run an operation lookup, re-prompting for the operation ID on recoverable errors.
 #[allow(clippy::print_stderr)]
+#[allow(dead_code)]
 pub(crate) async fn fetch_with_operation_retry<T, F, Fut>(
     ctx: &CommandContext,
     initial_id: String,

@@ -5,7 +5,7 @@ use cli_engine::{CliCoreError, Result};
 use console::style;
 use dialoguer::{Confirm, Input, Select};
 
-use crate::contacts::{self, Contact, ContactsFile, Role};
+use crate::domain::contacts_file::{self as contacts, Contact, ContactsFile, Role};
 
 use super::super::wizard::{ContactsChoice, StepContext, StepResult, WizardState};
 

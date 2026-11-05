@@ -3,20 +3,21 @@
 #![allow(clippy::print_stderr)] // interactive quote-token recovery writes to stderr
 
 use cli_engine::{
-    CliCoreError, CommandResult, CommandSpec, Credential, NextActionParam, Result,
-    RuntimeCommandSpec, Tier,
+    CliCoreError, CommandResult, CommandSpec, NextActionParam, Result, RuntimeCommandSpec, Tier,
 };
 use serde_json::json;
 
 use domains_client::types;
 
 use super::common::{
-    api_error, format_operation_error, is_terminal_status, make_client_with_cred,
+    api_error, format_operation_error, is_terminal_status, make_client_with_cred, order_next_action,
     prompt_validated_quote_token, resolve_quote_token,
 };
+use crate::domain::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
+use crate::error::GddyError;
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
-use crate::quote_cache;
 use crate::scopes::{DOMAINS_CREATE, DOMAINS_READ};
 
 output_schema!(DomainPurchaseResult {
@@ -24,45 +25,58 @@ output_schema!(DomainPurchaseResult {
     "status": "string";
     // Present depending on the async operation + the cached quote's receipt.
     "operationId": "string", optional;
+    // The order that holds the total actually charged (tax and fees included).
+    // Absent while registration is still in progress.
+    "orderId": "string", optional;
+    // The quoted price from `domain quote`, not the amount charged.
     "price": "string", optional;
     "currency": "string", optional;
+    "note": "string", optional;
 });
+
+/// Printed beside `price`, which is the quote's registration price echoed back —
+/// the API's registration record carries no total, so the charge itself is only
+/// readable on the order.
+const QUOTED_PRICE_NOTE: &str = "price is the quoted registration price. Taxes and fees such as the ICANN \
+    fee are added to it, so the total charged is higher; see the order for the \
+    total.";
+
+/// Build the result payload. Optional fields are only emitted when present —
+/// never JSON null (the schema marks them optional strings, and null leaks into
+/// tables). `note` accompanies `price` so the quote's registration price isn't
+/// read as the amount charged.
+fn purchase_result(
+    domain: &str,
+    status: &str,
+    operation_id: Option<String>,
+    order_id: Option<&str>,
+    price: Option<&str>,
+    currency: Option<&str>,
+) -> serde_json::Value {
+    let mut result = json!({
+        "domain": domain,
+        "status": status,
+    });
+    if let Some(op) = operation_id {
+        result["operationId"] = json!(op);
+    }
+    if let Some(id) = order_id {
+        result["orderId"] = json!(id);
+    }
+    if let Some(p) = price {
+        result["price"] = json!(p);
+        result["note"] = json!(QUOTED_PRICE_NOTE);
+    }
+    if let Some(c) = currency {
+        result["currency"] = json!(c);
+    }
+    result
+}
 
 /// Format a UTC instant as the API's consent timestamp: RFC 3339 with a literal
 /// trailing `Z` (e.g. `2026-06-30T22:34:43Z`), sub-second digits dropped.
 fn iso_datetime(now: chrono::DateTime<chrono::Utc>) -> String {
     now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-}
-
-/// Validate the OAuth token is a customer identity (`customer:<uuid>`), so a
-/// non-customer subject is rejected with a clear local error *before* the paid
-/// call and before the cached quote is consumed. `agreedBy` is server-derived
-/// from the request's auth context (the API no longer accepts a caller-supplied
-/// consent principal), so the returned id isn't sent anywhere — this is purely a
-/// fail-fast check.
-fn consent_principal(cred: &Credential) -> Result<String> {
-    let id = cred
-        .sub
-        .strip_prefix("customer:")
-        .filter(|id| !id.is_empty())
-        .ok_or_else(|| {
-            CliCoreError::message(format!(
-                "the OAuth token's subject ({:?}) is not a customer identity; `domain purchase` \
-                 needs a customer-scoped token",
-                cred.sub
-            ))
-        })?;
-    // Validate it's a customer UUID up front so a malformed
-    // `customer:<not-a-uuid>` subject fails fast with a clear message rather
-    // than as an opaque server-side rejection.
-    if uuid::Uuid::parse_str(id).is_err() {
-        return Err(CliCoreError::message(format!(
-            "the OAuth token's customer subject ({:?}) is not a valid UUID; `domain purchase` \
-             needs a customer-scoped token",
-            cred.sub
-        )));
-    }
-    Ok(id.to_owned())
 }
 
 /// Description for the `domain get <domain>` next-action, tailored to whether
@@ -84,6 +98,11 @@ fn next_action_description(status: &str) -> &'static str {
 /// registration is paid). The agreement types are only returned once both gates
 /// pass. `agreement_titles`/`agreement_types` come from the cached quote (the
 /// types are what the register call must echo into `consent.agreementTypes`).
+///
+/// `show_agent_note` should be `false` for `--output human` — a human reading
+/// their own terminal doesn't need to be told to show themselves the price
+/// and confirm with themselves; the note is for an AI assistant consuming
+/// `--output json` on the user's behalf.
 fn purchase_consent_types(
     domain: &str,
     period: u64,
@@ -91,6 +110,7 @@ fn purchase_consent_types(
     confirm: bool,
     agreement_titles: &[String],
     agreement_types: &[String],
+    show_agent_note: bool,
 ) -> Result<Vec<types::AgreementType>> {
     // Validate the cached quote actually carries agreement types *before* the
     // --agree gate: an empty list means a corrupt/outdated cache the command can
@@ -118,16 +138,28 @@ fn purchase_consent_types(
             .map(|t| format!("  - {t}"))
             .collect::<Vec<_>>()
             .join("\n");
+        let agent_note = if show_agent_note {
+            format!(" {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}")
+        } else {
+            String::new()
+        };
         return Err(CliCoreError::message(format!(
             "registering {domain} requires agreeing to its legal agreement(s):\n{list}\n\n\
-             Re-run with --agree to accept them. See `gddy guide domain-purchase`."
+             Re-run with --agree to accept them. See `gddy guide domain-purchase`.{agent_note}"
         )));
     }
 
     if !confirm {
+        let agent_note = if show_agent_note {
+            format!(" {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}")
+        } else {
+            String::new()
+        };
         return Err(CliCoreError::message(format!(
-            "registering {domain} for {period} year(s) charges your account and cannot be undone; \
-             re-run with --confirm to proceed"
+            "registering {domain} for {period} year(s) charges your account and \
+            cannot be undone. The quoted price does not include applicable taxes \
+            and fees, so the total charged will be higher. Re-run with --confirm \
+            to proceed.{agent_note}"
         )));
     }
 
@@ -154,6 +186,9 @@ struct PurchaseArgs {
     /// Confirm the purchase; required because it charges your account.
     #[arg(long)]
     confirm: bool,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -162,28 +197,33 @@ pub(super) fn command() -> RuntimeCommandSpec {
             "purchase",
             "Register a domain from a quote (paid; charges your account)",
         )
-        .with_long(
-            "Register a domain by accepting a quote from `gddy domain quote`. This \
-                 charges your GoDaddy account and cannot be undone, so it is gated behind \
-                 --confirm.\n\
-                 \n\
-                 Registration settings (period, privacy, nameservers, contacts) are fixed \
-                 at quote time — the quote token locks both those settings and the price. \
-                 `purchase` accepts the token, records your consent to the quote's legal \
-                 agreements (--agree), then registers and waits for the registry to \
-                 finish. A usable payment method must be on file — add one with \
-                 `gddy payment-methods add`.\n\
-                 \n\
-                 Typical flow:\n  \
-                 1. gddy domain quote example.com          # review price + agreements\n  \
-                 2. gddy domain purchase --quote-token <token> --agree --confirm\n\
-                 \n\
-                 The quote is cached locally, so run both on the same machine within the \
-                 token's ~10-minute lifetime. See `gddy guide domain-purchase`.",
-        )
+        .with_long(format!(
+            "Register a domain by accepting a quote from `gddy domain quote`. \
+            This charges your GoDaddy account and cannot be undone, so it is \
+            gated behind --confirm. The quoted price does not include taxes and \
+            fees such as the ICANN fee; those are added to the total charged. \
+            Once registration completes, `gddy shopping order get <order-id>` \
+            shows the total.\n\
+            \n\
+            Registration settings (period, privacy, nameservers, contacts) are \
+            fixed at quote time — the quote token locks both those settings and \
+            the price. `purchase` accepts the token, records your consent to the \
+            quote's legal agreements (--agree), then registers and waits for the \
+            registry to finish. A usable payment method must be on file — add \
+            one with `gddy payment-method add`.\n\
+            \n\
+            {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}\n\
+            \n\
+            Typical flow:\n  \
+            1. gddy domain quote example.com # review price + agreements\n  \
+            2. gddy domain purchase --quote-token <token> --agree --confirm\n\
+            \n\
+            The quote is cached locally, so run both on the same machine within \
+            the token's ~10-minute lifetime. See `gddy guide domain-purchase`."
+        ))
         .with_system("domain")
         .with_tier(Tier::Destructive)
-        .with_default_fields("domain,status,operationId,price,currency")
+        .with_default_fields("domain,status,operationId,orderId,price,currency,note")
         .with_output_schema::<DomainPurchaseResult>()
         .with_scopes(&[DOMAINS_READ, DOMAINS_CREATE]),
         |ctx, args: PurchaseArgs| async move {
@@ -193,54 +233,56 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let agree = args.agree;
             let confirm = args.confirm;
             let debug = !ctx.middleware.debug.is_empty();
+            // Resolve the display form up front: a bad preference must fail
+            // before the registration is submitted, not after the charge.
+            let domain_format = args.domain_format.form(&ctx)?;
 
-            // Resolve auth *before* consuming the cached quote, so a token that
-            // isn't customer-scoped fails locally rather than after the cache
-            // entry (and the ~10-minute quote window) is spent. The register
-            // endpoint derives `agreedBy` server-side, so only the validation
-            // (the early return on error) is needed here — the customer id
-            // itself is intentionally discarded.
+            // Resolve auth *before* consuming the cached quote, so an auth
+            // failure fails locally rather than after the cache entry (and the
+            // ~10-minute quote window) is spent.
             let cred = ctx.credential().await?;
-            let _customer_id = consent_principal(&cred)?;
 
             // Load the quote the user reviewed. Read-only: the entry is only
             // removed once the registration succeeds, so an un-`--agree`d run or
             // a failed charge leaves the quote reusable.
             let cached = loop {
-                match quote_cache::get(&quote_token) {
-                    quote_cache::Lookup::Found(q) => break *q,
-                    quote_cache::Lookup::Expired if ctx.is_interactive() => {
+                match super::quote_cache::get(&quote_token) {
+                    super::quote_cache::Lookup::Found(q) => break *q,
+                    super::quote_cache::Lookup::Expired if ctx.is_interactive() => {
                         eprintln!(
                             "  that quote has expired (quotes last ~10 minutes); enter a fresh token from `gddy domain quote`"
                         );
                         quote_token = prompt_validated_quote_token(QUOTE_TOKEN_PROMPT)?;
                     }
-                    quote_cache::Lookup::Missing if ctx.is_interactive() => {
+                    super::quote_cache::Lookup::Missing if ctx.is_interactive() => {
                         eprintln!(
                             "  no cached quote for that token; run `gddy domain quote <domain>` on this machine first"
                         );
                         quote_token = prompt_validated_quote_token(QUOTE_TOKEN_PROMPT)?;
                     }
-                    quote_cache::Lookup::Expired => {
+                    super::quote_cache::Lookup::Expired => {
                         return Err(CliCoreError::message(
                             "that quote has expired (quotes last ~10 minutes). Re-run \
                              `gddy domain quote <domain>` for a fresh quote and token.",
                         ));
                     }
-                    quote_cache::Lookup::Missing => {
+                    super::quote_cache::Lookup::Missing => {
                         return Err(CliCoreError::message(
                             "no cached quote for that token. Run `gddy domain quote <domain>` \
                              first — quotes are cached locally, so quote and purchase must run \
                              on the same machine within the token's ~10-minute lifetime.",
                         ));
                     }
-                    quote_cache::Lookup::NoConfigDir => {
-                        return Err(CliCoreError::message(
-                            "could not locate a config directory to read the quote cache from. \
-                             `domain purchase` needs the local quote written by `domain quote`; \
-                             ensure a home/config directory is available (e.g. set HOME or \
-                             XDG_CONFIG_HOME) and re-run `gddy domain quote <domain>`.",
-                        ));
+                    super::quote_cache::Lookup::NoConfigDir => {
+                        return Err(GddyError::config(
+                            "could not find the folder where `domain quote` saves quotes. \
+                             `domain purchase` needs that saved quote to register the domain.",
+                        )
+                        .with_fix(format!(
+                            "Please {}, then run `gddy domain quote <domain>` again.",
+                            super::quote_cache::no_config_dir_fix()
+                        ))
+                        .into_cli_error());
                     }
                 }
             };
@@ -253,6 +295,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 confirm,
                 &cached.agreement_titles,
                 &cached.agreement_types,
+                ctx.middleware.output_format != "human",
             )?;
             let period_nz = std::num::NonZeroU64::new(cached.period).ok_or_else(|| {
                 CliCoreError::message("the cached quote has an invalid registration period")
@@ -263,17 +306,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // as a confusing server-side QUOTE_MISMATCH. A clear re-quote message
             // is better than a mismatched charge attempt.
             let profile = match cached.profile.as_ref() {
-                Some(v) => Some(
-                    serde_json::from_value::<types::InlineRegistrationProfile>(v.clone()).map_err(
-                        |e| {
-                            CliCoreError::message(format!(
-                                "the cached quote for {domain} is corrupt or from an older CLI \
-                                 version (could not read its registration profile: {e}); re-run \
-                                 `gddy domain quote {domain}` for a fresh quote."
-                            ))
-                        },
-                    )?,
-                ),
+                Some(v) => Some(serde_json::from_value::<types::Profile>(v.clone()).map_err(
+                    |e| {
+                        CliCoreError::message(format!(
+                            "the cached quote for {domain} is corrupt or from \
+                            an older CLI version (could not read its \
+                            registration profile: {e}); re-run \
+                            `gddy domain quote {domain}` for a fresh quote."
+                        ))
+                    },
+                )?),
                 None => None,
             };
 
@@ -341,7 +383,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             };
             // The token is consumed server-side on a successful execute, so drop
             // our cached copy too (single-use).
-            quote_cache::remove(&quote_token);
+            super::quote_cache::remove(&quote_token);
             let price = cached.price.clone();
             let currency = cached.currency.clone();
 
@@ -352,6 +394,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "SUBMITTED".to_string());
             let operation_id = accepted.operation_id.clone();
+            let mut order_id = accepted.order_id.clone();
             let mut operation_error: Option<types::Error> = None;
             if let Some(op_id) = operation_id.as_ref() {
                 for _ in 0..20 {
@@ -371,6 +414,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                                 status = s.to_string();
                             }
                             operation_error = op.error;
+                            if let Some(id) = op.result.and_then(|r| r.order_id) {
+                                order_id = Some(id);
+                            }
                         }
                         // A transient poll failure shouldn't fail the purchase —
                         // it already succeeded; report the last-known status.
@@ -408,25 +454,21 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 );
             }
 
-            // Only emit the optional fields when present — never JSON null (the
-            // schema marks them optional strings, and null leaks into tables).
-            let mut result = json!({
-                "domain": domain,
-                "status": status,
-            });
-            if let Some(op) = operation_id.as_ref() {
-                result["operationId"] = json!(op.to_string());
-            }
-            if let Some(p) = price.as_ref() {
-                result["price"] = json!(p);
-            }
-            if let Some(c) = currency.as_ref() {
-                result["currency"] = json!(c);
-            }
+            let mut result = purchase_result(
+                &domain,
+                &status,
+                operation_id.as_ref().map(|op| op.to_string()),
+                order_id.as_deref(),
+                price.as_deref(),
+                currency.as_deref(),
+            );
             let mut actions = vec![
                 next_action("domain get <domain>", next_action_description(&status))
                     .with_param("domain", NextActionParam::required()),
             ];
+            if let Some(id) = order_id {
+                actions.push(order_next_action(id));
+            }
             if still_pending {
                 // `still_pending` implies `operation_id.is_some()`.
                 if let Some(op) = &operation_id {
@@ -439,6 +481,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     );
                 }
             }
+            domain_format.convert_fields(&mut result, &["domain"]);
             Ok(CommandResult::new(result).with_next_actions(actions))
         },
     )
@@ -446,9 +489,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::{consent_principal, iso_datetime, next_action_description, purchase_consent_types};
-    use cli_engine::Credential;
+    use super::{iso_datetime, next_action_description, purchase_consent_types, purchase_result};
     use domains_client::types;
+    use serde_json::json;
 
     #[test]
     fn purchase_consent_requires_agree_then_confirm() {
@@ -456,28 +499,69 @@ mod tests {
         let titles = vec!["Registration Agreement (https://x)".to_string()];
         let ty = vec!["API_DPA".to_string()];
 
-        let err = purchase_consent_types("example.com", 1, false, true, &titles, &ty)
+        let err = purchase_consent_types("example.com", 1, false, true, &titles, &ty, true)
             .expect_err("must require --agree");
         let msg = err.to_string();
         assert!(msg.contains("Registration Agreement"), "{msg}");
         assert!(msg.contains("--agree"), "{msg}");
+        assert!(msg.contains("AI assistants:"), "{msg}");
+        assert!(
+            msg.contains("Do not infer confirmation from a general request to buy"),
+            "{msg}"
+        );
+        // Regression: an agent that only named the agreement (no link) still
+        // technically "showed the agreements" — the instruction must be
+        // unambiguous that the link itself is required, not just the title.
+        assert!(msg.contains("title and URL"), "{msg}");
+        assert!(
+            msg.contains("click through and read the agreements"),
+            "{msg}"
+        );
 
-        let err = purchase_consent_types("example.com", 2, true, false, &titles, &ty)
+        let err = purchase_consent_types("example.com", 2, true, false, &titles, &ty, true)
             .expect_err("must require --confirm");
         let msg = err.to_string();
         assert!(msg.contains("--confirm"), "{msg}");
         assert!(msg.contains("2 year(s)"), "{msg}");
+        // The gate that precedes the charge must say the quoted price is not the
+        // total, even for a human who never sees the agent note.
+        assert!(
+            msg.contains("does not include applicable taxes and fees"),
+            "{msg}"
+        );
+        assert!(msg.contains("AI assistants:"), "{msg}");
+        assert!(
+            msg.contains("show the end user the quoted price from `domain quote`"),
+            "{msg}"
+        );
+        assert!(msg.contains("title and URL"), "{msg}");
 
-        let types = purchase_consent_types("example.com", 1, true, true, &titles, &ty)
+        let types = purchase_consent_types("example.com", 1, true, true, &titles, &ty, true)
             .expect("both gates satisfied");
         assert_eq!(types.len(), 1);
         assert_eq!(types[0].to_string(), "API_DPA");
     }
 
     #[test]
+    fn agent_note_is_omitted_when_output_is_for_a_human() {
+        // `--output human`: a human reading their own terminal doesn't need to
+        // be told to confirm the price with themselves.
+        let titles = vec!["Registration Agreement (https://x)".to_string()];
+        let ty = vec!["API_DPA".to_string()];
+
+        let err = purchase_consent_types("example.com", 1, false, true, &titles, &ty, false)
+            .expect_err("must require --agree");
+        assert!(!err.to_string().contains("AI assistants:"), "{err}");
+
+        let err = purchase_consent_types("example.com", 1, true, false, &titles, &ty, false)
+            .expect_err("must require --confirm");
+        assert!(!err.to_string().contains("AI assistants:"), "{err}");
+    }
+
+    #[test]
     fn purchase_consent_rejects_when_no_agreement_types() {
         // --agree given, but the cached quote carried no agreement types.
-        let err = purchase_consent_types("example.com", 1, true, true, &[], &[])
+        let err = purchase_consent_types("example.com", 1, true, true, &[], &[], true)
             .expect_err("no types -> error");
         assert!(
             err.to_string().contains("no legal agreement types"),
@@ -490,7 +574,7 @@ mod tests {
         // Without --agree AND with no cached agreement types, the accurate
         // "no agreement types / re-quote" error must win over the "requires
         // agreeing…" prompt (which would list nothing and never be satisfiable).
-        let err = purchase_consent_types("example.com", 1, false, false, &[], &[])
+        let err = purchase_consent_types("example.com", 1, false, false, &[], &[], true)
             .expect_err("empty types -> error");
         let msg = err.to_string();
         assert!(msg.contains("no legal agreement types"), "{msg}");
@@ -502,9 +586,16 @@ mod tests {
         // An older cached quote may carry agreement types but no human titles
         // (titles are serde-default). The --agree prompt must still list
         // something actionable — fall back to the types.
-        let err =
-            purchase_consent_types("example.com", 1, false, true, &[], &["API_DPA".to_string()])
-                .expect_err("must require --agree");
+        let err = purchase_consent_types(
+            "example.com",
+            1,
+            false,
+            true,
+            &[],
+            &["API_DPA".to_string()],
+            true,
+        )
+        .expect_err("must require --agree");
         let msg = err.to_string();
         assert!(msg.contains("requires agreeing"), "{msg}");
         assert!(msg.contains("- API_DPA"), "{msg}");
@@ -529,28 +620,34 @@ mod tests {
     }
 
     #[test]
-    fn consent_principal_strips_customer_urn_prefix() {
-        let cred = Credential {
-            sub: "customer:56fd82e4-1c45-4596-865d-317235015b2f".to_string(),
-            ..Default::default()
-        };
-        assert_eq!(
-            consent_principal(&cred).expect("customer subject"),
-            "56fd82e4-1c45-4596-865d-317235015b2f"
+    fn result_labels_price_as_quoted_and_carries_the_order_id() {
+        // Regression: `price` is the quote echoed back, not the charge (a test
+        // purchase quoted 9.19 and was charged 9.39 once the ICANN fee was
+        // added), so the result must say so and point at the order that holds
+        // the real total.
+        let result = purchase_result(
+            "example.com",
+            "COMPLETED",
+            Some("op-1".to_owned()),
+            Some("2211623318"),
+            Some("9.19"),
+            Some("USD"),
         );
-        let shopper = Credential {
-            sub: "shopper:12345".to_string(),
-            ..Default::default()
-        };
-        assert!(consent_principal(&shopper).is_err());
+        assert_eq!(result["orderId"], "2211623318");
+        assert_eq!(result["price"], "9.19");
+        let note = result["note"].as_str().expect("note accompanies price");
+        assert!(note.contains("quoted"), "{note}");
+        assert!(note.to_lowercase().contains("taxes and fees"), "{note}");
+    }
 
-        // A customer subject that isn't a UUID must fail fast before the paid call.
-        let not_uuid = Credential {
-            sub: "customer:12345".to_string(),
-            ..Default::default()
-        };
-        let err = consent_principal(&not_uuid).expect_err("non-uuid customer subject");
-        assert!(err.to_string().contains("not a valid UUID"), "{err}");
+    #[test]
+    fn result_omits_order_id_and_note_when_absent() {
+        // Still in progress and no cached price: no JSON nulls, no stray note.
+        let result = purchase_result("example.com", "EXECUTING", None, None, None, None);
+        assert_eq!(
+            result,
+            json!({"domain": "example.com", "status": "EXECUTING"})
+        );
     }
 
     #[test]

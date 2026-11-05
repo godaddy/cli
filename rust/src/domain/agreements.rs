@@ -1,4 +1,4 @@
-//! `gddy domain agreements` — the legal agreements a TLD requires (v1).
+//! `gddy domain agreement` — the legal agreements a TLD requires (v1).
 
 // Interactive recovery prompts write user-facing feedback to stderr.
 #![allow(clippy::print_stderr)]
@@ -34,9 +34,10 @@ struct AgreementsArgs {
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AgreementsArgs, _, _, _>(
         CommandSpec::from_args::<AgreementsArgs>(
-            "agreements",
+            "agreement",
             "Show the legal agreements required to register a TLD",
         )
+        .with_alias("agreements")
         .with_long(
             "List the legal agreements you must consent to before registering under \
                  a TLD. `domain quote` also returns the agreements specific to a domain; \
@@ -48,7 +49,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_view(vec![
             TableColumn::new("agreementKey", "Agreement Key"),
             TableColumn::new("title", "Title"),
-            TableColumn::new("url", "URL").no_truncate(true),
+            TableColumn::new("url", "URL").essential(true),
         ])
         .with_json_schema::<types::V1LegalAgreement>()
         .with_scopes(&[DOMAINS_READ]),
@@ -153,9 +154,13 @@ mod tests {
                 then.status(200).json_body(serde_json::json!([]));
             })
             .await;
-        let client =
-            domains_client::client_with_auth(&server.base_url(), "Bearer tok", "test", "req-1")
-                .expect("build client");
+        let client = domains_client::client_with_builder(
+            reqwest::Client::builder(),
+            &server.base_url(),
+            "Bearer tok",
+            "req-1",
+        )
+        .expect("build client");
 
         let tlds = comma_joined(vec!["com".to_string(), "net".to_string(), "io".to_string()]);
         client

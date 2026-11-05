@@ -103,9 +103,9 @@ pub(crate) enum ContactsChoice {
     #[default]
     AccountDefault,
     /// Use contacts loaded from contacts.toml.
-    FromFile(crate::contacts::ContactsFile),
+    FromFile(crate::domain::contacts_file::ContactsFile),
     /// Contacts entered interactively during the wizard.
-    Manual(crate::contacts::ContactsFile),
+    Manual(crate::domain::contacts_file::ContactsFile),
 }
 
 impl WizardState {

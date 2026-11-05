@@ -10,7 +10,7 @@ use domains_client::types;
 use crate::domain::common::{
     api_error, format_operation_error, is_terminal_status, make_client_with_cred,
 };
-use crate::quote_cache;
+use crate::domain::quote_cache;
 
 use crate::retry::with_retry;
 
@@ -66,7 +66,7 @@ pub(crate) async fn run(state: &mut WizardState, ctx: &StepContext) -> Result<St
             let prof = cached
                 .profile
                 .as_ref()
-                .map(|v| serde_json::from_value::<types::InlineRegistrationProfile>(v.clone()))
+                .map(|v| serde_json::from_value::<types::Profile>(v.clone()))
                 .transpose()
                 .map_err(|e| {
                     CliCoreError::message(format!("corrupt cached profile: {e}; re-run the wizard"))

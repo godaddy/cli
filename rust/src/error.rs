@@ -16,6 +16,7 @@ pub(crate) mod codes {
     pub(crate) const VALIDATION_ERROR: &str = "VALIDATION_ERROR";
     pub(crate) const NETWORK_ERROR: &str = "NETWORK_ERROR";
     pub(crate) const AUTH_REQUIRED: &str = "AUTH_REQUIRED";
+    pub(crate) const ONBOARDING_REQUIRED: &str = "ONBOARDING_REQUIRED";
     pub(crate) const CONFIG_ERROR: &str = "CONFIG_ERROR";
     pub(crate) const SECURITY_BLOCKED: &str = "SECURITY_BLOCKED";
     pub(crate) const UNEXPECTED_ERROR: &str = "UNEXPECTED_ERROR";
@@ -23,12 +24,14 @@ pub(crate) mod codes {
 
 mod fixes {
     pub(super) const NOT_FOUND: &str =
-        "Use discovery commands such as: gddy platform app list or gddy platform actions list.";
+        "Use discovery commands such as: gddy platform app list or gddy platform action list.";
     pub(super) const AMBIGUOUS_MATCH: &str =
         "Narrow the query, or add --method, to match exactly one operation.";
     pub(super) const VALIDATION: &str = "Review command arguments and try again with valid values.";
     pub(super) const AUTH: &str = "Run: gddy auth login";
-    pub(super) const FORBIDDEN: &str = "You may lack permission for this resource. Confirm scopes with: gddy auth scopes, or re-authenticate with: gddy auth login";
+    pub(super) const ONBOARDING: &str =
+        "Run: gddy platform app onboard, then retry after completion.";
+    pub(super) const FORBIDDEN: &str = "You may lack permission for this resource. Confirm scopes with: gddy auth scope, or re-authenticate with: gddy auth login";
     pub(super) const CONFIG: &str = "Check your config with: gddy env info";
     pub(super) const SECURITY: &str =
         "Resolve security findings and rerun: gddy platform app deploy --name <name>";
@@ -42,7 +45,7 @@ mod fixes {
     pub(super) const NETWORK_SERVER: &str =
         "The API is currently failing server-side. Retry, or check service health/incidents.";
     pub(super) const NETWORK_GRAPHQL: &str = "Check GraphQL query, variables, and operationName. Inspect error.details.response.errors for resolver/validation details.";
-    pub(super) const NOT_FOUND_HOSTING: &str = "Use: gddy hosting nodejs app list";
+    pub(super) const NOT_FOUND_HOSTING: &str = "Use: gddy hosting app list";
     /// Live `api call` 404: the requested URL/resource was not found (not a catalog miss).
     pub(super) const NOT_FOUND_API: &str =
         "Check the request path and parameters. Inspect the response body for details.";
@@ -117,6 +120,13 @@ impl GddyError {
     #[must_use]
     pub(crate) fn auth(message: impl Into<String>) -> Self {
         Self::new(codes::AUTH_REQUIRED, message).with_fix(fixes::AUTH)
+    }
+
+    /// The account has not accepted the GoDaddy Developer agreements, so it has
+    /// no developer organization yet.
+    #[must_use]
+    pub(crate) fn onboarding_required(message: impl Into<String>) -> Self {
+        Self::new(codes::ONBOARDING_REQUIRED, message).with_fix(fixes::ONBOARDING)
     }
 
     #[must_use]
@@ -260,6 +270,14 @@ mod tests {
     }
 
     #[test]
+    fn onboarding_required_points_at_app_onboard() {
+        let err = GddyError::onboarding_required("not set up");
+        assert_eq!(err.error_code(), codes::ONBOARDING_REQUIRED);
+        let fix = err.error_fix().expect("fix");
+        assert!(fix.contains("gddy platform app onboard"), "got {fix}");
+    }
+
+    #[test]
     fn ambiguous_sets_code_and_default_fix_but_is_overridable() {
         let err = GddyError::ambiguous("'order' matches 3 operations");
         assert_eq!(err.error_code(), codes::AMBIGUOUS_MATCH);
@@ -287,7 +305,7 @@ mod tests {
         assert!(
             forbidden
                 .error_fix()
-                .is_some_and(|f| f.contains("auth scopes")),
+                .is_some_and(|f| f.contains("auth scope")),
             "{:?}",
             forbidden.error_fix()
         );
@@ -320,7 +338,7 @@ mod tests {
         assert!(
             hosting_missing
                 .error_fix()
-                .is_some_and(|f| f.contains("hosting nodejs app list")),
+                .is_some_and(|f| f.contains("hosting app list")),
             "{:?}",
             hosting_missing.error_fix()
         );

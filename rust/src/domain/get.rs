@@ -7,6 +7,7 @@ use cli_engine::{
 use domains_client::types;
 
 use super::common::{fetch_with_domain_retry, resolve_domain_name};
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::scopes::DOMAINS_READ;
 
@@ -17,6 +18,9 @@ struct GetArgs {
     /// Domain to look up (must be in your account), e.g. example.com.
     #[arg(value_name = "DOMAIN")]
     domain: String,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -50,9 +54,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 },
             )
             .await?;
-            let value = serde_json::to_value(&detail).map_err(|e| {
+            let mut value = serde_json::to_value(&detail).map_err(|e| {
                 CliCoreError::message(format!("failed to serialize domain details: {e}"))
             })?;
+            args.domain_format
+                .form(&ctx)?
+                .convert_fields(&mut value, &["domain", "nameServers"]);
             Ok(CommandResult::new(value).with_next_actions(vec![
                 next_action("dns list <domain>", "View this domain's DNS records")
                     .with_param("domain", NextActionParam::required()),

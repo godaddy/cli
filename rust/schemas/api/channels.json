@@ -6,13 +6,17 @@
       "description": "Resource representing the Basic Channel",
       "properties": {
         "channelId": {
-          "$ref": "#/$defs/Id"
+          "$ref": "#/$defs/Id",
+          "description": "Globally unique Id of the channel that can be used to reference"
         },
         "channelProviderId": {
-          "$ref": "#/$defs/Id"
+          "$ref": "#/$defs/Id",
+          "description": "Identifier of the channel provider (defaulted based on the caller's auth credentials)"
         },
         "createdAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The date and time the channel was created.",
+          "readOnly": true
         },
         "externalChannelId": {
           "description": "External identifier of the channel",
@@ -20,7 +24,9 @@
           "type": "string"
         },
         "links": {
-          "$ref": "#/$defs/Links"
+          "$ref": "#/$defs/Links",
+          "description": "Links pointing to external resource",
+          "readOnly": true
         },
         "name": {
           "description": "Name of the channel",
@@ -43,7 +49,9 @@
           "type": "string"
         },
         "updatedAt": {
-          "$ref": "#/$defs/date-time"
+          "$ref": "#/$defs/date-time",
+          "description": "The date and time the channel was updated.",
+          "readOnly": true
         }
       },
       "required": [
@@ -112,7 +120,8 @@
           "type": "array"
         },
         "links": {
-          "$ref": "#/$defs/Links"
+          "$ref": "#/$defs/Links",
+          "description": "Array of HATEOAS link relations that should be used to navigate across pages of Channels"
         },
         "totalItems": {
           "description": "Total number of Channels matching the search criteria. Returned only when totalRequired is set to true.",
@@ -132,7 +141,8 @@
       "description": "Resource representing the Channel Provider",
       "properties": {
         "channelProviderId": {
-          "$ref": "#/$defs/Id"
+          "$ref": "#/$defs/Id",
+          "description": "Globally unique Id of the channel provider that can be used to reference"
         },
         "name": {
           "description": "Name of the channel provider",
@@ -169,7 +179,8 @@
           "type": "array"
         },
         "links": {
-          "$ref": "#/$defs/Links"
+          "$ref": "#/$defs/Links",
+          "description": "Array of HATEOAS link relations that should be used to navigate across pages of Channel providers"
         },
         "totalItems": {
           "description": "Total number of Channel Providers matching the search criteria. Returned only when totalRequired is set to true.",
@@ -295,7 +306,8 @@
             "additionalProperties": false,
             "properties": {
               "from": {
-                "$ref": "#/$defs/path"
+                "$ref": "#/$defs/path",
+                "description": "A JSON Pointer path pointing to the location to move/copy from."
               },
               "op": {
                 "description": "The operation to perform.",
@@ -376,13 +388,17 @@
           "type": "boolean"
         },
         "links": {
-          "$ref": "#/$defs/Links"
+          "$ref": "#/$defs/Links",
+          "description": "Links pointing to external resource",
+          "readOnly": true
         },
         "status": {
-          "$ref": "#/$defs/RegisteredStoreStatus"
+          "$ref": "#/$defs/RegisteredStoreStatus",
+          "description": "Status of the registration"
         },
         "storeId": {
-          "$ref": "#/$defs/Id"
+          "$ref": "#/$defs/Id",
+          "description": "Id of the store that can be used to reference"
         }
       },
       "required": [
@@ -414,7 +430,8 @@
       "description": "Resource representing a Retail Channel",
       "properties": {
         "location": {
-          "$ref": "#/$defs/RetailLocation"
+          "$ref": "#/$defs/RetailLocation",
+          "description": "Location details of the retail channel"
         }
       },
       "title": "Retail Channel",
@@ -425,10 +442,12 @@
         "RetailLocationContact": {
           "properties": {
             "phone": {
-              "$ref": "#/$defs/phone"
+              "$ref": "#/$defs/phone",
+              "description": "Phone number details"
             },
             "type": {
-              "$ref": "#/$defs/phone-type"
+              "$ref": "#/$defs/phone-type",
+              "description": "Type of the contact phone"
             }
           },
           "title": "Retail Location Contact",
@@ -440,7 +459,8 @@
       "description": "Retail Location",
       "properties": {
         "address": {
-          "$ref": "#/$defs/address"
+          "$ref": "#/$defs/address",
+          "description": "Physical address of the retail location"
         },
         "alias": {
           "description": "Alias for the location",
@@ -452,10 +472,12 @@
           "items": {
             "properties": {
               "phone": {
-                "$ref": "#/$defs/phone"
+                "$ref": "#/$defs/phone",
+                "description": "Phone number details"
               },
               "type": {
-                "$ref": "#/$defs/phone-type"
+                "$ref": "#/$defs/phone-type",
+                "description": "Type of the contact phone"
               }
             },
             "title": "Retail Location Contact",
@@ -503,7 +525,8 @@
               "type": "string"
             },
             "geoCoordinates": {
-              "$ref": "#/$defs/geo-coordinates"
+              "$ref": "#/$defs/geo-coordinates",
+              "description": "The latitude and longitude of the address. For example, `37.42242` and `-122.08585`."
             },
             "streetName": {
               "description": "The street name. Just `Drury` in `Drury Lane`.",
@@ -565,7 +588,8 @@
           "type": "string"
         },
         "countryCode": {
-          "$ref": "#/$defs/country-code"
+          "$ref": "#/$defs/country-code",
+          "description": "The [two-character ISO 3166-1 code](https://en.wikipedia.org/wiki/ISO_3166-1) that identifies the country or region. Note: The country code for Great Britain is `GB` and not `UK` as used in the top-level domain names for that country. Use country code `C2` for China for comparable uncontrolled price (CUP) method, bank-card, and cross-border transactions."
         },
         "postalCode": {
           "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",

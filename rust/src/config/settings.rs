@@ -1,11 +1,16 @@
 //! `[[settings]]` — placement metadata for an application-settings capability
 //! registered with `app-registry-api`'s `createRelease.settings`.
 
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use super::settings_form::{SettingPresentation, validate_presentation};
 
-const ALLOWED_CAPABILITIES: &[&str] = &["read", "write", "validate", "test", "delete", "open"];
+const ALLOWED_CAPABILITIES: &[&str] = &[
+    "read", "write", "validate", "test", "delete", "open", "config",
+];
 const ALLOWED_ICON_LIBRARIES: &[&str] = &["ux", "lucide", "commerce"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,7 +30,7 @@ pub struct SettingConfig {
     #[serde(default)]
     pub icon: Option<SettingIcon>,
     #[serde(default)]
-    pub metadata: Option<serde_json::Value>,
+    pub metadata: Option<Value>,
     /// Path to a JSON presentation file, resolved against the manifest's
     /// directory at release time. Mutually exclusive with `presentation`.
     #[serde(default)]
@@ -94,6 +99,53 @@ fn entry_paths_overlap(first: &str, second: &str) -> bool {
         || second.starts_with(&format!("{first}/"))
 }
 
+/// True when `key` matches the API's public-config allowlist pattern:
+/// `^[a-z][A-Za-z0-9]{0,63}$`.
+fn is_valid_config_key(key: &str) -> bool {
+    let mut bytes = key.bytes();
+    matches!(bytes.next(), Some(first) if first.is_ascii_lowercase())
+        && bytes.clone().count() <= 63
+        && bytes.all(|byte| byte.is_ascii_alphanumeric())
+}
+
+fn validate_config_capability(setting: &SettingConfig, errors: &mut Vec<String>, path: &str) {
+    let declares_config = setting.capabilities.iter().any(|cap| cap == "config");
+    let config_keys = setting
+        .metadata
+        .as_ref()
+        .and_then(Value::as_object)
+        .and_then(|metadata| metadata.get("configKeys"));
+
+    if !declares_config {
+        if config_keys.is_some() {
+            errors.push(format!(
+                "{path}.metadata.configKeys requires the config capability"
+            ));
+        }
+        return;
+    }
+
+    if !setting.capabilities.iter().any(|cap| cap == "read") {
+        errors.push(format!(
+            "{path}.capabilities: the config capability requires the read capability"
+        ));
+    }
+
+    let valid_allowlist = config_keys.and_then(Value::as_array).is_some_and(|keys| {
+        let mut seen = HashSet::new();
+        (1..=16).contains(&keys.len())
+            && keys.iter().all(|key| {
+                key.as_str()
+                    .is_some_and(|key| is_valid_config_key(key) && seen.insert(key))
+            })
+    });
+    if !valid_allowlist {
+        errors.push(format!(
+            "{path}.metadata.configKeys: the config capability requires 1 to 16 unique keys matching ^[a-z][A-Za-z0-9]{{0,63}}$"
+        ));
+    }
+}
+
 pub(super) fn validate_settings(settings: &[SettingConfig], errors: &mut Vec<String>) {
     for (i, setting) in settings.iter().enumerate() {
         let path = format!("settings[{i}]");
@@ -123,6 +175,7 @@ pub(super) fn validate_settings(settings: &[SettingConfig], errors: &mut Vec<Str
                 ));
             }
         }
+        validate_config_capability(setting, errors, &path);
         if let Some(icon) = &setting.icon
             && !ALLOWED_ICON_LIBRARIES.contains(&icon.library.as_str())
         {
@@ -232,6 +285,76 @@ mod tests {
     }
 
     #[test]
+    fn validate_settings_accepts_config_capability_with_allowlist() {
+        let mut s = setting("paypal-payments", "/settings/paypal");
+        s.capabilities = vec!["read".to_owned(), "config".to_owned()];
+        s.metadata = Some(serde_json::json!({
+            "provider": "paypal",
+            "configKeys": ["clientId", "merchantId", "disableFunding"]
+        }));
+        let mut errors = Vec::new();
+        validate_settings(&[s], &mut errors);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn validate_settings_rejects_config_without_read() {
+        let mut s = setting("paypal-payments", "/settings/paypal");
+        s.capabilities = vec!["config".to_owned()];
+        s.metadata = Some(serde_json::json!({ "configKeys": ["clientId"] }));
+        let mut errors = Vec::new();
+        validate_settings(&[s], &mut errors);
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("requires the read capability")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_settings_rejects_config_without_valid_allowlist() {
+        for metadata in [
+            None,
+            Some(serde_json::json!({})),
+            Some(serde_json::json!({ "configKeys": [] })),
+            Some(serde_json::json!({ "configKeys": ["Client-Id"] })),
+            Some(serde_json::json!({ "configKeys": ["clientId", "clientId"] })),
+            Some(serde_json::json!({
+                "configKeys": (0..17).map(|index| format!("key{index}")).collect::<Vec<_>>()
+            })),
+            Some(serde_json::json!({ "configKeys": "clientId" })),
+        ] {
+            let mut s = setting("paypal-payments", "/settings/paypal");
+            s.capabilities = vec!["read".to_owned(), "config".to_owned()];
+            s.metadata = metadata;
+            let mut errors = Vec::new();
+            validate_settings(&[s], &mut errors);
+            assert!(
+                errors
+                    .iter()
+                    .any(|error| error.contains("requires 1 to 16 unique keys")),
+                "{errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_settings_rejects_config_keys_without_capability() {
+        let mut s = setting("paypal-payments", "/settings/paypal");
+        s.capabilities = vec!["read".to_owned()];
+        s.metadata = Some(serde_json::json!({ "configKeys": ["clientId"] }));
+        let mut errors = Vec::new();
+        validate_settings(&[s], &mut errors);
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("requires the config capability")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
     fn validate_settings_rejects_invalid_icon_library() {
         let mut s = setting("godaddy-tax", "/settings/godaddy-tax");
         s.icon = Some(SettingIcon {
@@ -277,6 +400,25 @@ mod tests {
     }
 
     #[test]
+    fn validate_settings_accepts_link_with_config_and_delete() {
+        let mut s = setting("paypal-payments", "/settings/paypal");
+        s.capabilities = vec![
+            "read".to_owned(),
+            "open".to_owned(),
+            "config".to_owned(),
+            "delete".to_owned(),
+        ];
+        s.metadata = Some(serde_json::json!({ "configKeys": ["clientId"] }));
+        s.presentation = Some(SettingPresentation::Link(SettingsLinkV1Presentation {
+            label: "Configure PayPal".to_owned(),
+            open_mode: "new-window".to_owned(),
+        }));
+        let mut errors = Vec::new();
+        validate_settings(&[s], &mut errors);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
     fn validate_settings_rejects_link_setting_with_wrong_capabilities() {
         let mut s = setting("paypal-payments", "/settings/paypal");
         s.capabilities = vec!["read".to_owned(), "write".to_owned()];
@@ -289,7 +431,7 @@ mod tests {
         assert!(
             errors
                 .iter()
-                .any(|e| e.contains("requires exactly the read and open capabilities")),
+                .any(|e| e.contains("requires the read and open capabilities")),
             "{errors:?}"
         );
     }

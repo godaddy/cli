@@ -12,17 +12,17 @@ mod validation;
 pub(crate) use client::{make_client, make_client_with_cred};
 pub(crate) use errors::{api_error, format_api_error};
 pub(super) use interactive::{
-    fetch_with_domain_retry, fetch_with_operation_retry, prompt_validated_domain_name,
-    prompt_validated_quote_token, prompt_validated_tld, recoverable_tld_api_error,
-    resolve_domain_name, resolve_nameserver_hosts, resolve_operation_id, resolve_optional_tlds,
-    resolve_quote_token, resolve_tlds,
+    fetch_with_domain_retry, prompt_validated_domain_name, prompt_validated_quote_token,
+    prompt_validated_tld, recoverable_tld_api_error, resolve_domain_name,
+    resolve_nameserver_hosts, resolve_optional_tlds, resolve_quote_token, resolve_tlds,
 };
-pub(super) use operation::{format_operation_error, is_terminal_status};
-pub(super) use pricing::{
-    clamp_registration_periods, format_money, is_period_limit_error, parse_max_registration_period,
-    period_label, period_price_map, periods_from_prices, term_for_period,
+pub(crate) use operation::{format_operation_error, is_terminal_status, order_next_action};
+pub(crate) use pricing::{
+    PRICE_EXCLUDES_TAXES_AND_FEES, clamp_registration_periods, fees_to_json, format_minor_units,
+    format_money, is_period_limit_error, parse_max_registration_period, period_label,
+    period_price_map, periods_from_prices, term_for_period,
 };
-pub(super) use validation::{validate_domain_name, validate_nameserver_hosts};
+pub(crate) use validation::{validate_domain_name, validate_nameserver_hosts};
 
 /// Collapse a repeatable CLI flag's values into the single query-string value
 /// some domains-client endpoints require (e.g. `tlds`, whose OpenAPI param is

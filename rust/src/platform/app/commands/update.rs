@@ -1,0 +1,163 @@
+//! `gddy platform app update` — update label, description, and manifest OAuth redirects.
+
+use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use platform_app_client::update_application::MutationUpdateApplicationInput;
+
+use super::schemas::ApplicationUpdate;
+use crate::next_action::{next_action, required_value};
+use crate::scopes::{APP_REGISTRY_READ, APP_REGISTRY_WRITE};
+
+/// "At least one of" fields for `update`, flattened into [`UpdateArgs`].
+///
+/// Kept as its own derive struct (rather than inline fields on `UpdateArgs`)
+/// so the struct-level `#[group(...)]` only covers these two — `id` stays
+/// outside the group and independently required. See the flatten caveat on
+/// `CommandSpec::from_args`: a struct can't both flatten a field and declare
+/// its own enforced group.
+#[derive(Debug, Clone, clap::Args)]
+#[group(required = true, multiple = true)]
+struct UpdateFields {
+    /// New label.
+    #[arg(long, value_name = "LABEL")]
+    label: Option<String>,
+
+    /// New description.
+    #[arg(long, value_name = "TEXT")]
+    description: Option<String>,
+}
+
+#[derive(Debug, Clone, clap::Args)]
+struct UpdateArgs {
+    /// Application ID.
+    #[arg(long, value_name = "ID")]
+    id: String,
+
+    #[command(flatten)]
+    fields: UpdateFields,
+}
+
+pub(super) fn command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_typed_with_context::<UpdateArgs, _, _, _>(
+        CommandSpec::from_args::<UpdateArgs>("update", "Update an application")
+            .with_long(
+                "Update the label or description of a GoDaddy \
+                developer-platform application by its ID. At least one of \
+                --label or --description must be provided. Use \
+                `gddy platform app info --name <name>` to retrieve the \
+                application ID. When the environment's godaddy.toml declares \
+                redirect_uris, the same request synchronizes those additional \
+                OAuth callbacks; omitting the key leaves them unchanged.",
+            )
+            .with_system("applications")
+            .with_tier(Tier::Mutate)
+            .with_scopes(&[APP_REGISTRY_READ, APP_REGISTRY_WRITE])
+            .with_output_schema::<ApplicationUpdate>(),
+        |context, args: UpdateArgs| async move {
+            let config_path = crate::config::config_path(Some(&context.middleware.env));
+            let redirect_uris = match crate::config::read_config(&config_path) {
+                Ok(config) => config.redirect_uris,
+                Err(crate::config::ConfigError::NotFound { .. }) => None,
+                Err(error) => {
+                    return Err(crate::error::GddyError::config(format!(
+                        "invalid config: {error}"
+                    ))
+                    .into_cli_error());
+                }
+            };
+            // `None` is omitted from the request (the `OmitNoneInInputs` pass
+            // in `platform-app-client/build.rs`), so an omitted manifest key
+            // leaves the remote allowlist unchanged while `Some(vec![])`
+            // clears it.
+            let input = MutationUpdateApplicationInput {
+                label: args.fields.label,
+                description: args.fields.description,
+                redirect_uris,
+                authorization_scopes: None,
+                distribution_type: None,
+                name: None,
+                proxy_url: None,
+                url: None,
+            };
+            let client = super::make_client(&context).await?;
+            let app = client
+                .update_application(&args.id, input)
+                .await
+                .map_err(super::client_err)?
+                .ok_or_else(|| {
+                    crate::error::GddyError::unexpected(
+                        "updateApplication returned no data".to_owned(),
+                    )
+                    .into_cli_error()
+                })?;
+            let name = app.name.clone();
+            let data = serde_json::to_value(&app).map_err(|e| {
+                crate::error::GddyError::unexpected(format!("failed to encode application: {e}"))
+                    .into_cli_error()
+            })?;
+            Ok(CommandResult::new(data).with_next_actions(vec![
+                next_action(
+                    "platform app info --name <name>",
+                    "Inspect updated application",
+                )
+                .with_param("name", required_value(&name)),
+                next_action(
+                    "platform app deploy --name <name>",
+                    "Deploy updated application",
+                )
+                .with_param("name", required_value(&name)),
+            ]))
+        },
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    fn update_clap_command() -> clap::Command {
+        super::command().spec.clap_command()
+    }
+
+    #[test]
+    fn status_is_an_unsupported_argument() {
+        let err = update_clap_command()
+            .try_get_matches_from(["update", "--id", "app-1", "--status", "ACTIVE"])
+            .expect_err("--status must not be accepted by app update");
+        assert_eq!(err.kind(), clap::error::ErrorKind::UnknownArgument);
+    }
+
+    #[test]
+    fn update_requires_at_least_one_field() {
+        let err = update_clap_command()
+            .try_get_matches_from(["update", "--id", "app-1"])
+            .expect_err("update with only --id should be rejected at parse time");
+        assert_eq!(
+            err.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument,
+            "expected MissingRequiredArgument, got: {err}"
+        );
+    }
+
+    #[test]
+    fn update_accepts_any_single_field() {
+        update_clap_command()
+            .try_get_matches_from(["update", "--id", "app-1", "--label", "New"])
+            .expect("--label alone should be accepted");
+        update_clap_command()
+            .try_get_matches_from(["update", "--id", "app-1", "--description", "Desc"])
+            .expect("--description alone should be accepted");
+    }
+
+    #[test]
+    fn update_accepts_multiple_fields() {
+        update_clap_command()
+            .try_get_matches_from([
+                "update",
+                "--id",
+                "app-1",
+                "--label",
+                "New",
+                "--description",
+                "Desc",
+            ])
+            .expect("multiple update fields should be allowed together");
+    }
+}

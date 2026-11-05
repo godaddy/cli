@@ -8,9 +8,10 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{
-    api_error, format_money, make_client, period_label, period_price_map, periods_from_prices,
-    resolve_domain_name, term_for_period,
+    PRICE_EXCLUDES_TAXES_AND_FEES, api_error, fees_to_json, format_money, make_client,
+    period_label, period_price_map, periods_from_prices, resolve_domain_name, term_for_period,
 };
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_READ;
@@ -26,6 +27,12 @@ output_schema!(DomainAvailableResult {
     // Present only when the API returns priced terms at all.
     "currency": "string", optional;
     "terms": "[]object", optional;
+    // Present whenever the API returns an inventory source at all (typically
+    // whenever `available` is true): `REGISTRY`, `REGISTRY_PREMIUM`, or
+    // `PREMIUM` — see `types::InventoryType`. Only the latter two carry a
+    // premium surcharge; when they do, it's in that term's per-term `fees`,
+    // in addition to `price`.
+    "inventory": "string", optional;
 });
 
 fn view_columns() -> Vec<TableColumn> {
@@ -34,23 +41,30 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("available", "Available"),
         TableColumn::new("definitive", "Definitive"),
         TableColumn::new("currency", "Currency"),
+        TableColumn::new("inventory", "Inventory"),
         TableColumn::new("terms", "Terms").nested(vec![
-            TableColumn::new("periodLabel", "Period"),
-            TableColumn::new("price", "Price").align(Alignment::Right),
+            TableColumn::new("periodLabel", "Period").essential(true),
+            TableColumn::new("price", "Price")
+                .align(Alignment::Right)
+                .essential(true),
             TableColumn::new("firstTermPrice", "First-Term Price").align(Alignment::Right),
-            TableColumn::new("renewalPrice", "Renewal Price").align(Alignment::Right),
+            TableColumn::new("renewalPrice", "Auto-Renewal Price").align(Alignment::Right),
+            TableColumn::new("fees", "Premium Fees").essential(true),
         ]),
     ]
 }
 
 /// Render one `TermPrice` entry as `{period, periodLabel, price, renewalPrice,
-/// firstTermPrice}`. `None` when the term carries no period (never happens in
-/// practice, but keeps every emitted object schema-conformant). Currency isn't
-/// repeated per term — it's virtually always the same across a domain's terms,
-/// so it's surfaced once at the top level instead of as a redundant column in
-/// every row. `TermPrice.recommended` (a hint for web UIs on which term to
-/// feature) is intentionally not surfaced — it read as a confusing, unexplained
-/// flag in CLI output.
+/// firstTermPrice, fees}`. `None` when the term carries no period (never
+/// happens in practice, but keeps every emitted object schema-conformant).
+/// Currency isn't repeated per term — it's virtually always the same across a
+/// domain's terms, so it's surfaced once at the top level instead of as a
+/// redundant column in every row. `TermPrice.recommended` (a hint for web UIs
+/// on which term to feature) is intentionally not surfaced — it read as a
+/// confusing, unexplained flag in CLI output. `fees` (e.g. a premium domain's
+/// one-time acquisition surcharge, in addition to `price`) is surfaced via the
+/// same [`fees_to_json`] shape `quote` uses, so a premium domain's true cost
+/// isn't hidden until `quote` time.
 fn term_to_json(term: &types::TermPrice) -> Option<serde_json::Value> {
     let period = term.period?;
     let mut obj = json!({
@@ -65,6 +79,9 @@ fn term_to_json(term: &types::TermPrice) -> Option<serde_json::Value> {
     }
     if let Some(first_term) = term.first_term_price.as_ref().and_then(format_money) {
         obj["firstTermPrice"] = json!(first_term);
+    }
+    if let Some(fees) = term.fees.as_ref().and_then(|f| fees_to_json(f)) {
+        obj["fees"] = fees;
     }
     Some(obj)
 }
@@ -99,6 +116,9 @@ struct AvailableArgs {
     /// Optimize for speed (fast) or accuracy (full).
     #[arg(long = "check-type", value_name = "TYPE", value_parser = ["fast", "full"])]
     check_type: Option<String>,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -106,14 +126,19 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::from_args::<AvailableArgs>("available", "Check whether a domain is available")
             .with_long(
                 "Check whether a domain can be registered, and at what price. \
-                 --check-type fast trades accuracy for speed; full is authoritative \
-                 (the `definitive` field tells you which you got). Lists every \
-                 registration term the API prices (1 year, 2 years, …), including \
-                 any first-term promotion.",
+                 --check-type fast trades accuracy for speed; full is \
+                 authoritative (the `definitive` field tells you which you got). \
+                 Lists every registration term the API prices, with any \
+                 promotional discounts applied.\n\
+                 \n\
+                 Prices exclude taxes and fees, such as the ICANN fee, which are \
+                 added when you register. `Premium Fees` lists only the extra \
+                 purchase cost of a premium domain; it is empty for an ordinary \
+                 domain.",
             )
             .with_system("domain")
             .with_tier(Tier::Read)
-            .with_default_fields("domain,available,definitive,currency,terms")
+            .with_default_fields("domain,available,definitive,currency,inventory,terms")
             .with_output_schema::<DomainAvailableResult>()
             .with_view(view_columns())
             .with_scopes(&[DOMAINS_READ]),
@@ -149,6 +174,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 "available": body.available.unwrap_or(false),
                 "definitive": body.definitive.unwrap_or(false),
             });
+            if let Some(inventory) = body.inventory.as_ref() {
+                result["inventory"] = json!(inventory.to_string());
+            }
             let prices = body.prices.unwrap_or_default();
             let terms: Vec<serde_json::Value> = prices.iter().filter_map(term_to_json).collect();
             // `terms` is emitted whenever any priced term exists, independent
@@ -163,6 +191,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     result["currency"] = json!(currency);
                 }
             }
+
+            let domain_format = args.domain_format.form(&ctx)?;
+            domain_format.convert_fields(&mut result, &["domain"]);
+            let resolved_domain = domain_format.render(&resolved_domain);
 
             let cmd = CommandResult::new(result);
             if body.available.unwrap_or(false) {
@@ -188,8 +220,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
 
                 Ok(cmd.with_next_actions(vec![
-                    next_action("domain quote <domain>", "Price a registration")
-                        .with_param("domain", NextActionParam::value(resolved_domain)),
+                    next_action(
+                        "domain quote <domain>",
+                        format!("Price a registration. {PRICE_EXCLUDES_TAXES_AND_FEES}"),
+                    )
+                    .with_param("domain", NextActionParam::value(resolved_domain)),
                 ]))
             } else {
                 Ok(cmd.with_next_actions(vec![
@@ -211,6 +246,12 @@ mod tests {
     fn default_fields_includes_terms() {
         let fields = command().spec.default_fields.expect("default fields set");
         assert!(fields.split(',').any(|f| f == "terms"), "{fields}");
+    }
+
+    #[test]
+    fn default_fields_includes_inventory() {
+        let fields = command().spec.default_fields.expect("default fields set");
+        assert!(fields.split(',').any(|f| f == "inventory"), "{fields}");
     }
 
     #[test]
@@ -281,12 +322,71 @@ mod tests {
                 },
             ],
         });
-        let envelope = cli_engine::Envelope::success(available, "domain");
-        let rendered = cli_engine::render_human_with_view(&envelope, Some(&view_columns()), "");
+        let rendered = cli_engine::preview_human_view(available, &view_columns());
         assert!(rendered.contains("Terms:"), "{rendered}");
         assert!(rendered.contains("1 year"), "{rendered}");
         assert!(rendered.contains("2 years"), "{rendered}");
         assert!(rendered.contains("2.50"), "{rendered}");
         assert!(!rendered.contains("Recommended"), "{rendered}");
+    }
+
+    #[test]
+    fn term_to_json_surfaces_a_premium_terms_fees() {
+        // Regression: a premium domain's one-time acquisition surcharge lives
+        // in `TermPrice.fees`, which `term_to_json` used to drop entirely —
+        // `available` reported a price with no hint the domain was premium
+        // or that the surcharge existed, only visible later via `quote`.
+        let term = types::TermPrice {
+            period: std::num::NonZeroU64::new(1),
+            price: Some(types::SimpleMoney {
+                value: Some(2299),
+                currency_code: Some(types::CurrencyCode("USD".to_string())),
+            }),
+            fees: Some(vec![types::Fee {
+                fee: Some(types::SimpleMoney {
+                    value: Some(390000),
+                    currency_code: Some(types::CurrencyCode("USD".to_string())),
+                }),
+                type_: Some(types::FeeType(
+                    "ONE_TIME_PREMIUM_DOMAIN_PURCHASE".to_string(),
+                )),
+            }]),
+            ..Default::default()
+        };
+        let obj = super::term_to_json(&term).expect("period is present");
+        assert_eq!(
+            obj["fees"],
+            json!([{
+                "type": "ONE_TIME_PREMIUM_DOMAIN_PURCHASE",
+                "amount": "3900.00",
+                "currency": "USD",
+            }])
+        );
+    }
+
+    #[test]
+    fn term_to_json_omits_fees_when_absent() {
+        let term = types::TermPrice {
+            period: std::num::NonZeroU64::new(1),
+            ..Default::default()
+        };
+        let obj = super::term_to_json(&term).expect("period is present");
+        assert!(obj.get("fees").is_none(), "{obj}");
+    }
+
+    /// Proves `view_columns()` renders a premium domain's top-level
+    /// `inventory` — a mismatch would silently drop it from `--fields all`
+    /// output, the same class of gap `quote`'s equivalent test guards.
+    #[test]
+    fn inventory_renders_at_the_top_level() {
+        let available = json!({
+            "domain": "premium-example.com",
+            "available": true,
+            "definitive": true,
+            "inventory": "PREMIUM",
+        });
+        let rendered = cli_engine::preview_human_view(available, &view_columns());
+        assert!(rendered.contains("Inventory:"), "{rendered}");
+        assert!(rendered.contains("PREMIUM"), "{rendered}");
     }
 }

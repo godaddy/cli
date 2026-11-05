@@ -1,4 +1,4 @@
-//! `gddy domain nameservers` — manage a domain's nameservers (v3).
+//! `gddy domain nameserver` — manage a domain's nameservers (v3).
 
 use cli_engine::{
     CommandResult, CommandSpec, GroupSpec, NextActionParam, RuntimeCommandSpec, RuntimeGroupSpec,
@@ -9,6 +9,7 @@ use serde_json::json;
 use domains_client::types;
 
 use super::common::{api_error, make_client, resolve_domain_name, resolve_nameserver_hosts};
+use crate::idn::DomainFormArgs;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_NAMESERVER_UPDATE;
@@ -30,13 +31,15 @@ struct NameserversSetArgs {
     /// Nameserver host (repeatable; replaces the full set).
     #[arg(long, value_name = "HOST", required = true)]
     nameserver: Vec<String>,
+
+    #[command(flatten)]
+    domain_format: DomainFormArgs,
 }
 
 pub(super) fn group() -> RuntimeGroupSpec {
-    RuntimeGroupSpec::new(GroupSpec::new(
-        "nameservers",
-        "Manage a domain's nameservers",
-    ))
+    RuntimeGroupSpec::new(
+        GroupSpec::new("nameserver", "Manage a domain's nameservers").with_alias("nameservers"),
+    )
     .with_command(RuntimeCommandSpec::new_typed_with_context::<
         NameserversSetArgs,
         _,
@@ -66,6 +69,9 @@ pub(super) fn group() -> RuntimeGroupSpec {
                 "Nameserver host (e.g. ns1.example.com)",
             )?;
             let debug = !ctx.middleware.debug.is_empty();
+            // Resolve the display form before the update is sent, so a bad
+            // preference can't hide the operation ID of a change already made.
+            let domain_format = args.domain_format.form(&ctx)?;
 
             let client = make_client(&ctx).await?;
             let body = types::NameServers(
@@ -98,9 +104,12 @@ pub(super) fn group() -> RuntimeGroupSpec {
             if let Some(status) = op.status.as_ref() {
                 result["status"] = json!(status.to_string());
             }
+            domain_format.convert_fields(&mut result, &["domain", "nameservers"]);
             Ok(CommandResult::new(result).with_next_actions(vec![
-                next_action("domain get <domain>", "Confirm the updated nameservers")
-                    .with_param("domain", NextActionParam::value(domain)),
+                next_action("domain get <domain>", "Confirm the updated nameservers").with_param(
+                    "domain",
+                    NextActionParam::value(domain_format.render(&domain)),
+                ),
             ]))
         },
     ))
