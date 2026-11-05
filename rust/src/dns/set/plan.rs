@@ -344,4 +344,42 @@ mod tests {
             ]
         );
     }
+
+    fn srv_opts() -> RecordOptions {
+        RecordOptions {
+            priority: Some(1),
+            weight: Some(1),
+            port: Some(5222),
+            service: Some("_xmpp".to_owned()),
+            protocol: Some("_tcp".to_owned()),
+            ..opts()
+        }
+    }
+
+    #[test]
+    fn plan_set_keeps_the_srv_target_that_was_asked_for_when_the_api_added_a_trailing_dot() {
+        // The API stores SRV targets as `a.example.com.` and `b.example.com.`.
+        // Asking for just `b.example.com` (no dot) must pair with r2, which already
+        // holds it, and delete r1.
+        // Compared verbatim, nothing matches, r1 is paired with the request by
+        // position, its write fails as a duplicate of r2, and the surplus delete
+        // then removes r2 — leaving only the target that was meant to go.
+        let o = srv_opts();
+        let existing = [
+            stored("r1", "SRV", "a.example.com.", &o),
+            stored("r2", "SRV", "b.example.com.", &o),
+        ];
+        assert_eq!(
+            plan_set(&existing, &[wanted("SRV", "b.example.com", &o)]),
+            vec![
+                SetAction::Replace {
+                    record_id: "r2".into(),
+                    data: "b.example.com".into()
+                },
+                SetAction::Delete {
+                    record_id: "r1".into()
+                },
+            ]
+        );
+    }
 }

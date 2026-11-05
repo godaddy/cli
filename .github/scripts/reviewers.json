@@ -24,16 +24,16 @@
       "users": ["daleksic-godaddy", "dcanic-godaddy", "mcolakovic-godaddy"]
     },
     {
-      "comment": "TODO: get list of reviewers for DNS",
+      "comment": "gddy dns commands",
       "label": "dns",
       "patterns": ["rust/src/dns/**"],
-      "users": []
+      "users": ["jmunson-godaddy", "bdittmer-godaddy"]
     },
     {
-      "comment": "TODO: get list of reviewers for domains",
+      "comment": "gddy domain commands",
       "label": "domains",
       "patterns": ["rust/domains-client/**", "rust/src/domain/**"],
-      "users": []
+      "users": ["jmunson-godaddy", "bdittmer-godaddy"]
     },
     {
       "comment": "gddy email commands",

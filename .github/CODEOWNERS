@@ -21,12 +21,12 @@
 # db — `gddy db` commands
 rust/src/db/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @daleksic-godaddy @dcanic-godaddy @mcolakovic-godaddy
 
-# dns — TODO: get list of reviewers for DNS
-rust/src/dns/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy
+# dns — gddy dns commands
+rust/src/dns/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @jmunson-godaddy @bdittmer-godaddy
 
-# domains — TODO: get list of reviewers for domains
-rust/domains-client/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy
-rust/src/domain/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy
+# domains — gddy domain commands
+rust/domains-client/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @jmunson-godaddy @bdittmer-godaddy
+rust/src/domain/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @jmunson-godaddy @bdittmer-godaddy
 
 # email — gddy email commands
 rust/email-client/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @sgimpel-godaddy @srao-godaddy
