@@ -96,18 +96,42 @@ async fn error_for_status(status: StatusCode, response: reqwest::Response) -> On
         return OnboardingError::Http(status);
     }
 
-    let code = match response.bytes().await {
-        Ok(body) if body.len() <= MAX_ERROR_BODY_BYTES => {
-            serde_json::from_slice::<ErrorEnvelope>(&body)
-                .ok()
-                .map(|envelope| envelope.error.code)
-        }
-        _ => None,
-    };
+    let code = read_body_capped(response, MAX_ERROR_BODY_BYTES)
+        .await
+        .and_then(|body| serde_json::from_slice::<ErrorEnvelope>(&body).ok())
+        .map(|envelope| envelope.error.code);
 
     match code.as_deref() {
         Some(ONBOARDING_NOT_ENABLED_CODE) => OnboardingError::NotEnabled,
         _ => OnboardingError::Http(status),
+    }
+}
+
+/// Reads a response body incrementally and gives up (`None`) as soon as it would
+/// exceed `limit` bytes, or on a read error, so an oversized or endless error
+/// body is never buffered whole. A declared `Content-Length` over the limit is
+/// rejected without reading anything; the running total also covers bodies
+/// with no length (chunked or streamed).
+async fn read_body_capped(mut response: reqwest::Response, limit: usize) -> Option<Vec<u8>> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > limit as u64)
+    {
+        return None;
+    }
+
+    let mut body = Vec::new();
+    loop {
+        match response.chunk().await {
+            Ok(Some(chunk)) => {
+                if body.len() + chunk.len() > limit {
+                    return None;
+                }
+                body.extend_from_slice(&chunk);
+            }
+            Ok(None) => return Some(body),
+            Err(_) => return None,
+        }
     }
 }
 
@@ -379,5 +403,36 @@ mod tests {
 
         assert!(!message.contains("secret backend detail"));
         assert!(!message.contains("test-token"));
+    }
+
+    #[tokio::test]
+    async fn a_forbidden_body_exactly_at_the_limit_is_still_parsed() {
+        let envelope = |message: &str| {
+            json!({
+                "success": false,
+                "error": { "code": "ONBOARDING_NOT_ENABLED", "message": message }
+            })
+            .to_string()
+        };
+        let padding = "x".repeat(MAX_ERROR_BODY_BYTES - envelope("").len());
+        let body = envelope(&padding);
+        assert_eq!(body.len(), MAX_ERROR_BODY_BYTES);
+
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/onboarding/status");
+                then.status(403)
+                    .header("content-type", "application/json")
+                    .body(body);
+            })
+            .await;
+
+        let error = OnboardingClient::new(server.base_url())
+            .status("test-token")
+            .await
+            .expect_err("status must fail");
+
+        assert!(matches!(error, OnboardingError::NotEnabled));
     }
 }
