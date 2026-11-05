@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.35](https://github.com/godaddy/cli/compare/v0.2.34...v0.2.35) (2026-11-05)
+
+
+### Features
+
+* **hosting:** add app publish and unpublish for WordPress sites ([#356](https://github.com/godaddy/cli/issues/356)) ([3e7f9ed](https://github.com/godaddy/cli/commit/3e7f9ed28a24889097d7197bfdd7375d37c0ae06))
+* **hosting:** support WordPress sites in app update, app delete and runtime get ([#363](https://github.com/godaddy/cli/issues/363)) ([4574bc6](https://github.com/godaddy/cli/commit/4574bc6390b886093246e8fa1ff9f58089d463ac))
+
+
+### Bug Fixes
+
+* **api-catalog:** resync specs and keep constraints that sit beside a $ref ([#357](https://github.com/godaddy/cli/issues/357)) ([e58f966](https://github.com/godaddy/cli/commit/e58f9668256aa64ff8e04edd7dfb1c1517524feb))
+
 ## [0.2.34](https://github.com/godaddy/cli/compare/v0.2.33...v0.2.34) (2026-11-02)
 
 
