@@ -372,11 +372,11 @@ mod tests {
 
     #[test]
     fn order_follow_up_prefers_the_order_and_falls_back_to_the_checkout() {
-        let order = super::order_follow_up_action(Some("order-1".to_owned()), "checkout-1");
+        let order = order_follow_up_action(Some("order-1".to_owned()), "checkout-1");
         assert_eq!(order.command, "gddy shopping order get <order-id> --wait");
         assert_eq!(order.params["order-id"].value.as_deref(), Some("order-1"));
 
-        let fallback = super::order_follow_up_action(None, "checkout-1");
+        let fallback = order_follow_up_action(None, "checkout-1");
         assert_eq!(fallback.command, "gddy shopping checkout get <checkout-id>");
         assert_eq!(
             fallback.params["checkout-id"].value.as_deref(),

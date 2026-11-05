@@ -37,20 +37,22 @@ fn next_actions(
             .as_ref()
             .and_then(|order| order.id.clone())
             .map(|order_id| {
-                next_action("shopping order get <order-id>", "Review the placed order")
-                    .with_param("order-id", NextActionParam::value(order_id))
+                next_action(
+                    "shopping order get <order-id> --wait",
+                    "Review the order after it becomes visible",
+                )
+                .with_param("order-id", NextActionParam::value(order_id))
             })
             .into_iter()
             .collect(),
-        status => {
+        Some("ready_for_complete") => {
             let mut actions = no_saved_payment_method_action(checkout, account_url)
                 .into_iter()
                 .collect::<Vec<_>>();
-            if status == Some("ready_for_complete") {
-                actions.extend(ready_action(checkout, checkout_id, show_agent_note));
-            }
+            actions.extend(ready_action(checkout, checkout_id, show_agent_note));
             actions
         }
+        _ => Vec::new(),
     }
 }
 
@@ -274,6 +276,16 @@ mod tests {
                 true,
             );
             assert!(actions.is_empty(), "{status} must not suggest a next step");
+            let without_methods = next_actions(
+                &checkout(status, Vec::new()),
+                "input-id",
+                "https://account.example.test",
+                true,
+            );
+            assert!(
+                without_methods.is_empty(),
+                "{status} must not suggest adding a payment method"
+            );
         }
     }
 
@@ -287,7 +299,10 @@ mod tests {
         let actions = next_actions(&completed, "input-id", "https://account.example.test", true);
 
         assert_eq!(actions.len(), 1);
-        assert_eq!(actions[0].command, "gddy shopping order get <order-id>");
+        assert_eq!(
+            actions[0].command,
+            "gddy shopping order get <order-id> --wait"
+        );
         assert_eq!(
             actions[0].params["order-id"].value.as_deref(),
             Some("order-1")
