@@ -1,10 +1,9 @@
 use std::io::IsTerminal as _;
 
 use cli_engine::{
-    CliCoreError, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, StreamSender, Tier,
+    CliCoreError, CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
 };
 use email_client::types;
-use serde_json::{Value, json};
 
 use crate::email::client::ClientError;
 use crate::email::{body_has_issue, client_err, client_err_with_fix, make_client};
@@ -72,53 +71,8 @@ fn create_next_actions(data: &types::CreateMailboxResponse) -> Vec<NextAction> {
     ]
 }
 
-fn create_error_event(err: &CliCoreError) -> Value {
-    let envelope = cli_engine::build_error_envelope(err, "email");
-    let (code, message) = envelope
-        .error
-        .map(|e| (e.code, e.message))
-        .unwrap_or_else(|| ("ERROR".to_owned(), err.to_string()));
-    let mut event = json!({
-        "type": "error",
-        "ok": false,
-        "error": { "code": code, "message": message },
-        "next_actions": [],
-    });
-    if let Some(fix) = envelope.fix.filter(|f| !f.is_empty()) {
-        event["fix"] = json!(fix);
-    }
-    event
-}
-
-async fn fail_create(sender: &StreamSender, err: CliCoreError) -> CliCoreError {
-    sender.send(create_error_event(&err)).await;
-    err
-}
-
-async fn tap_create_err<T>(
-    sender: &StreamSender,
-    result: cli_engine::Result<T>,
-) -> cli_engine::Result<T> {
-    match result {
-        Ok(v) => Ok(v),
-        Err(e) => Err(fail_create(sender, e).await),
-    }
-}
-
-fn create_result_event(data: &types::CreateMailboxResponse) -> cli_engine::Result<Value> {
-    let next_actions = create_next_actions(data);
-    let result = serde_json::to_value(data)
-        .map_err(|e| CliCoreError::message(format!("failed to serialize create response: {e}")))?;
-    Ok(json!({
-        "type": "result",
-        "ok": true,
-        "result": result,
-        "next_actions": next_actions,
-    }))
-}
-
 pub(super) fn command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_typed_streaming::<CreateArgs, _, _>(
+    RuntimeCommandSpec::new_typed_with_context::<CreateArgs, _, _, _>(
         CommandSpec::from_args::<CreateArgs>("create", "Create a new Email mailbox")
             .with_long(
                 "Create a new Email mailbox for an address on a domain you own. \
@@ -136,8 +90,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .mutates(true)
             .with_json_schema::<types::CreateMailboxResponse>()
             .with_scopes(&[EMAIL_CREATE]),
-        |ctx, args: CreateArgs, sender: StreamSender| async move {
-            let client = tap_create_err(&sender, make_client(&ctx, &[EMAIL_CREATE]).await).await?;
+        |ctx, args: CreateArgs| async move {
+            let client = make_client(&ctx, &[EMAIL_CREATE]).await?;
 
             // Check eligibility first to detect any MICROSOFT_MCA requirement.
             // If one is present, open the acceptance URL in the browser and wait
@@ -150,7 +104,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .find_map(super::terms_acceptance::extract_mca_requirement)
             {
                 if !std::io::stdin().is_terminal() {
-                    let err = GddyError::validation(
+                    return Err(GddyError::validation(
                         "Microsoft Customer Agreement acceptance is required but \
                          cannot be completed non-interactively.",
                     )
@@ -159,44 +113,33 @@ pub(super) fn command() -> RuntimeCommandSpec {
                          Customer Agreement, then re-run this command: {}",
                         req.acceptance_url
                     ))
-                    .into_cli_error();
-                    return Err(fail_create(&sender, err).await);
+                    .into_cli_error());
                 }
 
-                let browser_opened = open::that(&req.acceptance_url).is_ok();
-                if browser_opened {
-                    sender
-                        .send(json!({
-                            "type": "step",
-                            "name": "mca",
-                            "status": "started",
-                            "message": "A browser tab was opened to accept the Microsoft Customer Agreement. \
-                                        Once you accept, mailbox creation will continue automatically — \
-                                        no need to re-run the command.",
-                        }))
-                        .await;
+                if open::that(&req.acceptance_url).is_ok() {
+                    tracing::info!(
+                        "A browser tab was opened to accept the Microsoft Customer Agreement. \
+                         Once you accept, mailbox creation will continue automatically — \
+                         no need to re-run the command."
+                    );
                 } else {
-                    let err = GddyError::validation("Could not open a browser automatically.")
+                    return Err(GddyError::validation("Could not open a browser automatically.")
                         .with_fix(format!(
                             "Open this URL in a browser, accept the Microsoft Customer Agreement, \
                              then re-run this command: {}",
                             req.acceptance_url
                         ))
-                        .into_cli_error();
-                    return Err(fail_create(&sender, err).await);
+                        .into_cli_error());
                 }
 
-                tap_create_err(
-                    &sender,
-                    super::terms_acceptance::wait_for_mca_acceptance(&client, &args.email).await,
-                )
-                .await?;
+                super::terms_acceptance::wait_for_mca_acceptance(&client, &args.email).await?;
             }
 
             let body = request_body(&args);
-            let data = tap_create_err(
-                &sender,
-                client.create_mailbox(body).await.map_err(|e| match &e {
+            let data = client
+                .create_mailbox(body)
+                .await
+                .map_err(|e| match &e {
                     ClientError::Http { status, body }
                         if (*status == 422)
                             && (body_has_issue(body, "NEEDS_TITAN_PLAN")
@@ -241,23 +184,25 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         )
                     }
                     _ => client_err(e),
-                }),
-            )
-            .await?;
+                })?;
 
-            let event = tap_create_err(&sender, create_result_event(&data)).await?;
-            sender.send(event).await;
-            Ok(())
+            let next_actions = create_next_actions(&data);
+            let value = serde_json::to_value(&data).map_err(|e| {
+                CliCoreError::message(format!("failed to serialize create response: {e}"))
+            })?;
+            Ok(CommandResult::new(value).with_next_actions(next_actions))
         },
     )
 }
 
 #[cfg(test)]
 mod tests {
+    use cli_engine::build_error_envelope;
+
     use super::*;
 
     #[test]
-    fn is_a_streaming_mutate_tier_command_scoped_to_email_create() {
+    fn is_a_mutate_tier_command_scoped_to_email_create() {
         let spec = command().spec;
         assert_eq!(spec.tier, Some(Tier::Mutate));
         assert!(spec.mutates);
@@ -329,38 +274,6 @@ mod tests {
     }
 
     #[test]
-    fn create_result_event_has_correct_shape() {
-        let data = types::CreateMailboxResponse {
-            mailbox_id: Some(types::Uuid("mb-1".to_owned())),
-            status: Some(types::MailboxStatus("EXECUTING".to_owned())),
-            ..Default::default()
-        };
-        let event = create_result_event(&data).expect("serialization must succeed");
-        assert_eq!(event["type"], "result");
-        assert_eq!(event["ok"], true);
-        assert_eq!(event["result"]["mailboxId"], "mb-1");
-        assert_eq!(event["result"]["status"], "EXECUTING");
-        assert!(event["next_actions"].is_array());
-    }
-
-    #[test]
-    fn create_error_event_has_correct_shape() {
-        let err = GddyError::validation("something went wrong")
-            .with_fix("run check-eligibility")
-            .into_cli_error();
-        let event = create_error_event(&err);
-        assert_eq!(event["type"], "error");
-        assert_eq!(event["ok"], false);
-        assert!(event["error"]["message"].is_string());
-        assert!(
-            event["fix"]
-                .as_str()
-                .is_some_and(|f| f.contains("check-eligibility")),
-            "fix must be present in error event: {event:?}"
-        );
-    }
-
-    #[test]
     fn non_interactive_error_contains_acceptance_url_in_fix() {
         let url = "https://cdn.partner.microsoft.com/mca/?attestationid=abc-123";
         let err = GddyError::validation(
@@ -372,12 +285,11 @@ mod tests {
              Customer Agreement, then re-run this command: {url}",
         ))
         .into_cli_error();
-        let event = create_error_event(&err);
-        assert_eq!(event["type"], "error");
+        let envelope = build_error_envelope(&err, "email");
         assert!(
-            event["fix"].as_str().is_some_and(|f| f.contains(url)),
+            envelope.fix.as_deref().is_some_and(|f| f.contains(url)),
             "fix must contain the acceptance URL; got: {:?}",
-            event["fix"]
+            envelope.fix
         );
     }
 
@@ -390,18 +302,16 @@ mod tests {
                  then re-run this command: {url}",
             ))
             .into_cli_error();
-        let event = create_error_event(&err);
+        let envelope = build_error_envelope(&err, "email");
         assert!(
-            event["fix"].as_str().is_some_and(|f| f.contains(url)),
+            envelope.fix.as_deref().is_some_and(|f| f.contains(url)),
             "fix must contain the acceptance URL; got: {:?}",
-            event["fix"]
+            envelope.fix
         );
     }
 
     #[test]
     fn needs_titan_plan_fix_points_at_titan_catalog_search() {
-        use cli_engine::build_error_envelope;
-
         let body = r#"{"message":"no plan","details":[{"issue":"NEEDS_TITAN_PLAN"}]}"#;
         let err = client_err_with_fix(
             ClientError::Http {
@@ -423,8 +333,6 @@ mod tests {
 
     #[test]
     fn needs_microsoft_plan_fix_points_at_microsoft_catalog_search() {
-        use cli_engine::build_error_envelope;
-
         let body = r#"{"message":"no plan","details":[{"issue":"NEEDS_MICROSOFT_PLAN"}]}"#;
         let err = client_err_with_fix(
             ClientError::Http {
@@ -446,8 +354,6 @@ mod tests {
 
     #[test]
     fn email_address_already_exists_fix_says_choose_different_username() {
-        use cli_engine::build_error_envelope;
-
         let body =
             r#"{"message":"already exists","details":[{"issue":"EMAIL_ADDRESS_ALREADY_EXISTS"}]}"#;
         let err = client_err_with_fix(
@@ -469,8 +375,6 @@ mod tests {
 
     #[test]
     fn email_plan_not_eligible_fix_points_at_the_dashboard() {
-        use cli_engine::build_error_envelope;
-
         let body = r#"{"message":"not eligible","details":[{"issue":"EMAIL_PLAN_NOT_ELIGIBLE"}]}"#;
         let err = client_err_with_fix(
             ClientError::Http {
