@@ -140,4 +140,4 @@ A newly placed order can take a few seconds to become available. Use `--wait` to
 gddy shopping order get <order-id> --wait --wait-timeout 15
 ```
 
-Use `shopping order get` for completed purchases. Do not use `shopping checkout get` after an order is placed.
+Use `shopping order get` for completed purchases. If you only have the checkout session ID, `shopping checkout get <checkout-id>` shows the order ID once an order has been placed.

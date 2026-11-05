@@ -1,5 +1,7 @@
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
-use shopping_client::types::{CatalogLookupLookupRequest, LookupCatalogResponse, LookupRequest};
+use shopping_client::types::{
+    CatalogLookupLookupRequest, CatalogLookupLookupResponse, LookupCatalogResponse, LookupRequest,
+};
 
 use crate::output_schema::output_schema;
 use crate::shopping::SHOPPING_CATALOG_SCOPES;
@@ -65,6 +67,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 }
             };
             reject_response_errors(&response.messages)?;
+            let actions = next_actions(&response, &ctx.middleware.env);
             let response = serde_json::to_value(&response).map_err(|error| {
                 crate::error::GddyError::unexpected(format!(
                     "failed to encode catalog lookup response: {error}"
@@ -76,16 +79,107 @@ pub(super) fn command() -> RuntimeCommandSpec {
             } else {
                 response
             };
-            Ok(CommandResult::new(output))
+            Ok(CommandResult::new(output).with_next_actions(actions))
         },
     )
+}
+
+/// Suggests a checkout for the first purchase option the lookup reports as available.
+fn next_actions(response: &CatalogLookupLookupResponse, env: &str) -> Vec<cli_engine::NextAction> {
+    response
+        .products
+        .iter()
+        .flat_map(|product| product.variants.iter())
+        .find_map(|variant| {
+            let available = variant
+                .availability
+                .as_ref()
+                .and_then(|availability| availability.available)
+                .unwrap_or(false);
+            let id = variant.id.as_deref()?;
+            available.then(|| {
+                let currency = variant
+                    .price
+                    .as_ref()
+                    .and_then(|price| price.currency.as_deref())
+                    .unwrap_or("USD");
+                super::checkout_create_action(env, id, currency)
+            })
+        })
+        .into_iter()
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    use shopping_client::types::{
+        CatalogLookupLookupResponseProductsItem,
+        CatalogLookupLookupResponseProductsItemVariantsItem,
+        CatalogLookupLookupResponseProductsItemVariantsItemAvailability, Price,
+    };
 
     use super::*;
+
+    fn variant(
+        id: &str,
+        available: bool,
+        currency: &str,
+    ) -> CatalogLookupLookupResponseProductsItemVariantsItem {
+        CatalogLookupLookupResponseProductsItemVariantsItem {
+            id: Some(id.to_owned()),
+            availability: Some(
+                CatalogLookupLookupResponseProductsItemVariantsItemAvailability {
+                    available: Some(available),
+                    ..Default::default()
+                },
+            ),
+            price: Some(Price {
+                currency: Some(currency.to_owned()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    fn response(
+        variants: Vec<CatalogLookupLookupResponseProductsItemVariantsItem>,
+    ) -> CatalogLookupLookupResponse {
+        CatalogLookupLookupResponse {
+            products: vec![CatalogLookupLookupResponseProductsItem {
+                variants,
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn suggests_checkout_for_the_first_available_purchase_option() {
+        let actions = next_actions(
+            &response(vec![
+                variant("sold-out", false, "USD"),
+                variant("product-1:1yr", true, "GBP"),
+            ]),
+            "test",
+        );
+
+        assert_eq!(actions.len(), 1);
+        assert!(actions[0].command.contains("checkout create"));
+        assert_eq!(
+            actions[0].params["variant-id"].value.as_deref(),
+            Some("product-1:1yr")
+        );
+        assert_eq!(actions[0].params["currency"].value.as_deref(), Some("GBP"));
+    }
+
+    #[test]
+    fn suggests_nothing_when_no_purchase_option_is_available() {
+        assert!(
+            next_actions(&response(vec![variant("sold-out", false, "USD")]), "test").is_empty()
+        );
+        assert!(next_actions(&CatalogLookupLookupResponse::default(), "test").is_empty());
+    }
 
     #[test]
     fn human_response_shows_lookup_essentials_without_ucp_metadata() {

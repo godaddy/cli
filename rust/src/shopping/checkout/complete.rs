@@ -40,6 +40,24 @@ struct Args {
     billing_address: Option<String>,
 }
 
+/// Points at the order once the API returns its ID; an accepted completion
+/// without one is followed up through the checkout session, which links to the
+/// order as soon as it exists.
+fn order_follow_up_action(order_id: Option<String>, checkout_id: &str) -> cli_engine::NextAction {
+    match order_id {
+        Some(order_id) => next_action(
+            "shopping order get <order-id> --wait",
+            "Review the order after it becomes visible",
+        )
+        .with_param("order-id", NextActionParam::value(order_id)),
+        None => next_action(
+            "shopping checkout get <checkout-id>",
+            "Check whether the order has been placed",
+        )
+        .with_param("checkout-id", NextActionParam::value(checkout_id)),
+    }
+}
+
 fn completion_error(error: ClientError) -> cli_engine::CliCoreError {
     crate::error::GddyError::from(error).into_cli_error()
 }
@@ -317,15 +335,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .as_ref()
                 .and_then(|completion| completion.order.as_ref())
                 .and_then(|order| order.id.clone());
-            let mut actions = order_id.map_or_else(Vec::new, |order_id| {
-                vec![
-                    next_action(
-                        "shopping order get <order-id> --wait",
-                        "Review the order after it becomes visible",
-                    )
-                    .with_param("order-id", NextActionParam::value(order_id)),
-                ]
-            });
+            let mut actions = vec![order_follow_up_action(order_id, &args.id)];
             actions.extend(product_actions);
             let completion = serde_json::to_value(&completion).map_err(|error| {
                 crate::error::GddyError::unexpected(format!(
@@ -359,6 +369,20 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn order_follow_up_prefers_the_order_and_falls_back_to_the_checkout() {
+        let order = super::order_follow_up_action(Some("order-1".to_owned()), "checkout-1");
+        assert_eq!(order.command, "gddy shopping order get <order-id> --wait");
+        assert_eq!(order.params["order-id"].value.as_deref(), Some("order-1"));
+
+        let fallback = super::order_follow_up_action(None, "checkout-1");
+        assert_eq!(fallback.command, "gddy shopping checkout get <checkout-id>");
+        assert_eq!(
+            fallback.params["checkout-id"].value.as_deref(),
+            Some("checkout-1")
+        );
+    }
 
     #[test]
     fn interprets_a_successful_lookup_without_error_messages() {
