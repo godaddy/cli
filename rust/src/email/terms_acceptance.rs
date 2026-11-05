@@ -2,7 +2,7 @@
 //!
 //! When the eligibility API returns a `requirements` entry with
 //! `type: "MICROSOFT_MCA"`, the `create` command opens the MCA acceptance URL
-//! in the browser and asks the user to re-run after accepting.
+//! in the browser and polls until acceptance is confirmed — no re-run needed.
 //!
 //! ## Requirement entry (in the 200 eligibility response)
 //!

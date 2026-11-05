@@ -45,6 +45,23 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         };
                         client_err_with_fix(e, fix)
                     }
+                    ClientError::Http { status, body }
+                        if *status == 422 && body_has_issue(body, "EMAIL_PLAN_NOT_ELIGIBLE") =>
+                    {
+                        client_err_with_fix(
+                            e,
+                            "Go to the GoDaddy Email dashboard \
+                             (https://productivity.godaddy.com/addnewemail) to create the \
+                             mailbox manually — this domain's plan doesn't support \
+                             provisioning via this API.",
+                        )
+                    }
+                    ClientError::Http { status, body }
+                        if *status == 422
+                            && body_has_issue(body, "EMAIL_ADDRESS_ALREADY_EXISTS") =>
+                    {
+                        client_err_with_fix(e, "Choose a different username.")
+                    }
                     _ => client_err(e),
                 })?;
             let next_actions = eligibility_next_actions(&args.email, &data);
@@ -64,20 +81,31 @@ fn eligibility_next_actions(email: &str, data: &types::EligibilityResult) -> Vec
     let mut actions = Vec::new();
 
     if let Some(account) = data.eligible_accounts.first() {
+        let consents: Vec<&str> = account
+            .requirements
+            .iter()
+            .filter(|r| r.type_ != "MICROSOFT_MCA")
+            .map(|r| r.type_.as_str())
+            .collect();
+
         let mut command = "email create --email <email> --account-id <account-id>".to_owned();
-        for requirement in &account.requirements {
-            if requirement.type_ != "MICROSOFT_MCA" {
-                command.push_str(&format!(" --consent {}", requirement.type_));
-            }
+        for i in 0..consents.len() {
+            command.push_str(&format!(" --consent <consent-{i}>"));
         }
-        actions.push(
-            next_action(command, "Create a mailbox for this address")
-                .with_param("email", NextActionParam::value(email.to_owned()))
-                .with_param(
-                    "account-id",
-                    NextActionParam::value(account.account_id.to_string()),
-                ),
-        );
+
+        let mut action = next_action(command, "Create a mailbox for this address")
+            .with_param("email", NextActionParam::value(email.to_owned()))
+            .with_param(
+                "account-id",
+                NextActionParam::value(account.account_id.to_string()),
+            );
+        for (i, type_) in consents.iter().enumerate() {
+            action = action.with_param(
+                format!("consent-{i}"),
+                NextActionParam::value((*type_).to_owned()),
+            );
+        }
+        actions.push(action);
     }
 
     actions.push(next_action("guide email", "Learn about email accounts"));
@@ -191,7 +219,12 @@ mod tests {
         assert_eq!(actions.len(), 2);
         assert_eq!(
             actions[0].command,
-            "gddy email create --email <email> --account-id <account-id> --consent FREETRIAL_AUTORENEW"
+            "gddy email create --email <email> --account-id <account-id> --consent <consent-0>"
+        );
+        assert_eq!(
+            actions[0].params["consent-0"].value.as_deref(),
+            Some("FREETRIAL_AUTORENEW"),
+            "consent value must be a structured param, not interpolated into the template"
         );
     }
 
@@ -211,6 +244,90 @@ mod tests {
         assert_eq!(
             actions[0].command, "gddy email create --email <email> --account-id <account-id>",
             "MCA must not appear as a --consent flag — it is handled via browser attestation"
+        );
+        assert!(
+            !actions[0].params.contains_key("consent-0"),
+            "MCA must not be passed as a consent param"
+        );
+    }
+
+    #[test]
+    fn next_actions_include_multiple_consent_placeholders_for_multiple_requirements() {
+        let data = types::EligibilityResult {
+            is_eligible: true,
+            eligible_accounts: vec![eligible_account(vec![
+                types::AgreementRequirement {
+                    reference: None,
+                    title: None,
+                    type_: "FREETRIAL_AUTORENEW".to_owned(),
+                },
+                types::AgreementRequirement {
+                    reference: None,
+                    title: None,
+                    type_: "EMAIL_TOS".to_owned(),
+                },
+            ])],
+        };
+        let actions = eligibility_next_actions("someone@example.com", &data);
+        assert_eq!(
+            actions[0].command,
+            "gddy email create --email <email> --account-id <account-id> --consent <consent-0> --consent <consent-1>"
+        );
+        assert_eq!(
+            actions[0].params["consent-0"].value.as_deref(),
+            Some("FREETRIAL_AUTORENEW")
+        );
+        assert_eq!(
+            actions[0].params["consent-1"].value.as_deref(),
+            Some("EMAIL_TOS")
+        );
+    }
+
+    #[test]
+    fn email_address_already_exists_fix_says_choose_different_username() {
+        use cli_engine::build_error_envelope;
+
+        let body =
+            r#"{"message":"already exists","details":[{"issue":"EMAIL_ADDRESS_ALREADY_EXISTS"}]}"#;
+        let err = client_err_with_fix(
+            ClientError::Http {
+                status: 422,
+                body: body.to_owned(),
+            },
+            "Choose a different username.",
+        );
+        let envelope = build_error_envelope(&err, "email");
+        assert!(
+            envelope
+                .fix
+                .as_deref()
+                .is_some_and(|f| f.contains("different username")),
+            "{envelope:?}"
+        );
+    }
+
+    #[test]
+    fn email_plan_not_eligible_fix_points_at_the_dashboard() {
+        use cli_engine::build_error_envelope;
+
+        let body = r#"{"message":"not eligible","details":[{"issue":"EMAIL_PLAN_NOT_ELIGIBLE"}]}"#;
+        let err = client_err_with_fix(
+            ClientError::Http {
+                status: 422,
+                body: body.to_owned(),
+            },
+            "Go to the GoDaddy Email dashboard \
+             (https://productivity.godaddy.com/addnewemail) to create the \
+             mailbox manually — this domain's plan doesn't support \
+             provisioning via this API.",
+        );
+        let envelope = build_error_envelope(&err, "email");
+        assert!(
+            envelope
+                .fix
+                .as_deref()
+                .is_some_and(|f| f.contains("productivity.godaddy.com")),
+            "{envelope:?}"
         );
     }
 }

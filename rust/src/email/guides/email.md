@@ -63,7 +63,7 @@ Key fields:
 | --------------------------------- | ---------------------------------------------------------------------------------------------- |
 | `eligibleAccounts[].accountId`    | Pass to `--account-id` on `email create`.                                                      |
 | `eligibleAccounts[].default`      | `true` on the recommended account. Use this one when no specific preference.                   |
-| `eligibleAccounts[].requirements` | Legal agreements you must accept. Each `type` must be passed as `--consent` on `email create`. |
+| `eligibleAccounts[].requirements` | Legal agreements required. Pass each non-`MICROSOFT_MCA` `type` as `--consent` on `email create`; the CLI handles `MICROSOFT_MCA` automatically. |
 
 
 When the account has **no free-trial** plan, `requirements` is an empty array and no `--consent` flag is needed:
@@ -85,29 +85,38 @@ When the account has **no free-trial** plan, `requirements` is an empty array an
 
 ### Microsoft Customer Agreement (MICROSOFT_MCA)
 
-Before returning eligible accounts, the API may require acceptance of the **Microsoft Customer Agreement**. When this is needed, the response includes a top-level `requirements` array (separate from `eligibleAccounts[].requirements`):
+For Microsoft 365 accounts, the eligibility response may include a `MICROSOFT_MCA` entry inside `eligibleAccounts[].requirements`:
 
 ```json
 {
-  "requirements": [
+  "isEligible": true,
+  "eligibleAccounts": [
     {
-      "type": "MICROSOFT_MCA",
-      "actionType": "EXTERNAL_URL",
-      "title": "Microsoft Customer Agreement",
-      "url": "https://cdn.partner.microsoft.com/mca/?attestationid=1360fc65-3333-1111-2222-e26c7d20caf6"
+      "accountId": "00000000-0000-0000-0000-000000000003",
+      "mailboxType": "MICROSOFT",
+      "accountName": "Microsoft 365",
+      "default": true,
+      "requirements": [
+        {
+          "type": "MICROSOFT_MCA",
+          "title": "Microsoft Customer Agreement",
+          "reference": "https://cdn.partner.microsoft.com/mca/?attestationid=1360fc65-3333-1111-2222-e26c7d20caf6"
+        }
+      ]
     }
   ]
 }
 ```
 
-**The CLI handles this automatically** — no manual steps are needed:
+When `email create` detects this requirement, **it handles it automatically**:
 
 1. The agreement page opens in your browser.
 2. Click **Accept** on the Microsoft Customer Agreement page.
-3. The CLI polls in the background until acceptance is confirmed.
-4. The eligibility check retries automatically and returns results.
+3. The CLI polls until acceptance is confirmed, then continues creating the mailbox — no need to re-run.
 
-`MICROSOFT_MCA` is a pre-flight prerequisite handled before eligibility results are returned. It is **not** passed as `--consent` to `email create`.
+`MICROSOFT_MCA` is **not** passed as `--consent` to `email create` — it is handled before the mailbox is provisioned.
+
+**AI assistants:** When running non-interactively (no terminal), `email create` exits immediately with the agreement URL in the error's `fix` field rather than opening a browser or waiting. Open that URL, accept the Microsoft Customer Agreement, then retry the command.
 
 **Failure (address cannot be provisioned)** — the command returns a 422 error with a `details` array explaining why. See [Eligibility failure reasons](#eligibility-failure-reasons) for the full list.
 
