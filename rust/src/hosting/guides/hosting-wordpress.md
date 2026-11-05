@@ -54,7 +54,7 @@ Going live needs a plan with a free published-site slot. If publishing is refuse
 gddy hosting app update --app-id <app-id> --name my-site
 ```
 
-`--name` is the label in the CLI and in Airo App Builder. The WordPress site title is edited in WordPress admin. Pass `--name` only. `--root-path` does not apply to a WordPress site, and a command that includes it is refused in full, including the rename. The name is 1–200 characters and cannot contain control characters or `<` or `>`.
+`--name` is the label in the CLI and in Airo App Builder. The WordPress site title is edited in WordPress admin. Pass `--name` only. `--root-path` does not apply to a WordPress site. If you include it, nothing changes, not even the name. The name is 1–200 characters and cannot contain `<`, `>` or control characters such as tabs and line breaks.
 
 A site that is being deleted cannot be renamed. If the service is temporarily unavailable, wait a few seconds and run the command again.
 
@@ -65,7 +65,7 @@ gddy hosting app delete --app-id <app-id>
 gddy hosting app get --app-id <app-id>
 ```
 
-Deletion removes the site and its content. The command returns once deletion has started. `hosting app get` shows status DELETING until the site is gone, and then reports it was not found. There is no operation to poll. If the service is temporarily unavailable, wait a few seconds and run the command again.
+Deletion removes the site and its content. It cannot be undone. The command returns once deletion has started. `hosting app get` shows status DELETING until the site is gone, and then reports it was not found. There is no operation to poll. If the service is temporarily unavailable, wait a few seconds and run the command again.
 
 ## Read the PHP and WordPress versions
 
@@ -73,7 +73,7 @@ Deletion removes the site and its content. The command returns once deletion has
 gddy hosting runtime get --app-id <app-id>
 ```
 
-The response is a list of runtime and version. A WordPress site reports PHP and WORDPRESS. An empty list means no version is known yet, and that is a successful response. An older site may list WORDPRESS only.
+The response lists each runtime with its version. A WordPress site reports PHP and WORDPRESS. An empty list is not an error. It means no version is known yet. An older site may list WORDPRESS only.
 
 ## What the CLI does not do for WordPress sites
 

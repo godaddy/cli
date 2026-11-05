@@ -12,7 +12,7 @@ fn get_long(mhwp: bool) -> String {
     if mhwp {
         long.push_str(
             " A WordPress (MHWP) site reports PHP and WORDPRESS. \
-             An empty array means no version is known yet, which is a successful response. \
+             An empty list is not an error. It means no version is known yet. \
              An older site may list WORDPRESS only.",
         );
     }
@@ -55,11 +55,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn runtime_help_names_php_and_wordpress_and_an_empty_array() {
+    async fn runtime_help_names_php_and_wordpress_and_an_empty_list() {
         let on = run(&cli(true), &["get", "--help"]).await;
         assert!(on.contains("PHP"), "{on}");
         assert!(on.contains("WORDPRESS"), "{on}");
-        assert!(on.contains("empty array"), "{on}");
+        assert!(on.contains("empty list"), "{on}");
 
         let off = run(&cli(false), &["get", "--help"]).await;
         assert!(!off.contains("MHWP"), "{off}");

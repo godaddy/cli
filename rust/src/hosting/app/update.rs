@@ -31,11 +31,11 @@ fn update_long(mhwp: bool) -> String {
         .to_owned();
     if mhwp {
         long.push_str(
-            "\n\nA WordPress (MHWP) site can only be renamed. --root-path does not apply, \
-             and passing it refuses the whole update, including a --name in the same \
-             command. --name is the label in the CLI and in Airo App Builder. It does not \
-             become the WordPress site title. The name is 1–200 characters and cannot \
-             contain control characters or '<' or '>'.",
+            "\n\nA WordPress (MHWP) site can only be renamed. --root-path does not apply. \
+             If you include it, nothing changes, not even the name. --name is the label \
+             in the CLI and in Airo App Builder. It does not become the WordPress site \
+             title. The name is 1–200 characters and cannot contain '<', '>' or control \
+             characters such as tabs and line breaks.",
         );
     }
     long
@@ -52,6 +52,7 @@ pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
             .with_output_schema::<HostingApplication>(),
         |ctx, args: AppUpdateArgs| async move {
             let app_id = args.app_id;
+            refuse_root_path_for_wordpress(&app_id, args.root_path.as_deref())?;
             let ops = patch_ops(args.name, args.root_path).ok_or_else(|| {
                 GddyError::validation("at least one of --name or --root-path is required")
                     .into_cli_error()
@@ -68,6 +69,20 @@ pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
     )
 }
 
+fn refuse_root_path_for_wordpress(
+    app_id: &str,
+    root_path: Option<&str>,
+) -> Result<(), cli_engine::CliCoreError> {
+    if is_mhwp_app_id(app_id) && root_path.is_some_and(|p| !p.trim().is_empty()) {
+        return Err(
+            GddyError::validation("--root-path does not apply to a WordPress site")
+                .with_fix("Run the command again with only --name.")
+                .into_cli_error(),
+        );
+    }
+    Ok(())
+}
+
 /// The JSON Patch for the flags given, or `None` when none carries a value.
 fn patch_ops(name: Option<String>, root_path: Option<String>) -> Option<Vec<Value>> {
     let mut ops = Vec::new();
@@ -80,15 +95,10 @@ fn patch_ops(name: Option<String>, root_path: Option<String>) -> Option<Vec<Valu
     (!ops.is_empty()).then_some(ops)
 }
 
-/// The service refuses a WordPress patch that touches `/rootPath` as a whole,
-/// so a rename sent beside it is not applied either.
 fn update_err(e: ClientError, mhwp: bool) -> cli_engine::CliCoreError {
     let fix = error_issues(&e).iter().find_map(|issue| match issue.as_str() {
         "APP_DELETING" if mhwp => Some(
-            "This site is being deleted. Wait until `hosting app get` reports it was not found.",
-        ),
-        "ROOT_PATH_NOT_APPLICABLE" if mhwp => Some(
-            "Run the command again with only --name. --root-path does not apply to a WordPress site.",
+            "This site is being deleted, so it cannot be renamed. To follow the deletion, run `gddy hosting app get --app-id <app-id>`.",
         ),
         _ => None,
     });
@@ -136,6 +146,7 @@ mod tests {
     async fn update_help_says_a_wordpress_site_only_renames() {
         let on = run_hosting(&cli(true), &["app", "update", "--help"]).await;
         assert!(on.contains("can only be renamed"), "{on}");
+        assert!(on.contains("such as tabs and line breaks"), "{on}");
         assert!(
             on.contains("does not become the WordPress site title"),
             "{on}"
@@ -158,29 +169,38 @@ mod tests {
     }
 
     #[test]
-    fn wordpress_refusals_have_fixes() {
+    fn a_site_being_deleted_points_to_app_get() {
         let deleting = fix_for(422, "APP_DELETING", true);
         assert!(
             deleting
                 .as_deref()
-                .is_some_and(|f| f.contains("being deleted")),
+                .is_some_and(|f| f.contains("cannot be renamed")
+                    && f.contains("gddy hosting app get --app-id")),
             "{deleting:?}"
-        );
-        let root = fix_for(422, "ROOT_PATH_NOT_APPLICABLE", true);
-        assert!(
-            root.as_deref()
-                .is_some_and(|f| f.contains("only --name") && f.contains("--root-path")),
-            "{root:?}"
         );
     }
 
     #[test]
-    fn nodejs_does_not_get_the_wordpress_fixes() {
-        for (status, issue) in [
-            (422, "APP_DELETING"),
-            (422, "ROOT_PATH_NOT_APPLICABLE"),
-            (503, "UPSTREAM_UNAVAILABLE"),
+    fn root_path_on_a_wordpress_site_is_refused_locally() {
+        let err =
+            refuse_root_path_for_wordpress("MHWP-abcde12345", Some("/x")).expect_err("refused");
+        let fix = cli_engine::build_error_envelope(&err, "hosting").fix;
+        assert!(
+            fix.as_deref().is_some_and(|f| f.contains("only --name")),
+            "{fix:?}"
+        );
+        for ok in [
+            ("MHWP-abcde12345", None),
+            ("MHWP-abcde12345", Some("  ")),
+            ("NODEJS-aBcDeFgHiJ", Some("/x")),
         ] {
+            assert!(refuse_root_path_for_wordpress(ok.0, ok.1).is_ok(), "{ok:?}");
+        }
+    }
+
+    #[test]
+    fn nodejs_does_not_get_the_wordpress_fixes() {
+        for (status, issue) in [(422, "APP_DELETING"), (503, "UPSTREAM_UNAVAILABLE")] {
             let fix = fix_for(status, issue, false);
             assert!(
                 fix.as_deref().is_some_and(

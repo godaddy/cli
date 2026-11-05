@@ -25,9 +25,10 @@ const MHWP_HELP: &str = "\n\nMHWP creates a WordPress site and needs an Airo App
      not set from --name. It is hosted in the US. Log in to WordPress admin from Airo App \
      Builder. Take the site live with `hosting app publish` (needs a plan with a free \
      published-site slot) and back behind the placeholder with `hosting app unpublish`. \
-     For MHWP apps, use `hosting app get`, `status`, `update`, `delete`, `publish` \
-     and `unpublish`, and `hosting runtime get`. Deployments, restarts, source imports, \
-     secrets, logs, custom domains and plan attachment are not available for WordPress sites.";
+     For MHWP apps, these commands work: `hosting app get`, `status`, `update`, \
+     `delete`, `publish`, `unpublish` and `hosting runtime get`. Deployments, restarts, \
+     source imports, secrets, logs, custom domains and plan attachment are not available \
+     for WordPress sites.";
 
 pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppCreateArgs, _, _, _>(
