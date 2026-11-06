@@ -84,6 +84,8 @@ gddy payment-method add
 gddy shopping checkout get <checkout-id> --show-all-payment-instruments
 ```
 
+`checkout get` also suggests the next step: adding or selecting a saved payment method if none is selected, placing the order once a payment method is selected and the checkout session is ready, or checking again if an order is still being placed.
+
 To select an eligible saved payment method explicitly, provide its ID when creating or updating the checkout session. Only one payment method can be selected. Use `--show-all-payment-instruments` with `checkout get` or `checkout update` to see every eligible method. If the requested method is not selected after an update, the CLI reports it as ineligible.
 
 ```bash
