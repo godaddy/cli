@@ -9,6 +9,7 @@ use shopping_client::types::{
     LookupCatalogResponse, LookupRequest, UcpRefsSchemaPayment,
 };
 
+use super::get::pending_order_action;
 use crate::next_action::next_action;
 use crate::shopping::AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS;
 use crate::shopping::SHOPPING_PURCHASE_SCOPES;
@@ -42,19 +43,19 @@ struct Args {
 
 /// Points at the order once the API returns its ID; an accepted completion
 /// without one is followed up through the checkout session, which links to the
-/// order as soon as it exists.
-fn order_follow_up_action(order_id: Option<String>, checkout_id: &str) -> cli_engine::NextAction {
+/// order as soon as it exists and keeps suggesting a re-check until then.
+fn order_follow_up_action(
+    order_id: Option<String>,
+    checkout_id: &str,
+    show_agent_note: bool,
+) -> cli_engine::NextAction {
     match order_id {
         Some(order_id) => next_action(
             "shopping order get <order-id> --wait",
             "Review the order after it becomes visible",
         )
         .with_param("order-id", NextActionParam::value(order_id)),
-        None => next_action(
-            "shopping checkout get <checkout-id>",
-            "Check whether the order has been placed",
-        )
-        .with_param("checkout-id", NextActionParam::value(checkout_id)),
+        None => pending_order_action(checkout_id.to_owned(), show_agent_note),
     }
 }
 
@@ -335,7 +336,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 .as_ref()
                 .and_then(|completion| completion.order.as_ref())
                 .and_then(|order| order.id.clone());
-            let mut actions = vec![order_follow_up_action(order_id, &args.id)];
+            let mut actions = vec![order_follow_up_action(
+                order_id,
+                &args.id,
+                ctx.middleware.output_format != "human",
+            )];
             actions.extend(product_actions);
             let completion = serde_json::to_value(&completion).map_err(|error| {
                 crate::error::GddyError::unexpected(format!(
@@ -372,12 +377,13 @@ mod tests {
 
     #[test]
     fn order_follow_up_prefers_the_order_and_falls_back_to_the_checkout() {
-        let order = order_follow_up_action(Some("order-1".to_owned()), "checkout-1");
+        let order = order_follow_up_action(Some("order-1".to_owned()), "checkout-1", true);
         assert_eq!(order.command, "gddy shopping order get <order-id> --wait");
         assert_eq!(order.params["order-id"].value.as_deref(), Some("order-1"));
 
-        let fallback = order_follow_up_action(None, "checkout-1");
+        let fallback = order_follow_up_action(None, "checkout-1", true);
         assert_eq!(fallback.command, "gddy shopping checkout get <checkout-id>");
+        assert!(fallback.description.contains("few seconds"));
         assert_eq!(
             fallback.params["checkout-id"].value.as_deref(),
             Some("checkout-1")
