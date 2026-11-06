@@ -172,6 +172,26 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     {
                         client_err_with_fix(e, "Choose a different username.")
                     }
+                    ClientError::Http { status, body }
+                        if *status == 422
+                            && body_has_issue(body, "USER_HAS_INVALID_DATA") =>
+                    {
+                        client_err_with_fix(
+                            e,
+                            "Your account information is incomplete or invalid. \
+                             Please update your GoDaddy account details before creating \
+                             an email address.",
+                        )
+                    }
+                    ClientError::Http { status, body }
+                        if *status == 422 && body_has_issue(body, "USER_HAS_NO_TAX_ID") =>
+                    {
+                        client_err_with_fix(
+                            e,
+                            "A Tax ID is required to create a Microsoft 365 email address. \
+                             Please update your account information.",
+                        )
+                    }
                     ClientError::Http { status, .. } if *status == 400 || *status == 422 => {
                         client_err_with_fix(
                             e,

@@ -232,22 +232,30 @@ When `check-eligibility` returns a 422, the `details` array contains one or more
 | `DOMAIN_IN_OTHER_EMAIL_PROVIDER` | The domain is already provisioned through a different email provider.                  | The domain cannot be used with GoDaddy Business Email. No action available via the API.                            |
 | `DOMAIN_NOT_ELIGIBLE`            | The domain exists but is not eligible for API provisioning.                            | Go to the [GoDaddy Email dashboard](https://productivity.godaddy.com/addnewemail).                                 |
 | `EMAIL_PLAN_NOT_AVAILABLE`       | There is no active email plan for this domain.                                         | Run `gddy shopping catalog search --query titan` to see available email plans, select one to purchase, then retry. |
+| `NEEDS_TITAN_PLAN`               | A Titan email plan is required but none is active for this domain.                     | Run `gddy shopping catalog search --query titan` to see available Titan email plans, select one to purchase, then retry. |
+| `NEEDS_MICROSOFT_PLAN`           | A Microsoft 365 plan is required but none is active for this domain.                   | Run `gddy shopping catalog search --query microsoft` to see available Microsoft 365 email plans, select one to purchase, then retry. |
 | `EMAIL_ADDRESS_INVALID`          | The username portion fails format or length validation.                                | Fix the address — see [Username rules](#username-rules).                                                           |
 | `EMAIL_ADDRESS_ALREADY_EXISTS`   | A mailbox with this address already exists.                                            | The address is taken; choose a different username.                                                                 |
+| `USER_HAS_INVALID_DATA`          | The account associated with this request has incomplete or invalid data.               | Your account information is incomplete or invalid. Please update your GoDaddy account details before creating an email address. |
+| `USER_HAS_NO_TAX_ID`             | A Tax ID is required to create a Microsoft 365 email address.                          | A Tax ID is required to create a Microsoft 365 email address. Please update your account information.                          |
 
 ### Create failure reasons (422 from `gddy email create`)
 
 The create command re-runs the eligibility check internally. A 422 can occur even if a prior `check-eligibility` succeeded, if domain state changed between the two calls.
 
-| `issue`                          | When it occurs                                                                                                     |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `EMAIL_PLAN_NOT_ELIGIBLE`        | Domain's plan does not support provisioning via this API.                                                          |
-| `DOMAIN_IN_OTHER_EMAIL_PROVIDER` | Domain is provisioned through a different email provider.                                                          |
-| `DOMAIN_NOT_ELIGIBLE`            | Domain exists but is not eligible for API provisioning.                                                            |
-| `EMAIL_PLAN_NOT_AVAILABLE`       | Run `gddy shopping catalog search --query titan` to see available email plans, select one to purchase, then retry. |
-| `CONSENT_NOT_PROVIDED`           | A required agreement was not included in `--consent`. The `description` names the missing type.                    |
-| `EMAIL_ADDRESS_INVALID`          | Username format or length is invalid.                                                                              |
-| `EMAIL_ADDRESS_ALREADY_EXISTS`   | A mailbox with this address already exists.                                                                        |
+| `issue`                          | When it occurs                                                                                                                        |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `EMAIL_PLAN_NOT_ELIGIBLE`        | Domain's plan does not support provisioning via this API.                                                                             |
+| `DOMAIN_IN_OTHER_EMAIL_PROVIDER` | Domain is provisioned through a different email provider.                                                                             |
+| `DOMAIN_NOT_ELIGIBLE`            | Domain exists but is not eligible for API provisioning.                                                                               |
+| `EMAIL_PLAN_NOT_AVAILABLE`       | Run `gddy shopping catalog search --query titan` to see available email plans, select one to purchase, then retry.                    |
+| `NEEDS_TITAN_PLAN`               | Run `gddy shopping catalog search --query titan` to see available Titan email plans, select one to purchase, then retry.              |
+| `NEEDS_MICROSOFT_PLAN`           | Run `gddy shopping catalog search --query microsoft` to see available Microsoft 365 email plans, select one to purchase, then retry.  |
+| `CONSENT_NOT_PROVIDED`           | A required agreement was not included in `--consent`. The `description` names the missing type.                                       |
+| `EMAIL_ADDRESS_INVALID`          | Username format or length is invalid.                                                                                                 |
+| `EMAIL_ADDRESS_ALREADY_EXISTS`   | A mailbox with this address already exists.                                                                                           |
+| `USER_HAS_INVALID_DATA`          | Your account information is incomplete or invalid. Please update your GoDaddy account details before creating an email address.       |
+| `USER_HAS_NO_TAX_ID`             | A Tax ID is required to create a Microsoft 365 email address. Please update your account information.                                 |
 
 If `CONSENT_NOT_PROVIDED` appears, re-run `check-eligibility` to get the current requirements list, then resubmit `create` with all required consent types.
 
