@@ -74,17 +74,17 @@ gddy shopping checkout create --item <purchase-option-id>=2
 
 The response shows buyer details, checkout-session items, selected and available payment methods, required agreements, the final total when available, and all important links. It lists five payment methods by default; add `--show-all-payment-instruments` to show every available method.
 
-If you need to add a payment method, run the following command. It opens the payment-method page in your browser. Then retrieve the checkout session again to see payment methods eligible for that checkout session.
+If you need to add a payment method, run the following command. It opens the payment-method page in your browser.
 
 ```bash
 gddy payment-method add
 ```
 
+Then retrieve the checkout session again to see payment methods eligible for that checkout session.
+
 ```bash
 gddy shopping checkout get <checkout-id> --show-all-payment-instruments
 ```
-
-`checkout get` also suggests the next step: adding or selecting a saved payment method if none is selected, placing the order once a payment method is selected and the checkout session is ready, or checking again if an order is still being placed.
 
 To select an eligible saved payment method explicitly, provide its ID when creating or updating the checkout session. Only one payment method can be selected. Use `--show-all-payment-instruments` with `checkout get` or `checkout update` to see every eligible method. If the requested method is not selected after an update, the CLI reports it as ineligible.
 
