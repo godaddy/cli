@@ -59,6 +59,7 @@ async fn write_with_conflict_handling_creates_without_conflict() {
         value: "1.2.3.4",
         opts: &opts,
         replace_conflicting: false,
+        replacing: None,
         debug: false,
     };
     let outcomes = write_with_conflict_handling(&client_for(&server), &req).await;
@@ -99,6 +100,7 @@ async fn write_with_conflict_handling_sends_https_parameters_in_request_body() {
         value: ".",
         opts: &opts,
         replace_conflicting: false,
+        replacing: None,
         debug: false,
     };
     let outcomes = write_with_conflict_handling(&client_for(&server), &req).await;
@@ -146,6 +148,7 @@ async fn write_with_conflict_handling_sends_tlsa_fields_in_request_body() {
         value: cert,
         opts: &opts,
         replace_conflicting: false,
+        replacing: None,
         debug: false,
     };
     let outcomes = write_with_conflict_handling(&client_for(&server), &req).await;
@@ -192,6 +195,7 @@ async fn write_with_conflict_handling_conflict_without_flag_reports_message_and_
         value: "1.2.3.4",
         opts: &opts,
         replace_conflicting: false,
+        replacing: None,
         debug: false,
     };
     let outcomes = write_with_conflict_handling(&client_for(&server), &req).await;
@@ -246,6 +250,7 @@ async fn write_with_conflict_handling_replace_flag_deletes_then_retries_in_order
         value: "1.2.3.4",
         opts: &opts,
         replace_conflicting: true,
+        replacing: None,
         debug: false,
     };
     let outcomes = write_with_conflict_handling(&client_for(&server), &req).await;
@@ -267,12 +272,11 @@ async fn write_with_conflict_handling_replace_flag_deletes_then_retries_in_order
 
 // --- apply_replace -------------------------------------------------------
 //
-// `set`'s "replace" semantic is create-the-new-value-then-delete-the-old
-// (v3 has no atomic single-record replace; see GH #136). These exercise:
-// the happy path (create then delete, one "replaced" outcome), the create
-// failing (delete must never be attempted — the old record stays intact),
-// and the delete failing after a successful create (reported as a
-// separate "cleanup" outcome that still fails the command).
+// `set`'s "replace" is one in-place `PUT` of the paired record. These exercise:
+// the happy path (a single PUT, one "replaced" outcome, no create or delete),
+// the PUT failing, and the conflict handling a replace shares with a create.
+// Pairings that need no change never reach `apply_replace`; the plan sets them
+// aside (see `plan_set`).
 
 fn replace_req<'a>(opts: &'a RecordOptions, value: &'a str) -> WriteRequest<'a> {
     WriteRequest {
@@ -282,227 +286,102 @@ fn replace_req<'a>(opts: &'a RecordOptions, value: &'a str) -> WriteRequest<'a> 
         value,
         opts,
         replace_conflicting: false,
+        replacing: None,
         debug: false,
     }
 }
 
-fn old_a_record(data: &str) -> types::DnsRecord {
-    types::DnsRecord {
-        certificate_data: None,
-        matching_type: None,
-        selector: None,
-        usage: None,
-        data: Some(data.to_owned()),
-        flag: None,
-        name: "www".to_owned(),
-        parameters: None,
-        port: None,
-        priority: None,
-        protocol: None,
-        record_id: Some("old-1".to_owned()),
-        service: None,
-        tag: None,
-        ttl: 3600,
-        type_: types::DnsRecordType("A".to_owned()),
-        weight: None,
-    }
-}
+const RECORD_PATH: &str = "/v3/domains/zones/example.com/dns-records";
 
-#[tokio::test]
-async fn apply_replace_creates_then_deletes_the_old_record() {
-    let server = MockServer::start_async().await;
+/// Mocks that fail the test if a replace falls back to a create or delete.
+async fn no_create_or_delete<'a>(
+    server: &'a MockServer,
+) -> (httpmock::Mock<'a>, httpmock::Mock<'a>) {
     let create = server
         .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v3/domains/zones/example.com/dns-records");
-            then.status(201)
-                .json_body(json!({ "type": "A", "name": "www", "data": "9.9.9.9", "ttl": 3600 }));
+            when.method(POST).path(RECORD_PATH);
+            then.status(201).json_body(json!({}));
         })
         .await;
     let delete = server
         .mock_async(|when, then| {
-            when.method(DELETE)
-                .path("/v3/domains/zones/example.com/dns-records/old-1");
+            when.method(DELETE).path(format!("{RECORD_PATH}/old-1"));
             then.status(204);
         })
         .await;
+    (create, delete)
+}
+
+#[tokio::test]
+async fn apply_replace_puts_the_new_value_onto_the_old_record() {
+    let server = MockServer::start_async().await;
+    let put = server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path(format!("{RECORD_PATH}/old-1"))
+                .json_body(json!({ "type": "A", "name": "www", "data": "9.9.9.9", "ttl": 3600 }));
+            then.status(200).json_body(json!({
+                "recordId": "old-1", "type": "A", "name": "www", "data": "9.9.9.9", "ttl": 3600
+            }));
+        })
+        .await;
+    let (create, delete) = no_create_or_delete(&server).await;
 
     let opts = write_opts();
     let req = replace_req(&opts, "9.9.9.9");
-    let old_record = old_a_record("1.2.3.4");
-    let outcomes = apply_replace(
-        &client_for(&server),
-        &req,
-        "old-1",
-        "A 1.2.3.4",
-        Some(&old_record),
-    )
-    .await;
+    let outcomes = apply_replace(&client_for(&server), &req, "old-1", Some(3600)).await;
 
-    create.assert_async().await;
-    delete.assert_async().await;
+    put.assert_async().await;
+    assert_eq!(create.calls_async().await, 0, "a replace must not create");
+    assert_eq!(delete.calls_async().await, 0, "a replace must not delete");
     assert_eq!(outcomes.len(), 1);
     assert_eq!(outcomes[0].kind, "replaced");
     assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
 }
 
-/// The record being "replaced" already holds the desired value (e.g. a
-/// re-run of the same `set`, or only some of several `--data` values
-/// actually changed) — creating it again would hit v3's exact-duplicate
-/// `DUPLICATE_RECORD` since the old record hasn't been deleted yet, so
-/// this must short-circuit as a no-op success without any API calls.
+/// A changed TTL on an otherwise identical record is one `PUT` — no
+/// delete-then-create, and no window in which the value is missing.
 #[tokio::test]
-async fn apply_replace_is_a_no_op_when_old_record_already_has_the_desired_value() {
+async fn apply_replace_changes_only_the_ttl_with_a_single_put() {
     let server = MockServer::start_async().await;
-    let create = server
+    let put = server
         .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v3/domains/zones/example.com/dns-records");
-            then.status(201);
-        })
-        .await;
-    let delete = server
-        .mock_async(|when, then| {
-            when.method(DELETE)
-                .path("/v3/domains/zones/example.com/dns-records/old-1");
-            then.status(204);
-        })
-        .await;
-
-    let opts = write_opts();
-    let req = replace_req(&opts, "1.2.3.4");
-    let old_record = old_a_record("1.2.3.4");
-    let outcomes = apply_replace(
-        &client_for(&server),
-        &req,
-        "old-1",
-        "A 1.2.3.4",
-        Some(&old_record),
-    )
-    .await;
-
-    assert_eq!(
-        create.calls_async().await,
-        0,
-        "no create for a no-op replace"
-    );
-    assert_eq!(
-        delete.calls_async().await,
-        0,
-        "no delete for a no-op replace"
-    );
-    assert_eq!(outcomes.len(), 1);
-    assert_eq!(outcomes[0].kind, "replaced");
-    assert_eq!(outcomes[0].detail, "1.2.3.4");
-    assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
-}
-
-/// `same_content` deliberately ignores `ttl`, so an explicit `--ttl`
-/// change has to be checked separately — otherwise a `dns set` that only
-/// changes the TTL would be silently skipped as a no-op.
-#[tokio::test]
-async fn apply_replace_is_not_a_no_op_when_ttl_explicitly_changes() {
-    let server = MockServer::start_async().await;
-    let create = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v3/domains/zones/example.com/dns-records");
-            then.status(201)
+            when.method(PUT)
+                .path(format!("{RECORD_PATH}/old-1"))
                 .json_body(json!({ "type": "A", "name": "www", "data": "1.2.3.4", "ttl": 7200 }));
+            then.status(200).json_body(json!({
+                "recordId": "old-1", "type": "A", "name": "www", "data": "1.2.3.4", "ttl": 7200
+            }));
         })
         .await;
-    let delete = server
-        .mock_async(|when, then| {
-            when.method(DELETE)
-                .path("/v3/domains/zones/example.com/dns-records/old-1");
-            then.status(204);
-        })
-        .await;
+    let (create, delete) = no_create_or_delete(&server).await;
 
     let mut opts = write_opts();
     opts.ttl = Some(7200);
     let req = replace_req(&opts, "1.2.3.4");
-    let old_record = old_a_record("1.2.3.4"); // ttl: 3600
-    let outcomes = apply_replace(
-        &client_for(&server),
-        &req,
-        "old-1",
-        "A 1.2.3.4",
-        Some(&old_record),
-    )
-    .await;
+    let outcomes = apply_replace(&client_for(&server), &req, "old-1", Some(3600)).await;
 
-    create.assert_async().await;
-    delete.assert_async().await;
+    put.assert_async().await;
+    assert_eq!(create.calls_async().await, 0);
+    assert_eq!(delete.calls_async().await, 0);
     assert_eq!(outcomes.len(), 1);
     assert_eq!(outcomes[0].kind, "replaced");
     assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
 }
 
-/// Omitting `--ttl` must not force a replace just because the CLI's
-/// default (3600) differs from the existing record's actual TTL — only
-/// an *explicit* `--ttl` counts as a real change.
 #[tokio::test]
-async fn apply_replace_is_still_a_no_op_when_ttl_is_omitted_even_if_existing_ttl_differs() {
-    let server = MockServer::start_async().await;
-    let create = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v3/domains/zones/example.com/dns-records");
-            then.status(201);
-        })
-        .await;
-    let delete = server
-        .mock_async(|when, then| {
-            when.method(DELETE)
-                .path("/v3/domains/zones/example.com/dns-records/old-1");
-            then.status(204);
-        })
-        .await;
-
-    let opts = write_opts(); // ttl: None — no explicit --ttl
-    let req = replace_req(&opts, "1.2.3.4");
-    let old_record = types::DnsRecord {
-        ttl: 7200, // differs from v3_record's DEFAULT_TTL fallback (3600)
-        ..old_a_record("1.2.3.4")
-    };
-    let outcomes = apply_replace(
-        &client_for(&server),
-        &req,
-        "old-1",
-        "A 1.2.3.4",
-        Some(&old_record),
-    )
-    .await;
-
-    assert_eq!(
-        create.calls_async().await,
-        0,
-        "no create for a no-op replace"
-    );
-    assert_eq!(
-        delete.calls_async().await,
-        0,
-        "no delete for a no-op replace"
-    );
-    assert_eq!(outcomes.len(), 1);
-    assert_eq!(outcomes[0].kind, "replaced");
-    assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
-}
-
-/// A TLSA record's identity spans `usage`/`selector`/`matchingType`, not
-/// just its certificate data — keeping the same `--data` while changing
-/// `--usage` is a real change, not a no-op, even though comparing only
-/// the value string would say otherwise.
-#[tokio::test]
-async fn apply_replace_is_not_a_no_op_when_only_a_sibling_tlsa_field_changes() {
+async fn apply_replace_sends_the_changed_tlsa_fields_in_the_put_body() {
     let server = MockServer::start_async().await;
     let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
-    let create = server
+    let put = server
         .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v3/domains/zones/example.com/dns-records");
-            then.status(201).json_body(json!({
+            when.method(PUT)
+                .path(format!("{RECORD_PATH}/old-1"))
+                .json_body_includes(
+                    json!({ "usage": 1, "selector": 0, "matchingType": 0 }).to_string(),
+                );
+            then.status(200).json_body(json!({
+                "recordId": "old-1",
                 "type": "TLSA",
                 "name": "www",
                 "ttl": 3600,
@@ -513,289 +392,138 @@ async fn apply_replace_is_not_a_no_op_when_only_a_sibling_tlsa_field_changes() {
             }));
         })
         .await;
-    let delete = server
-        .mock_async(|when, then| {
-            when.method(DELETE)
-                .path("/v3/domains/zones/example.com/dns-records/old-1");
-            then.status(204);
-        })
-        .await;
 
     let mut opts = write_opts();
     opts.usage = Some(1);
     opts.selector = Some(0);
     opts.matching_type = Some(0);
     let req = WriteRequest {
-        domain: "example.com",
-        name: "www",
         record_type: "TLSA",
         value: cert,
         opts: &opts,
-        replace_conflicting: false,
-        debug: false,
+        ..replace_req(&opts, cert)
     };
-    let old_record = types::DnsRecord {
-        certificate_data: Some(cert.to_owned()),
-        matching_type: Some(types::TlsaMatchingType(1)),
-        selector: Some(types::TlsaSelector(1)),
-        usage: Some(types::TlsaUsage(3)),
-        data: None,
-        flag: None,
-        name: "www".to_owned(),
-        parameters: None,
-        port: None,
-        priority: None,
-        protocol: None,
-        record_id: Some("old-1".to_owned()),
-        service: None,
-        tag: None,
-        ttl: 3600,
-        type_: types::DnsRecordType("TLSA".to_owned()),
-        weight: None,
-    };
-    let outcomes = apply_replace(
-        &client_for(&server),
-        &req,
-        "old-1",
-        "TLSA 3 1 1 ...",
-        Some(&old_record),
-    )
-    .await;
+    let outcomes = apply_replace(&client_for(&server), &req, "old-1", Some(3600)).await;
 
-    create.assert_async().await;
-    delete.assert_async().await;
+    put.assert_async().await;
     assert_eq!(outcomes.len(), 1);
     assert_eq!(outcomes[0].kind, "replaced");
     assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
 }
 
 #[tokio::test]
-async fn apply_replace_leaves_old_record_alone_when_create_fails() {
+async fn apply_replace_reports_the_failure_and_touches_nothing_else_when_the_put_fails() {
     let server = MockServer::start_async().await;
     server
         .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v3/domains/zones/example.com/dns-records");
+            when.method(PUT).path(format!("{RECORD_PATH}/old-1"));
             then.status(500);
         })
         .await;
-    let delete = server
+    let (create, delete) = no_create_or_delete(&server).await;
+
+    let opts = write_opts();
+    let req = replace_req(&opts, "9.9.9.9");
+    let outcomes = apply_replace(&client_for(&server), &req, "old-1", Some(3600)).await;
+
+    assert_eq!(create.calls_async().await, 0);
+    assert_eq!(delete.calls_async().await, 0);
+    assert_eq!(outcomes.len(), 1);
+    assert_eq!(outcomes[0].kind, "replaced");
+    assert!(outcomes[0].error.is_some());
+}
+
+/// A replace that collides with a CNAME at the name gets the same
+/// `--replace-conflicting-types` handling a create does: delete the
+/// conflicting record, then retry the PUT once.
+#[tokio::test]
+async fn apply_replace_with_the_flag_deletes_a_conflicting_cname_then_retries_the_put() {
+    let server = MockServer::start_async().await;
+    let first_put = server
         .mock_async(|when, then| {
-            when.method(DELETE)
-                .path("/v3/domains/zones/example.com/dns-records/old-1");
+            when.method(PUT).path(format!("{RECORD_PATH}/old-1"));
+            then.status(422).body(DUPLICATE_RECORD_BODY);
+        })
+        .await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path(RECORD_PATH);
+            then.status(200).json_body(json!({
+                "items": [
+                    { "recordId": "cn-1", "type": "CNAME", "name": "www", "data": "parkpage.godaddy.com", "ttl": 3600 },
+                    { "recordId": "old-1", "type": "AAAA", "name": "www", "data": "::1", "ttl": 3600 }
+                ],
+                "links": []
+            }));
+        })
+        .await;
+    let delete_conflict = server
+        .mock_async(|when, then| {
+            when.method(DELETE).path(format!("{RECORD_PATH}/cn-1"));
             then.status(204);
         })
         .await;
 
     let opts = write_opts();
-    let req = replace_req(&opts, "9.9.9.9");
-    let old_record = old_a_record("1.2.3.4");
-    let outcomes = apply_replace(
-        &client_for(&server),
-        &req,
-        "old-1",
-        "A 1.2.3.4",
-        Some(&old_record),
-    )
-    .await;
+    let req = WriteRequest {
+        replace_conflicting: true,
+        ..replace_req(&opts, "1.2.3.4")
+    };
+    let outcomes = apply_replace(&client_for(&server), &req, "old-1", Some(3600)).await;
 
-    assert_eq!(
-        delete.calls_async().await,
-        0,
-        "the old record must not be touched when the create fails"
-    );
-    assert_eq!(outcomes.len(), 1);
-    assert_eq!(outcomes[0].kind, "replaced");
-    assert!(outcomes[0].error.is_some());
-}
-
-// --- retime_record (value kept, explicit --ttl differs) -------------------
-//
-// The old record is 1.2.3.4 @ ttl 3600; the set asks for 1.2.3.4 @ ttl 7200.
-// The new-TTL create and the put-back of the old record are told apart by the
-// `ttl` in the request body.
-
-fn retime_opts() -> RecordOptions {
-    let mut opts = write_opts();
-    opts.ttl = Some(7200);
-    opts
-}
-
-#[tokio::test]
-async fn retime_does_not_create_when_the_old_record_cannot_be_deleted() {
-    let server = MockServer::start_async().await;
-    let create = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v3/domains/zones/example.com/dns-records");
-            then.status(201);
-        })
-        .await;
-    server
-        .mock_async(|when, then| {
-            when.method(DELETE)
-                .path("/v3/domains/zones/example.com/dns-records/old-1");
-            then.status(500);
-        })
-        .await;
-
-    let opts = retime_opts();
-    let req = replace_req(&opts, "1.2.3.4");
-    let old_record = old_a_record("1.2.3.4");
-    let outcomes = apply_replace(
-        &client_for(&server),
-        &req,
-        "old-1",
-        "A 1.2.3.4",
-        Some(&old_record),
-    )
-    .await;
-
-    // Delete-first is what avoids the duplicate create, so a failed delete
-    // has to stop everything before a create is attempted.
-    assert_eq!(create.calls_async().await, 0);
-    assert_eq!(outcomes.len(), 1);
-    assert_eq!(outcomes[0].kind, "replaced");
-    assert!(outcomes[0].error.is_some());
-}
-
-#[tokio::test]
-async fn retime_puts_the_old_record_back_when_the_new_ttl_cannot_be_created() {
-    let server = MockServer::start_async().await;
-    server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v3/domains/zones/example.com/dns-records")
-                .json_body_includes(r#"{"ttl":7200}"#);
-            then.status(500);
-        })
-        .await;
-    let restore = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v3/domains/zones/example.com/dns-records")
-                .json_body_includes(r#"{"ttl":3600}"#);
-            then.status(201)
-                .json_body(json!({ "type": "A", "name": "www", "data": "1.2.3.4", "ttl": 3600 }));
-        })
-        .await;
-    let delete = server
-        .mock_async(|when, then| {
-            when.method(DELETE)
-                .path("/v3/domains/zones/example.com/dns-records/old-1");
-            then.status(204);
-        })
-        .await;
-
-    let opts = retime_opts();
-    let req = replace_req(&opts, "1.2.3.4");
-    let old_record = old_a_record("1.2.3.4");
-    let outcomes = apply_replace(
-        &client_for(&server),
-        &req,
-        "old-1",
-        "A 1.2.3.4",
-        Some(&old_record),
-    )
-    .await;
-
-    delete.assert_async().await;
-    restore.assert_async().await;
-    assert_eq!(outcomes.len(), 1);
-    assert_eq!(outcomes[0].kind, "replaced");
-    let err = outcomes[0]
-        .error
-        .as_deref()
-        .expect("create failure reported");
-    assert!(err.contains("left as it was"), "{err}");
-}
-
-#[tokio::test]
-async fn retime_reports_cleanup_when_the_old_record_cannot_be_put_back() {
-    let server = MockServer::start_async().await;
-    server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v3/domains/zones/example.com/dns-records");
-            then.status(500);
-        })
-        .await;
-    server
-        .mock_async(|when, then| {
-            when.method(DELETE)
-                .path("/v3/domains/zones/example.com/dns-records/old-1");
-            then.status(204);
-        })
-        .await;
-
-    let opts = retime_opts();
-    let req = replace_req(&opts, "1.2.3.4");
-    let old_record = old_a_record("1.2.3.4");
-    let outcomes = apply_replace(
-        &client_for(&server),
-        &req,
-        "old-1",
-        "A 1.2.3.4",
-        Some(&old_record),
-    )
-    .await;
-
+    // The retried PUT hits the same mocked conflict, so it reports failure, but
+    // the conflicting CNAME was deleted first and the PUT attempted twice.
+    delete_conflict.assert_async().await;
+    assert_eq!(first_put.calls_async().await, 2);
     assert_eq!(outcomes.len(), 2);
-    assert_eq!(outcomes[0].kind, "replaced");
-    assert!(outcomes[0].error.is_some());
-    assert_eq!(outcomes[1].kind, "cleanup");
-    let err = outcomes[1]
-        .error
-        .as_deref()
-        .expect("restore failure reported");
-    assert!(err.contains("putting it back failed"), "{err}");
+    assert_eq!(outcomes[0].kind, "deleted");
+    assert_eq!(outcomes[1].kind, "replaced");
 }
 
+/// With no `--ttl`, a replaced record keeps the TTL it had instead of being
+/// reset to the 3600 default.
 #[tokio::test]
-async fn apply_replace_reports_cleanup_outcome_when_delete_of_old_record_fails() {
+async fn apply_replace_keeps_the_stored_ttl_when_none_is_given() {
     let server = MockServer::start_async().await;
-    let create = server
+    let put = server
         .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v3/domains/zones/example.com/dns-records");
-            then.status(201)
-                .json_body(json!({ "type": "A", "name": "www", "data": "9.9.9.9", "ttl": 3600 }));
-        })
-        .await;
-    let delete = server
-        .mock_async(|when, then| {
-            when.method(DELETE)
-                .path("/v3/domains/zones/example.com/dns-records/old-1");
-            then.status(404).json_body(json!({
-                "correlationId": "c-1",
-                "message": "Record not found in DNS zone.",
-                "name": "RECORD_NOT_FOUND"
+            when.method(PUT)
+                .path(format!("{RECORD_PATH}/old-1"))
+                .json_body(json!({ "type": "A", "name": "www", "data": "9.9.9.9", "ttl": 600 }));
+            then.status(200).json_body(json!({
+                "recordId": "old-1", "type": "A", "name": "www", "data": "9.9.9.9", "ttl": 600
             }));
         })
         .await;
 
     let opts = write_opts();
     let req = replace_req(&opts, "9.9.9.9");
-    let old_record = old_a_record("1.2.3.4");
-    let outcomes = apply_replace(
-        &client_for(&server),
-        &req,
-        "old-1",
-        "A 1.2.3.4",
-        Some(&old_record),
-    )
-    .await;
+    let outcomes = apply_replace(&client_for(&server), &req, "old-1", Some(600)).await;
 
-    create.assert_async().await;
-    delete.assert_async().await;
-    assert_eq!(outcomes.len(), 2);
-    assert_eq!(outcomes[0].kind, "replaced");
+    put.assert_async().await;
     assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
-    assert_eq!(outcomes[1].kind, "cleanup");
-    let err = outcomes[1]
-        .error
-        .as_deref()
-        .expect("cleanup failure reported");
-    assert!(err.contains("A 1.2.3.4"), "{err}");
-    assert!(err.contains("dns list"), "{err}");
+}
+
+/// An explicit `--ttl` wins over the stored one.
+#[tokio::test]
+async fn apply_replace_uses_an_explicit_ttl_over_the_stored_one() {
+    let server = MockServer::start_async().await;
+    let put = server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path(format!("{RECORD_PATH}/old-1"))
+                .json_body(json!({ "type": "A", "name": "www", "data": "9.9.9.9", "ttl": 900 }));
+            then.status(200).json_body(json!({
+                "recordId": "old-1", "type": "A", "name": "www", "data": "9.9.9.9", "ttl": 900
+            }));
+        })
+        .await;
+
+    let mut opts = write_opts();
+    opts.ttl = Some(900);
+    let req = replace_req(&opts, "9.9.9.9");
+    let outcomes = apply_replace(&client_for(&server), &req, "old-1", Some(600)).await;
+
+    put.assert_async().await;
+    assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
 }
