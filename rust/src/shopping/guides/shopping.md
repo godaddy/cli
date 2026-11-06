@@ -74,11 +74,13 @@ gddy shopping checkout create --item <purchase-option-id>=2
 
 The response shows buyer details, checkout-session items, selected and available payment methods, required agreements, the final total when available, and all important links. It lists five payment methods by default; add `--show-all-payment-instruments` to show every available method.
 
-If you need to add a payment method, run the following command. It opens the payment-method page in your browser. Then retrieve the checkout session again to see payment methods eligible for that checkout session.
+If you need to add a payment method, run the following command. It opens the payment-method page in your browser.
 
 ```bash
 gddy payment-method add
 ```
+
+Then retrieve the checkout session again to see payment methods eligible for that checkout session.
 
 ```bash
 gddy shopping checkout get <checkout-id> --show-all-payment-instruments
@@ -140,4 +142,4 @@ A newly placed order can take a few seconds to become available. Use `--wait` to
 gddy shopping order get <order-id> --wait --wait-timeout 15
 ```
 
-Use `shopping order get` for completed purchases. Do not use `shopping checkout get` after an order is placed.
+Use `shopping order get` for completed purchases. If you only have the checkout session ID, `shopping checkout get <checkout-id>` shows the order ID once an order has been placed.

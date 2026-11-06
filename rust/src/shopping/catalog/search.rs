@@ -193,17 +193,7 @@ fn product_actions(
             .as_ref()
             .and_then(|price| price.currency.as_deref())
             .unwrap_or("USD");
-        actions.push(
-            next_action(
-                command_for_env(
-                    env,
-                    "checkout create --item <variant-id> --currency <currency>",
-                ),
-                "Add a purchase option to the checkout session.",
-            )
-            .with_param("variant-id", NextActionParam::value(variant_id))
-            .with_param("currency", NextActionParam::value(currency)),
-        );
+        actions.push(super::checkout_create_action(env, variant_id, currency));
     }
     actions
 }

@@ -69,15 +69,23 @@ struct Args {
 /// checkout, so it needs the same reminder to re-present the (possibly new)
 /// total and agreements before completing, not just `checkout create`.
 pub(super) fn agreement_review_action(checkout_id: String, show_agent_note: bool) -> NextAction {
-    let description = if show_agent_note {
+    next_action(
+        "shopping checkout get <checkout-id>",
+        agreement_review_description(show_agent_note),
+    )
+    .with_param("checkout-id", NextActionParam::value(checkout_id))
+}
+
+/// The review reminder attached to every next action that leads towards
+/// `checkout complete`; see [`agreement_review_action`] for `show_agent_note`.
+pub(super) fn agreement_review_description(show_agent_note: bool) -> String {
+    if show_agent_note {
         format!(
             "Before completing checkout, review every required agreement and important link. The --agree flag on checkout completion acknowledges and accepts all required agreements; use it only after that review. {AGENT_PURCHASE_CONFIRMATION_INSTRUCTIONS}"
         )
     } else {
         "Before completing checkout, review every required agreement and important link. The --agree flag on checkout completion acknowledges and accepts all required agreements; use it only after that review.".to_owned()
-    };
-    next_action("shopping checkout get <checkout-id>", description)
-        .with_param("checkout-id", NextActionParam::value(checkout_id))
+    }
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
