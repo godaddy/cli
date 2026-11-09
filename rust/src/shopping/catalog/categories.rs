@@ -5,7 +5,9 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
+use cli_engine::{
+    CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use shopping_client::types::{
@@ -13,11 +15,12 @@ use shopping_client::types::{
     SearchCatalogResponse, SearchRequest,
 };
 
+use crate::next_action::next_action;
 use crate::output_schema::output_schema;
-use crate::shopping::SHOPPING_CATALOG_SCOPES;
 use crate::shopping::client::{ClientError, decode};
 use crate::shopping::common::{client_err, make_client, reject_response_errors};
 use crate::shopping::human::CATALOG_CATEGORIES_VIEW_ID;
+use crate::shopping::{SHOPPING_CATALOG_SCOPES, command_for_env};
 
 const CATALOG_CATEGORY_LIMIT: std::num::NonZeroU64 =
     std::num::NonZeroU64::new(50).expect("CATALOG_CATEGORY_LIMIT is nonzero");
@@ -64,7 +67,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 Some(categories) => categories,
                 None => refresh_categories(&ctx, cache_path.as_deref()).await?,
             };
-            Ok(CommandResult::new(json!({"categories": categories})))
+            let actions = search_actions(&categories, &ctx.middleware.env);
+            Ok(CommandResult::new(json!({"categories": categories})).with_next_actions(actions))
         },
     )
 }
@@ -155,6 +159,20 @@ fn save_cache(
     cli_engine::fs::write_string_atomic(path, &contents)
 }
 
+/// Lets the caller pick one of the listed categories to search within.
+fn search_actions(categories: &[String], env: &str) -> Vec<NextAction> {
+    if categories.is_empty() {
+        return Vec::new();
+    }
+    vec![
+        next_action(
+            command_for_env(env, "catalog search --category <category>"),
+            "Search the products in a category",
+        )
+        .with_param("category", NextActionParam::required()),
+    ]
+}
+
 fn categories(response: &CatalogSearchSearchResponse) -> Vec<String> {
     response
         .products
@@ -175,8 +193,22 @@ mod tests {
 
     use super::{
         CACHE_TTL, Cache, CatalogSearchSearchResponse, cache_env_name, categories,
-        load_fresh_cache, save_cache,
+        load_fresh_cache, save_cache, search_actions,
     };
+
+    #[test]
+    fn suggests_searching_a_category_the_caller_picks() {
+        let actions = search_actions(&["email".to_owned()], "test");
+
+        assert_eq!(actions.len(), 1);
+        assert_eq!(
+            actions[0].command,
+            "gddy shopping catalog search --category <category>"
+        );
+        assert!(actions[0].params["category"].required);
+        assert_eq!(actions[0].params["category"].value, None);
+        assert!(search_actions(&[], "test").is_empty());
+    }
 
     fn product_with_categories(categories: &[&str]) -> Product {
         Product {

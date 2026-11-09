@@ -1,18 +1,17 @@
-use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
+use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 use shopping_client::types::{
     CatalogLookupGetProductRequest, CatalogLookupGetProductResponse, GetProductRequest,
     GetProductResponse,
 };
 
-use crate::next_action::next_action;
 use crate::output_schema::output_schema;
+use crate::shopping::SHOPPING_CATALOG_SCOPES;
 use crate::shopping::client::{ClientError, decode};
 use crate::shopping::common::{
     client_err, make_client, merge_context_currency, reject_response_errors,
 };
 use crate::shopping::currency::CurrencyArgs;
 use crate::shopping::human::{CATALOG_GET_VIEW_ID, catalog_product_response};
-use crate::shopping::{SHOPPING_CATALOG_SCOPES, command_for_env};
 
 output_schema!(CatalogProductOutput {
     "ucp": "object";
@@ -109,17 +108,7 @@ fn next_actions(
     }) else {
         return Vec::new();
     };
-    vec![
-        next_action(
-            command_for_env(
-                env,
-                "checkout create --item <variant-id> --currency <currency>",
-            ),
-            "Add a purchase option to the checkout session.",
-        )
-        .with_param("variant-id", NextActionParam::value(variant_id))
-        .with_param("currency", NextActionParam::value(currency)),
-    ]
+    vec![super::checkout_create_action(env, variant_id, currency)]
 }
 
 #[cfg(test)]
