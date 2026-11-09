@@ -49,7 +49,7 @@
         "content": {
           "application/json": {
             "example": {
-              "correlationId": "req-abc-123",
+              "correlationId": "550e8400-e29b-41d4-a716-446655440000",
               "details": [
                 {
                   "description": "Username must contain only letters, digits, dots, underscores, hyphens, and plus signs.\n",
@@ -197,6 +197,14 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "description": "A legal agreement the customer must accept before provisioning a mailbox.",
         "properties": {
+          "actionType": {
+            "description": "The action the customer must take to fulfill this agreement requirement. Known values: CONSENT — customer accepts inline (e.g. free trial auto-renew). EXTERNAL_URL — customer must accept at the URL in reference before provisioning (e.g. MICROSOFT_MCA).\n",
+            "examples": [
+              "CONSENT",
+              "EXTERNAL_URL"
+            ],
+            "type": "string"
+          },
           "reference": {
             "description": "Pointer to the full agreement text. May be a URI or a plain string identifier.",
             "example": "https://www.godaddy.com/agreements/showdoc?pageid=TITAN_FREE_TRIAL",
@@ -597,7 +605,11 @@
       "MailboxType": {
         "$id": "https://godaddy.com/schemas/email/mailbox-management/mailbox-type.v1",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "The email service provider that backs the mailbox. Known values: TITAN — GoDaddy's Titan email platform.\n",
+        "description": "The email service provider that backs the mailbox. Known values: TITAN and MICROSOFT.\n",
+        "examples": [
+          "TITAN",
+          "MICROSOFT"
+        ],
         "title": "Mailbox Type",
         "type": "string"
       },
@@ -690,9 +702,32 @@
                           "mailboxType": "TITAN",
                           "requirements": [
                             {
+                              "actionType": "CONSENT",
                               "reference": "https://www.godaddy.com/agreements/showdoc?pageid=FREETRIAL_AUTORENEW",
                               "title": "Free Trial Auto Renew",
                               "type": "FREETRIAL_AUTORENEW"
+                            }
+                          ]
+                        }
+                      ],
+                      "isEligible": true
+                    }
+                  },
+                  "eligibleMicrosoft": {
+                    "summary": "Microsoft 365 domain eligible with MCA requirement",
+                    "value": {
+                      "eligibleAccounts": [
+                        {
+                          "accountId": "00000000-0000-0000-0000-000000000003",
+                          "accountName": "Microsoft 365",
+                          "default": true,
+                          "mailboxType": "MICROSOFT",
+                          "requirements": [
+                            {
+                              "actionType": "EXTERNAL_URL",
+                              "reference": "https://cdn.partner.microsoft.com/mca/?attestationid=1360fc65-3333-1111-2222-e26c7d20caf6",
+                              "title": "Microsoft Customer Agreement",
+                              "type": "MICROSOFT_MCA"
                             }
                           ]
                         }
@@ -735,7 +770,7 @@
             "content": {
               "application/json": {
                 "example": {
-                  "correlationId": "req-abc-123",
+                  "correlationId": "550e8400-e29b-41d4-a716-446655440000",
                   "details": [
                     {
                       "description": "Username must contain only letters, digits, dots, underscores, hyphens, and plus signs.\n",
@@ -1055,7 +1090,7 @@
             "content": {
               "application/json": {
                 "example": {
-                  "correlationId": "req-abc-123",
+                  "correlationId": "550e8400-e29b-41d4-a716-446655440000",
                   "details": [
                     {
                       "description": "Username must contain only letters, digits, dots, underscores, hyphens, and plus signs.\n",
@@ -1297,7 +1332,7 @@
             "content": {
               "application/json": {
                 "example": {
-                  "correlationId": "req-abc-123",
+                  "correlationId": "550e8400-e29b-41d4-a716-446655440000",
                   "details": [
                     {
                       "description": "Username must contain only letters, digits, dots, underscores, hyphens, and plus signs.\n",
@@ -1503,7 +1538,7 @@
             "content": {
               "application/json": {
                 "example": {
-                  "correlationId": "req-abc-123",
+                  "correlationId": "550e8400-e29b-41d4-a716-446655440000",
                   "details": [
                     {
                       "description": "Username must contain only letters, digits, dots, underscores, hyphens, and plus signs.\n",
