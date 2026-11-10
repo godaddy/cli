@@ -1,4 +1,4 @@
-//! `gddy domain suggest` — suggest available domains for a query (v3).
+//! `gddy domain suggest` — suggest available domains, optionally for a query (v3).
 
 use cli_engine::{
     Alignment, CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, TableColumn, Tier,
@@ -128,9 +128,10 @@ fn suggestion_to_json(s: &types::Suggestion) -> Option<serde_json::Value> {
 
 #[derive(Debug, Clone, clap::Args)]
 struct SuggestArgs {
-    /// Seed domain or keywords to base suggestions on.
+    /// Seed domain or keywords to base suggestions on. Omit to get
+    /// suggestions based on your account.
     #[arg(value_name = "QUERY")]
-    query: String,
+    query: Option<String>,
 
     /// Limit suggestions to these TLDs (repeatable).
     #[arg(long, value_name = "TLD")]
@@ -171,9 +172,12 @@ struct SuggestArgs {
 
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<SuggestArgs, _, _, _>(
-        CommandSpec::from_args::<SuggestArgs>("suggest", "Suggest available domains for a query")
+        CommandSpec::from_args::<SuggestArgs>("suggest", "Suggest available domains")
             .with_long(
                 "Suggest available domains from a seed word, phrase, or domain. \
+                 Leave out the query to get suggestions based on what we know \
+                 about you and your account.\n\
+                 \n\
                  Narrow results with --tlds (repeatable), bound the name length \
                  with --length-min/--length-max, and cap the count with --limit \
                  (1-50).\n\
@@ -196,7 +200,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
             let debug = !ctx.middleware.debug.is_empty();
             let client = make_client(&ctx).await?;
-            let mut req = client.suggest_domains().query(query.as_str());
+            let mut req = client.suggest_domains();
+            if let Some(query) = query {
+                req = req.query(query);
+            }
             if let Some(page_size) = limit {
                 req = req.page_size(page_size);
             }
@@ -249,6 +256,22 @@ mod tests {
     /// from it.
     fn suggest_clap_command() -> clap::Command {
         clap::Command::new("suggest").args(command().spec.args)
+    }
+
+    #[test]
+    fn query_is_optional() {
+        let matches = suggest_clap_command()
+            .try_get_matches_from(["suggest", "--tlds", "com"])
+            .expect("suggest without a query should be accepted");
+        assert_eq!(matches.get_one::<String>("query"), None);
+
+        let matches = suggest_clap_command()
+            .try_get_matches_from(["suggest", "coffee"])
+            .expect("suggest with a query should be accepted");
+        assert_eq!(
+            matches.get_one::<String>("query").map(String::as_str),
+            Some("coffee")
+        );
     }
 
     #[test]

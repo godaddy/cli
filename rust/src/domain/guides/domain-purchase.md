@@ -25,6 +25,11 @@ Registration completes **asynchronously**: `purchase` submits the registration a
    ```
    gddy domain suggest "avocado jewelry"
    ```
+   Or leave the phrase out to get suggestions based on what we know about you
+   and your account:
+   ```
+   gddy domain suggest
+   ```
    Narrow with `--tlds com --tlds dev` (repeatable), bound the name length with
    `--length-min`/`--length-max`, and cap the count with the global `--limit`.
    Suggestions are available-by-contract, but availability is re-checked at
