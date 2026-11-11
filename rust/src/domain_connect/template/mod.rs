@@ -3,6 +3,8 @@
 use cli_engine::{GroupSpec, RuntimeGroupSpec};
 
 mod init;
+mod interactive;
+mod parsers;
 mod submit;
 mod types;
 

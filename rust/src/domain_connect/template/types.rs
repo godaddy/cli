@@ -484,3 +484,280 @@ impl Template {
         serde_json::to_string_pretty(self)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_basic_inputs_creates_valid_template() {
+        let template = Template::from_basic_inputs(
+            "acme.com".to_string(),
+            "Acme Corp".to_string(),
+            "email".to_string(),
+            "Email Service".to_string(),
+            Some("Email configuration".to_string()),
+        );
+
+        assert_eq!(template.provider_id, "acme.com");
+        assert_eq!(template.provider_name, "Acme Corp");
+        assert_eq!(template.service_id, "email");
+        assert_eq!(template.service_name, "Email Service");
+        assert_eq!(template.version, Some(1));
+        assert_eq!(
+            template.description,
+            Some("Email configuration".to_string())
+        );
+        assert!(template.records.is_empty());
+    }
+
+    #[test]
+    fn add_a_record_with_options_creates_correct_record() {
+        let mut template = Template::from_basic_inputs(
+            "test.com".to_string(),
+            "Test".to_string(),
+            "web".to_string(),
+            "Web".to_string(),
+            None,
+        );
+
+        template.add_a_record_with_options(
+            "@".to_string(),
+            "ip".to_string(),
+            Some("web".to_string()),
+            Some("OnApply".to_string()),
+        );
+
+        assert_eq!(template.records.len(), 1);
+        let record = &template.records[0];
+        assert_eq!(record.record_type, "A");
+        assert_eq!(record.host, Some("@".to_string()));
+        assert_eq!(record.points_to, Some("%ip%".to_string()));
+        assert_eq!(record.ttl, Some(3600));
+        assert_eq!(record.group_id, Some("web".to_string()));
+        assert_eq!(record.essential, Some("OnApply".to_string()));
+    }
+
+    #[test]
+    fn add_mx_record_with_priority() {
+        let mut template = Template::from_basic_inputs(
+            "test.com".to_string(),
+            "Test".to_string(),
+            "email".to_string(),
+            "Email".to_string(),
+            None,
+        );
+
+        template.add_mx_record_with_options(
+            "@".to_string(),
+            "mail.test.com".to_string(),
+            20,
+            Some("mail".to_string()),
+            None,
+        );
+
+        assert_eq!(template.records.len(), 1);
+        let record = &template.records[0];
+        assert_eq!(record.record_type, "MX");
+        assert_eq!(record.points_to, Some("mail.test.com".to_string()));
+        assert_eq!(record.priority, Some(20));
+        assert_eq!(record.group_id, Some("mail".to_string()));
+    }
+
+    #[test]
+    fn add_srv_record_with_all_fields() {
+        let mut template = Template::from_basic_inputs(
+            "test.com".to_string(),
+            "Test".to_string(),
+            "voip".to_string(),
+            "VoIP".to_string(),
+            None,
+        );
+
+        template.add_srv_record_with_options(
+            "_sip".to_string(),
+            "_tcp".to_string(),
+            "@".to_string(),
+            "sip.test.com".to_string(),
+            10,
+            5,
+            5060,
+            Some("voip".to_string()),
+            None,
+        );
+
+        assert_eq!(template.records.len(), 1);
+        let record = &template.records[0];
+        assert_eq!(record.record_type, "SRV");
+        assert_eq!(record.service, Some("_sip".to_string()));
+        assert_eq!(record.protocol, Some("_tcp".to_string()));
+        assert_eq!(record.name, Some("@".to_string()));
+        assert_eq!(record.target, Some("sip.test.com".to_string()));
+        assert_eq!(record.priority, Some(10));
+        assert_eq!(record.weight, Some(5));
+        assert_eq!(record.port, Some(5060));
+    }
+
+    #[test]
+    fn add_txt_record_with_data() {
+        let mut template = Template::from_basic_inputs(
+            "test.com".to_string(),
+            "Test".to_string(),
+            "verify".to_string(),
+            "Verify".to_string(),
+            None,
+        );
+
+        template.add_txt_record_with_options(
+            "@".to_string(),
+            "v=spf1 ~all".to_string(),
+            None,
+            Some("Always".to_string()),
+        );
+
+        assert_eq!(template.records.len(), 1);
+        let record = &template.records[0];
+        assert_eq!(record.record_type, "TXT");
+        assert_eq!(record.data, Some("v=spf1 ~all".to_string()));
+        assert_eq!(record.essential, Some("Always".to_string()));
+    }
+
+    #[test]
+    fn add_spfm_record() {
+        let mut template = Template::from_basic_inputs(
+            "test.com".to_string(),
+            "Test".to_string(),
+            "email".to_string(),
+            "Email".to_string(),
+            None,
+        );
+
+        template.add_spfm_record_with_options(
+            "@".to_string(),
+            "include:_spf.test.com".to_string(),
+            None,
+            None,
+        );
+
+        assert_eq!(template.records.len(), 1);
+        let record = &template.records[0];
+        assert_eq!(record.record_type, "SPFM");
+        assert_eq!(record.spf_rules, Some("include:_spf.test.com".to_string()));
+    }
+
+    #[test]
+    fn add_redir301_record() {
+        let mut template = Template::from_basic_inputs(
+            "test.com".to_string(),
+            "Test".to_string(),
+            "redirect".to_string(),
+            "Redirect".to_string(),
+            None,
+        );
+
+        template.add_redir301_record_with_options(
+            "old".to_string(),
+            "https://new.test.com".to_string(),
+            None,
+            None,
+        );
+
+        assert_eq!(template.records.len(), 1);
+        let record = &template.records[0];
+        assert_eq!(record.record_type, "REDIR301");
+        assert_eq!(record.target, Some("https://new.test.com".to_string()));
+    }
+
+    #[test]
+    fn json_serialization_uses_camel_case() {
+        let mut template = Template::from_basic_inputs(
+            "test.com".to_string(),
+            "Test Company".to_string(),
+            "service".to_string(),
+            "Service Name".to_string(),
+            None,
+        );
+
+        template.multi_instance = Some(true);
+        template.host_required = Some(true);
+
+        let json = template.to_json_pretty().expect("serialization failed");
+
+        assert!(json.contains("\"providerId\""));
+        assert!(json.contains("\"providerName\""));
+        assert!(json.contains("\"serviceId\""));
+        assert!(json.contains("\"serviceName\""));
+        assert!(json.contains("\"multiInstance\""));
+        assert!(json.contains("\"hostRequired\""));
+        assert!(!json.contains("provider_id"));
+        assert!(!json.contains("multi_instance"));
+    }
+
+    #[test]
+    fn json_serialization_omits_none_fields() {
+        let template = Template::from_basic_inputs(
+            "test.com".to_string(),
+            "Test".to_string(),
+            "service".to_string(),
+            "Service".to_string(),
+            None,
+        );
+
+        let json = template.to_json_pretty().expect("serialization failed");
+
+        assert!(!json.contains("\"logoUrl\""));
+        assert!(!json.contains("\"syncBlock\""));
+        assert!(!json.contains("\"shared\""));
+        assert!(!json.contains("\"description\""));
+    }
+
+    #[test]
+    fn multiple_records_of_same_type() {
+        let mut template = Template::from_basic_inputs(
+            "test.com".to_string(),
+            "Test".to_string(),
+            "email".to_string(),
+            "Email".to_string(),
+            None,
+        );
+
+        template.add_mx_record("@".to_string(), "mail1.test.com".to_string(), 10);
+        template.add_mx_record("@".to_string(), "mail2.test.com".to_string(), 20);
+        template.add_txt_record("@".to_string(), "v=spf1 ~all".to_string());
+        template.add_txt_record("_dmarc".to_string(), "v=DMARC1; p=quarantine".to_string());
+
+        assert_eq!(template.records.len(), 4);
+        assert_eq!(
+            template
+                .records
+                .iter()
+                .filter(|r| r.record_type == "MX")
+                .count(),
+            2
+        );
+        assert_eq!(
+            template
+                .records
+                .iter()
+                .filter(|r| r.record_type == "TXT")
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn ipv6_variable_wrapping() {
+        let mut template = Template::from_basic_inputs(
+            "test.com".to_string(),
+            "Test".to_string(),
+            "web".to_string(),
+            "Web".to_string(),
+            None,
+        );
+
+        template.add_aaaa_record("@".to_string(), "IP6".to_string());
+
+        let record = &template.records[0];
+        assert_eq!(record.points_to, Some("%IP6%".to_string()));
+    }
+}
