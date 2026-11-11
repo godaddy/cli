@@ -22,6 +22,20 @@ pub struct Template {
     pub sync_pub_key_domain: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sync_redirect_domain: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sync_block: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shared: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shared_provider_name: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shared_service_name: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub multi_instance: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warn_phishing: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_required: Option<bool>,
     pub records: Vec<Record>,
 }
 
@@ -59,6 +73,10 @@ pub struct Record {
     pub essential: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spf_rules: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub txt_conflict_matching_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub txt_conflict_matching_prefix: Option<String>,
 }
 
 impl Template {
@@ -81,6 +99,13 @@ impl Template {
             variable_description: None,
             sync_pub_key_domain: None,
             sync_redirect_domain: None,
+            sync_block: None,
+            shared: None,
+            shared_provider_name: None,
+            shared_service_name: None,
+            multi_instance: None,
+            warn_phishing: None,
+            host_required: None,
             records: Vec::new(),
         }
     }
@@ -115,6 +140,8 @@ impl Template {
             data: None,
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
 
@@ -148,6 +175,8 @@ impl Template {
             data: None,
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
 
@@ -181,6 +210,8 @@ impl Template {
             data: None,
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
 
@@ -215,6 +246,8 @@ impl Template {
             data: None,
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
 
@@ -248,6 +281,8 @@ impl Template {
             data: Some(data),
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
 
@@ -299,6 +334,8 @@ impl Template {
             data: None,
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
 
@@ -332,6 +369,8 @@ impl Template {
             data: None,
             essential,
             spf_rules: Some(spf_rules),
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
 
@@ -365,6 +404,8 @@ impl Template {
             data: None,
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
 
@@ -398,6 +439,8 @@ impl Template {
             data: None,
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
 
@@ -431,6 +474,8 @@ impl Template {
             data: Some(data),
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
 

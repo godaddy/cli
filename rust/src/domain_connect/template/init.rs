@@ -35,6 +35,50 @@ struct InitArgs {
     #[arg(long = "description")]
     description: Option<String>,
 
+    /// Block synchronous setup until complete
+    #[arg(long = "sync-block")]
+    sync_block: Option<bool>,
+
+    /// Template can be shared across providers
+    #[arg(long = "shared")]
+    shared: Option<bool>,
+
+    /// Provider name is shared
+    #[arg(long = "shared-provider-name")]
+    shared_provider_name: Option<bool>,
+
+    /// Service name is shared
+    #[arg(long = "shared-service-name")]
+    shared_service_name: Option<bool>,
+
+    /// Allow multiple instances of this template
+    #[arg(long = "multi-instance")]
+    multi_instance: Option<bool>,
+
+    /// Display phishing warning to user
+    #[arg(long = "warn-phishing")]
+    warn_phishing: Option<bool>,
+
+    /// Host parameter is required from user
+    #[arg(long = "host-required")]
+    host_required: Option<bool>,
+
+    /// Logo URL (must be http/https with jpg/png/svg extension)
+    #[arg(long = "logo-url")]
+    logo_url: Option<String>,
+
+    /// Variable description for template parameters
+    #[arg(long = "variable-description")]
+    variable_description: Option<String>,
+
+    /// Sync public key domain for verification
+    #[arg(long = "sync-pub-key-domain")]
+    sync_pub_key_domain: Option<String>,
+
+    /// Sync redirect domain after setup
+    #[arg(long = "sync-redirect-domain")]
+    sync_redirect_domain: Option<String>,
+
     /// Add A record (repeatable). Format: "host=@,value=ip" or "host=www,value=%IP4%,ttl=3600,group=web"
     #[arg(long = "add-a")]
     add_a: Vec<String>,
@@ -71,6 +115,10 @@ struct InitArgs {
     #[arg(long = "add-redir301")]
     add_redir301: Vec<String>,
 
+    /// Add REDIR302 record (repeatable). Format: "host=@,target=https://www.%fqdn%" or "host=old,target=https://new.site.com"
+    #[arg(long = "add-redir302")]
+    add_redir302: Vec<String>,
+
     /// Add APEXCNAME record (repeatable). Format: "host=@,value=target.example.com" or "value=provider.com,ttl=3600"
     #[arg(long = "add-apexcname")]
     add_apexcname: Vec<String>,
@@ -99,6 +147,7 @@ enum RecordType {
     NS,
     SPFM,
     REDIR301,
+    REDIR302,
     APEXCNAME,
     CAA,
 }
@@ -115,6 +164,7 @@ impl RecordType {
             RecordType::NS => "NS",
             RecordType::SPFM => "SPFM",
             RecordType::REDIR301 => "REDIR301",
+            RecordType::REDIR302 => "REDIR302",
             RecordType::APEXCNAME => "APEXCNAME",
             RecordType::CAA => "CAA",
         }
@@ -226,6 +276,8 @@ fn add_a_records(
             data: None,
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
     Ok(())
@@ -269,6 +321,8 @@ fn add_aaaa_records(
             data: None,
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
     Ok(())
@@ -306,6 +360,8 @@ fn add_cname_records(
             data: None,
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
     Ok(())
@@ -344,6 +400,8 @@ fn add_mx_records(
             data: None,
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
     Ok(())
@@ -381,6 +439,8 @@ fn add_txt_records(
             data: Some(data),
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
     Ok(())
@@ -427,6 +487,8 @@ fn add_srv_records(
             data: None,
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
     Ok(())
@@ -464,6 +526,8 @@ fn add_ns_records(
             data: None,
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
     Ok(())
@@ -501,6 +565,8 @@ fn add_spfm_records(
             data: None,
             essential,
             spf_rules: Some(rules),
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
     Ok(())
@@ -537,6 +603,46 @@ fn add_redir301_records(
             data: None,
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
+        });
+    }
+    Ok(())
+}
+
+/// Parse and add REDIR302 records
+fn add_redir302_records(
+    template: &mut Template,
+    records: &[String],
+    global_group: &Option<String>,
+    global_essential: &Option<String>,
+) -> Result<(), cli_engine::CliCoreError> {
+    for record_str in records {
+        let attrs = parse_record_attrs(record_str)?;
+
+        let host = get_optional_attr(&attrs, "host", "@");
+        let target = get_required_attr(&attrs, "target", "REDIR302")?;
+        let group_id = attrs.get("group").cloned().or_else(|| global_group.clone());
+        let essential = attrs.get("essential").cloned().or_else(|| global_essential.clone());
+
+        template.records.push(Record {
+            record_type: "REDIR302".to_string(),
+            group_id,
+            host: Some(host),
+            name: None,
+            points_to: None,
+            target: Some(target),
+            service: None,
+            protocol: None,
+            ttl: None,
+            priority: None,
+            weight: None,
+            port: None,
+            data: None,
+            essential,
+            spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
     Ok(())
@@ -574,6 +680,8 @@ fn add_apexcname_records(
             data: None,
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
     Ok(())
@@ -611,6 +719,8 @@ fn add_caa_records(
             data: Some(data),
             essential,
             spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
         });
     }
     Ok(())
@@ -626,7 +736,8 @@ fn prompt_record_type() -> Result<RecordType, cli_engine::CliCoreError> {
         "SRV (Service record)",
         "NS (Name server)",
         "SPFM (SPF Macro)",
-        "REDIR301 (301 Redirect)",
+        "REDIR301 (301 Permanent Redirect)",
+        "REDIR302 (302 Temporary Redirect)",
         "APEXCNAME (Apex CNAME)",
         "CAA (Certificate Authority Authorization)",
     ];
@@ -647,8 +758,9 @@ fn prompt_record_type() -> Result<RecordType, cli_engine::CliCoreError> {
         6 => RecordType::NS,
         7 => RecordType::SPFM,
         8 => RecordType::REDIR301,
-        9 => RecordType::APEXCNAME,
-        10 => RecordType::CAA,
+        9 => RecordType::REDIR302,
+        10 => RecordType::APEXCNAME,
+        11 => RecordType::CAA,
         _ => return Err(cli_engine::CliCoreError::message("Invalid selection")),
     })
 }
@@ -718,6 +830,8 @@ fn prompt_a_record() -> Result<Record, cli_engine::CliCoreError> {
         data: None,
         essential,
         spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
     })
 }
 
@@ -755,6 +869,8 @@ fn prompt_aaaa_record() -> Result<Record, cli_engine::CliCoreError> {
         data: None,
         essential,
         spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
     })
 }
 
@@ -791,6 +907,8 @@ fn prompt_cname_record() -> Result<Record, cli_engine::CliCoreError> {
         data: None,
         essential,
         spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
     })
 }
 
@@ -829,6 +947,8 @@ fn prompt_mx_record() -> Result<Record, cli_engine::CliCoreError> {
         data: None,
         essential,
         spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
     })
 }
 
@@ -865,6 +985,8 @@ fn prompt_txt_record() -> Result<Record, cli_engine::CliCoreError> {
         data: Some(data),
         essential,
         spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
     })
 }
 
@@ -921,6 +1043,8 @@ fn prompt_srv_record() -> Result<Record, cli_engine::CliCoreError> {
         data: None,
         essential,
         spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
     })
 }
 
@@ -957,6 +1081,8 @@ fn prompt_ns_record() -> Result<Record, cli_engine::CliCoreError> {
         data: None,
         essential,
         spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
     })
 }
 
@@ -995,6 +1121,8 @@ fn prompt_spfm_record() -> Result<Record, cli_engine::CliCoreError> {
         data: None,
         essential,
         spf_rules: Some(spf_rules),
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
     })
 }
 
@@ -1031,6 +1159,46 @@ fn prompt_redir301_record() -> Result<Record, cli_engine::CliCoreError> {
         data: None,
         essential,
         spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
+    })
+}
+
+fn prompt_redir302_record() -> Result<Record, cli_engine::CliCoreError> {
+    eprintln!("\n━━━ REDIR302 Record (302 Redirect) ━━━");
+    eprintln!("    Domain Connect specific - HTTP 302 temporary redirect");
+
+    let host: String = Input::new()
+        .with_prompt("Host (required, e.g., @ or www)")
+        .interact_text()
+        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+
+    let target: String = Input::new()
+        .with_prompt("Redirect target (required, e.g., https://www.%fqdn%)")
+        .interact_text()
+        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+
+    let group_id = prompt_optional_string("Group ID (optional)")?;
+    let essential = prompt_optional_string("Essential (optional, OnApply/Always/No)")?;
+
+    Ok(Record {
+        record_type: "REDIR302".to_string(),
+        group_id,
+        host: Some(host),
+        name: None,
+        points_to: None,
+        target: Some(target),
+        service: None,
+        protocol: None,
+        ttl: None,
+        priority: None,
+        weight: None,
+        port: None,
+        data: None,
+        essential,
+        spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
     })
 }
 
@@ -1069,6 +1237,8 @@ fn prompt_apexcname_record() -> Result<Record, cli_engine::CliCoreError> {
         data: None,
         essential,
         spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
     })
 }
 
@@ -1106,6 +1276,8 @@ fn prompt_caa_record() -> Result<Record, cli_engine::CliCoreError> {
         data: Some(data),
         essential,
         spf_rules: None,
+            txt_conflict_matching_mode: None,
+            txt_conflict_matching_prefix: None,
     })
 }
 
@@ -1184,6 +1356,7 @@ fn run_interactive() -> Result<Template, cli_engine::CliCoreError> {
             RecordType::NS => prompt_ns_record()?,
             RecordType::SPFM => prompt_spfm_record()?,
             RecordType::REDIR301 => prompt_redir301_record()?,
+            RecordType::REDIR302 => prompt_redir302_record()?,
             RecordType::APEXCNAME => prompt_apexcname_record()?,
             RecordType::CAA => prompt_caa_record()?,
         };
@@ -1263,6 +1436,19 @@ pub fn command() -> RuntimeCommandSpec {
                     args.description.clone(),
                 );
 
+                // Set additional template fields from args
+                template.logo_url = args.logo_url.clone();
+                template.variable_description = args.variable_description.clone();
+                template.sync_pub_key_domain = args.sync_pub_key_domain.clone();
+                template.sync_redirect_domain = args.sync_redirect_domain.clone();
+                template.sync_block = args.sync_block;
+                template.shared = args.shared;
+                template.shared_provider_name = args.shared_provider_name;
+                template.shared_service_name = args.shared_service_name;
+                template.multi_instance = args.multi_instance;
+                template.warn_phishing = args.warn_phishing;
+                template.host_required = args.host_required;
+
                 // Add records from flags using key=value parsers
                 add_a_records(&mut template, &args.add_a, &args.group_id, &args.essential)?;
                 add_aaaa_records(&mut template, &args.add_aaaa, &args.group_id, &args.essential)?;
@@ -1273,6 +1459,7 @@ pub fn command() -> RuntimeCommandSpec {
                 add_ns_records(&mut template, &args.add_ns, &args.group_id, &args.essential)?;
                 add_spfm_records(&mut template, &args.add_spfm, &args.group_id, &args.essential)?;
                 add_redir301_records(&mut template, &args.add_redir301, &args.group_id, &args.essential)?;
+                add_redir302_records(&mut template, &args.add_redir302, &args.group_id, &args.essential)?;
                 add_apexcname_records(&mut template, &args.add_apexcname, &args.group_id, &args.essential)?;
                 add_caa_records(&mut template, &args.add_caa, &args.group_id, &args.essential)?;
 
