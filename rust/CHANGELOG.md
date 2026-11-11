@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.37](https://github.com/godaddy/cli/compare/v0.2.36...v0.2.37) (2026-11-10)
+
+
+### Features
+
+* **domain:** suggest domains without a search phrase ([#368](https://github.com/godaddy/cli/issues/368)) ([0140fa2](https://github.com/godaddy/cli/commit/0140fa2acba6a50baabed1585a2407fdebc59d1a))
+* **shopping:** suggest the next step after checkout get and other shopping commands ([#366](https://github.com/godaddy/cli/issues/366)) ([72f25e8](https://github.com/godaddy/cli/commit/72f25e8ac1b533424d1c8070c240b203fdceef04))
+
 ## [0.2.36](https://github.com/godaddy/cli/compare/v0.2.35...v0.2.36) (2026-11-05)
 
 
