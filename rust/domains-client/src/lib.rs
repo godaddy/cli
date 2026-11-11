@@ -112,6 +112,30 @@ mod tests {
     // --- v3: discovery ------------------------------------------------------
 
     #[tokio::test]
+    async fn suggest_domains_without_a_query_omits_the_query_param() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v3/domains/suggestions")
+                    .query_param_missing("query");
+                then.status(200)
+                    .json_body(json!({ "items": [{ "domain": "coffeehouse.com" }] }));
+            })
+            .await;
+
+        let resp = client_for(&server)
+            .suggest_domains()
+            .send()
+            .await
+            .expect("request succeeds")
+            .into_inner();
+
+        mock.assert_async().await;
+        assert_eq!(resp.items.len(), 1);
+    }
+
+    #[tokio::test]
     async fn suggest_domains_maps_setters_to_named_query_params() {
         let server = MockServer::start_async().await;
         let mock = server
