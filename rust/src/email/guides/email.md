@@ -108,11 +108,12 @@ For Microsoft 365 accounts, the eligibility response may include a `MICROSOFT_MC
 }
 ```
 
-When `email create` detects this requirement, **it handles it automatically**:
+When `email create` detects this requirement, it prompts you before opening the browser:
 
-1. The agreement page opens in your browser.
-2. Click **Accept** on the Microsoft Customer Agreement page.
-3. The CLI polls until acceptance is confirmed, then continues creating the mailbox — no need to re-run.
+1. The CLI displays: `Microsoft Customer Agreement` / `Please visit <url> to accept it.` / `Press ENTER to open in the browser...`
+2. Press Enter — the agreement page opens in your browser.
+3. Click **Accept** on the Microsoft Customer Agreement page.
+4. The CLI polls until acceptance is confirmed, then continues creating the mailbox — no need to re-run.
 
 `MICROSOFT_MCA` is **not** passed as `--consent` to `email create` — it is handled before the mailbox is provisioned.
 

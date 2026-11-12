@@ -1,4 +1,4 @@
-use std::io::IsTerminal as _;
+use std::io::{IsTerminal as _, Write as _};
 
 use cli_engine::{
     CliCoreError, CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
@@ -80,8 +80,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                  find the correct `--account-id` and any `--consent` requirements.\n\
                  \n\
                  AI assistants: If a Microsoft Customer Agreement must be accepted, \
-                 this command opens a browser automatically and polls until acceptance \
-                 is confirmed (up to 5 minutes). When running non-interactively, the \
+                 this command prompts you to press Enter, opens the browser, then polls \
+                 until acceptance is confirmed (up to 5 minutes). When running \
+                 non-interactively, the \
                  command exits immediately with the agreement URL in the error's `fix` \
                  field — open that URL in a browser, accept the agreement, then retry.",
             )
@@ -116,23 +117,54 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .into_cli_error());
                 }
 
-                if open::that(&req.acceptance_url).is_ok() {
-                    tracing::info!(
-                        "A browser tab was opened to accept the Microsoft Customer Agreement. \
-                         Once you accept, mailbox creation will continue automatically — \
-                         no need to re-run the command."
-                    );
-                } else {
-                    return Err(GddyError::validation("Could not open a browser automatically.")
-                        .with_fix(format!(
-                            "Open this URL in a browser, accept the Microsoft Customer Agreement, \
-                             then re-run this command: {}",
-                            req.acceptance_url
-                        ))
-                        .into_cli_error());
+                let _ = std::io::stdout().write_all(
+                    format!(
+                        "Microsoft Customer Agreement\nPlease visit {} to accept it.\nPress ENTER to open in the browser...",
+                        req.acceptance_url
+                    )
+                    .as_bytes(),
+                );
+                let _ = std::io::stdout().flush();
+
+                // Three-way race: Ctrl+C aborts, copy-paste acceptance proceeds immediately,
+                // Enter opens the browser. All three are cancellable.
+                let url_for_browser = req.acceptance_url.clone();
+                let already_accepted = tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {
+                        return Err(CliCoreError::message("Aborted."));
+                    }
+                    result = super::terms_acceptance::wait_for_mca_acceptance(&client, &args.email) => {
+                        result?;
+                        true
+                    }
+                    _ = async {
+                        use tokio::io::AsyncBufReadExt as _;
+                        let mut buf = String::new();
+                        let _ = tokio::io::BufReader::new(tokio::io::stdin())
+                            .read_line(&mut buf)
+                            .await;
+                    } => {
+                        let _ = open::that(&url_for_browser);
+                        false
+                    }
+                };
+
+                // Enter was pressed and browser opened — wait for the user to accept.
+                if !already_accepted {
+                    tokio::select! {
+                        _ = tokio::signal::ctrl_c() => {
+                            return Err(CliCoreError::message("Aborted."));
+                        }
+                        result = super::terms_acceptance::wait_for_mca_acceptance(&client, &args.email) => {
+                            result?;
+                        }
+                    }
                 }
 
-                super::terms_acceptance::wait_for_mca_acceptance(&client, &args.email).await?;
+                let _ = std::io::stdout().write_all(
+                    b"\nMicrosoft Customer Agreement accepted. Proceeding with creating the email address...\n",
+                );
+                let _ = std::io::stdout().flush();
             }
 
             let body = request_body(&args);
