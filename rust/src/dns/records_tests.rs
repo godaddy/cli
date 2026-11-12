@@ -265,6 +265,43 @@ async fn fetch_records_keeps_server_side_filtering_everywhere_else() {
     assert_eq!(found.len(), 1, "no name given, nothing to filter out");
 }
 
+#[derive(clap::Parser)]
+struct WriteCli {
+    #[command(flatten)]
+    args: RecordWriteArgs,
+}
+
+fn parse_ttl(ttl: &str) -> Result<Option<i64>, clap::Error> {
+    use clap::Parser;
+    WriteCli::try_parse_from([
+        "t",
+        "example.com",
+        "--type",
+        "A",
+        "--name",
+        "www",
+        "--data",
+        "1.2.3.4",
+        "--ttl",
+        ttl,
+    ])
+    .map(|cli| cli.args.ttl)
+}
+
+#[test]
+fn ttl_is_limited_to_the_range_the_api_accepts() {
+    assert_eq!(parse_ttl("600").expect("lower bound"), Some(600));
+    assert_eq!(parse_ttl("86400").expect("upper bound"), Some(86_400));
+    for bad in ["599", "1", "0", "86401"] {
+        let err = parse_ttl(bad).expect_err("out of range");
+        let text = err.to_string();
+        assert!(
+            text.contains("600") && text.contains("86400"),
+            "{bad}: {text}"
+        );
+    }
+}
+
 #[test]
 fn verified_result_shows_the_requested_form_of_zone_and_name() {
     let payload = || {
@@ -508,6 +545,35 @@ fn merged_tlsa_data_falls_back_to_certificate_data_when_a_numeric_field_is_missi
 }
 
 #[test]
+fn a_caa_record_without_a_flag_is_non_critical() {
+    let mut caa = opts();
+    caa.tag = Some("issue".to_owned());
+    assert_eq!(v3_record("@", "CAA", "letsencrypt.org", &caa).flag, Some(0));
+    // An explicit flag wins, and other types never get one.
+    caa.flag = Some(128);
+    assert_eq!(
+        v3_record("@", "CAA", "letsencrypt.org", &caa).flag,
+        Some(128)
+    );
+    assert_eq!(v3_record("@", "A", "1.2.3.4", &opts()).flag, None);
+
+    // So an omitted --flag matches a stored flag-0 record.
+    let mut stored = v3_record("@", "CAA", "letsencrypt.org", &{
+        let mut o = opts();
+        o.flag = Some(0);
+        o.tag = Some("issue".to_owned());
+        o
+    });
+    stored.record_id = Some("r1".to_owned());
+    let mut no_flag = opts();
+    no_flag.tag = Some("issue".to_owned());
+    assert!(same_content(
+        &stored,
+        &v3_record("@", "CAA", "letsencrypt.org", &no_flag)
+    ));
+}
+
+#[test]
 fn same_content_follows_how_the_api_stores_each_field() {
     let same = |ty: &str, a: &str, b: &str| {
         same_content(
@@ -517,6 +583,7 @@ fn same_content_follows_how_the_api_stores_each_field() {
     };
     // Hostnames: case and a trailing dot are not differences.
     assert!(same("CNAME", "Example.COM", "example.com."));
+    assert!(same("ALIAS", "Example.COM", "example.com."));
     assert!(same("ALIAS", "Example.COM", "example.com."));
     assert!(same("MX", "Mail.Example.com", "mail.example.com."));
     // CAA data and TLSA hex are case-insensitive.
