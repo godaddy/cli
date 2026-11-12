@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.38](https://github.com/godaddy/cli/compare/v0.2.37...v0.2.38) (2026-11-12)
+
+
+### Features
+
+* **auth:** show a tighter default set of columns in auth status and auth login ([#362](https://github.com/godaddy/cli/issues/362)) ([bf14311](https://github.com/godaddy/cli/commit/bf14311e8e68f662476a54d73df1e860fcf2fd6a))
+
 ## [0.2.37](https://github.com/godaddy/cli/compare/v0.2.36...v0.2.37) (2026-11-10)
 
 
