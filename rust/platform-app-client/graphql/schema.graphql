@@ -499,6 +499,11 @@ type ApplicationRelease {
   """The native extensions registered with this release."""
   nativeExtensions: [ApplicationNativeExtension!]!
 
+  """
+  The authorization scopes required by this release. These are added to the application's authorization scopes when the release is created.
+  """
+  scopes: [String!]
+
   """The settings capabilities registered with this release."""
   settings(
     """Filter settings by Commerce settings group slug."""
@@ -815,7 +820,10 @@ scalar DateTime
 """The distribution type for an application."""
 enum DistributionType {
   """Application has custom distribution."""
-  CUSTOM
+  CUSTOM @deprecated(reason: "Use PRIVATE instead.")
+
+  """Application is privately distributed."""
+  PRIVATE
 
   """Application is publicly available."""
   PUBLIC
@@ -1179,7 +1187,7 @@ input MutationCreateApplicationInput {
   """
   The authorization scopes of the application. Defines the GoDaddy permissions for the application.
   """
-  authorizationScopes: [String!]
+  authorizationScopes: [String!] @deprecated(reason: "Manage scopes per release via createRelease; retained for backward compatibility and can only extend the application's scopes.")
 
   """The description of the application."""
   description: String
@@ -1245,6 +1253,11 @@ input MutationCreateReleaseInput {
 
   """The native extensions associated with the release."""
   nativeExtensions: [ApplicationNativeExtensionCreateInput!]
+
+  """
+  The authorization scopes required by this release (e.g. 'commerce.orders:read'). New scopes are also added to the application's authorization scopes.
+  """
+  scopes: [String!]
 
   """The settings capabilities associated with the release."""
   settings: [ApplicationSettingCreateInput!]
@@ -1314,13 +1327,13 @@ input MutationUpdateApplicationInput {
   """
   The authorization scopes of the application. Defines the GoDaddy permissions for the application.
   """
-  authorizationScopes: [String!]
+  authorizationScopes: [String!] @deprecated(reason: "Manage scopes per release via createRelease; retained for backward compatibility and can only extend the application's scopes.")
 
   """The description of the application."""
   description: String
 
   """
-  The distribution type for the application (PUBLIC or CUSTOM). Omit to leave unchanged.
+  The distribution type for the application (PUBLIC or PRIVATE; CUSTOM is deprecated). Omit to leave unchanged.
   """
   distributionType: DistributionType
 
@@ -1523,6 +1536,9 @@ type Query {
   enablementsByRelease(
     after: String
     before: String
+
+    """Optional entity ID to filter enablements by."""
+    entityId: String
     first: Int
     last: Int
 

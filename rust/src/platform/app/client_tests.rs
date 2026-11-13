@@ -20,8 +20,8 @@ async fn list_applications_sends_all_app_registry_statuses() {
                 "data": {
                     "applications": {
                         "edges": [
-                            { "node": { "id": "a1", "label": "Active", "name": "active-app", "description": null, "status": "ACTIVE", "url": null, "proxyUrl": null } },
-                            { "node": { "id": "a2", "label": "Inactive", "name": "inactive-app", "description": null, "status": "INACTIVE", "url": null, "proxyUrl": null } }
+                            { "node": { "id": "a1", "label": "Active", "name": "active-app", "description": null, "status": "ACTIVE", "distributionType": "PUBLIC", "url": null, "proxyUrl": null } },
+                            { "node": { "id": "a2", "label": "Inactive", "name": "inactive-app", "description": null, "status": "INACTIVE", "distributionType": "PUBLIC", "url": null, "proxyUrl": null } }
                         ]
                     }
                 }
@@ -63,6 +63,7 @@ async fn activate_release_posts_mutation_with_ids() {
                         "version": "1.0.0",
                         "description": null,
                         "status": "ACTIVE",
+                        "distributionType": "PUBLIC",
                         "activatedAt": "2026-01-01T00:00:00Z",
                         "createdAt": "2026-01-01T00:00:00Z",
                         "updatedAt": "2026-01-01T00:00:00Z"
@@ -104,6 +105,7 @@ async fn list_enabled_store_applications_sends_store_id_variable() {
                         "name": "my-app",
                         "label": "My App",
                         "status": "ACTIVE",
+                        "distributionType": "PUBLIC",
                         "release": { "id": "rel-1", "version": "1.0.0" }
                     }]
                 }
@@ -209,6 +211,7 @@ async fn create_release_sends_settings_input_and_returns_settings() {
         application_dependencies: None,
         feature_dependencies: None,
         mcp_servers: None,
+        scopes: None,
         native_extensions: Some(vec![
             create_release::ApplicationNativeExtensionCreateInput {
                 contact: None,
@@ -421,6 +424,7 @@ async fn get_application_with_releases_selects_client_id_and_subscriptions() {
                         "name": "my-app",
                         "description": null,
                         "status": "ACTIVE",
+                        "distributionType": "PUBLIC",
                         "url": null,
                         "proxyUrl": null,
                         "authorizationScopes": [],
@@ -489,6 +493,7 @@ async fn update_application_sends_non_lifecycle_fields() {
                         "name": "my-app",
                         "description": null,
                         "status": "ACTIVE",
+                        "distributionType": "PUBLIC",
                         "url": null,
                         "proxyUrl": null,
                         "authorizationScopes": [],
@@ -545,6 +550,7 @@ async fn update_application_omits_unset_input_fields_from_the_request() {
                         "name": "my-app",
                         "description": null,
                         "status": "ACTIVE",
+                        "distributionType": "PUBLIC",
                         "url": null,
                         "proxyUrl": null,
                         "authorizationScopes": [],
@@ -589,6 +595,7 @@ async fn get_application_returns_selected_fields() {
                         "name": "my-app",
                         "description": "desc",
                         "status": "ACTIVE",
+                        "distributionType": "PUBLIC",
                         "url": "https://example.com",
                         "proxyUrl": "https://proxy.example.com"
                     }
@@ -690,6 +697,7 @@ async fn archive_application_sends_id_and_returns_lifecycle_fields() {
                         "label": "My App",
                         "name": "my-app",
                         "status": "ARCHIVED",
+                        "distributionType": "PUBLIC",
                         "createdAt": "2026-01-01T00:00:00Z",
                         "archivedAt": "2026-02-01T00:00:00Z"
                     }
@@ -729,6 +737,7 @@ async fn create_application_sends_input_and_returns_credentials() {
                         "name": "my-app",
                         "description": null,
                         "status": "ACTIVE",
+                        "distributionType": "PUBLIC",
                         "url": null,
                         "proxyUrl": null,
                         "authorizationScopes": [],
