@@ -23,6 +23,10 @@ gddy hosting app create --app-type MHWP --name my-site
 gddy hosting operation get --operation-id <operation-id>
 ```
 
+If `app create` fails or times out, follow the next step in the error. When it tells you to run the same command again with the same `--name` before a given time, you get the first request's result, not a second site, as long as you run it on the same computer before that time. On another computer, or later than that, first run `gddy hosting app list --app-type MHWP` and create the site again only if it is not there.
+
+AI assistants: after a failed or timed-out create, do what the error's `fix` says. Run the same command again only when the `fix` says so, on the same computer, before the time the `fix` gives, and keep `--name` unchanged unless the `fix` tells you to change it.
+
 Creation is asynchronous but usually finishes in seconds. Poll until COMPLETED, then take `app.id` from the response and read the site's URL:
 
 ```sh
