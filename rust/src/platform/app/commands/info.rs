@@ -46,7 +46,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 )
                 .with_param("name", required_value(&name)),
                 next_action(
-                    "platform app update --id <id> [--label <label>] [--description <description>]",
+                    "platform app update --id <id> [--label <label>] [--description <description>] [--distribution-type <distribution-type>]",
                     "Update application configuration",
                 )
                 .with_param("id", required_value(&app_id)),

@@ -326,6 +326,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 feature_dependencies: Some(feature_dependencies),
                 mcp_servers: None,
                 native_extensions: None,
+                scopes: None,
                 ui_extensions: None,
             };
             native_extension::apply_native_extensions(

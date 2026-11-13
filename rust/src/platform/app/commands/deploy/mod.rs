@@ -496,6 +496,10 @@ mod tests {
             wire.get("label").is_none(),
             "unset fields are omitted: {wire}"
         );
+        assert!(
+            wire.get("distributionType").is_none(),
+            "a deploy never changes who can install the application: {wire}"
+        );
 
         let mut omitted = config.clone();
         omitted.redirect_uris = None;

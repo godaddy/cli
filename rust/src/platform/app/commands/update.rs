@@ -1,8 +1,10 @@
-//! `gddy platform app update` — update label, description, and manifest OAuth redirects.
+//! `gddy platform app update` — update label, description, distribution type,
+//! and manifest OAuth redirects.
 
 use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 use platform_app_client::update_application::MutationUpdateApplicationInput;
 
+use super::distribution_type::DistributionTypeArg;
 use super::schemas::ApplicationUpdate;
 use crate::next_action::{next_action, required_value};
 use crate::scopes::{APP_REGISTRY_READ, APP_REGISTRY_WRITE};
@@ -10,7 +12,7 @@ use crate::scopes::{APP_REGISTRY_READ, APP_REGISTRY_WRITE};
 /// "At least one of" fields for `update`, flattened into [`UpdateArgs`].
 ///
 /// Kept as its own derive struct (rather than inline fields on `UpdateArgs`)
-/// so the struct-level `#[group(...)]` only covers these two — `id` stays
+/// so the struct-level `#[group(...)]` only covers these fields — `id` stays
 /// outside the group and independently required. See the flatten caveat on
 /// `CommandSpec::from_args`: a struct can't both flatten a field and declare
 /// its own enforced group.
@@ -24,6 +26,31 @@ struct UpdateFields {
     /// New description.
     #[arg(long, value_name = "TEXT")]
     description: Option<String>,
+
+    /// Who can install the application: `public` (anyone, via the
+    /// marketplace) or `private` (your organization only). Moving an
+    /// application to private deactivates its active marketplace listing.
+    #[arg(long, value_name = "TYPE", value_enum, ignore_case = true)]
+    distribution_type: Option<DistributionTypeArg>,
+}
+
+/// `None` is omitted from the request (the `OmitNoneInInputs` pass in
+/// `platform-app-client/build.rs`), so an omitted manifest key leaves the
+/// remote allowlist unchanged while `Some(vec![])` clears it.
+fn update_input(
+    fields: UpdateFields,
+    redirect_uris: Option<Vec<String>>,
+) -> MutationUpdateApplicationInput {
+    MutationUpdateApplicationInput {
+        label: fields.label,
+        description: fields.description,
+        distribution_type: fields.distribution_type.map(Into::into),
+        redirect_uris,
+        authorization_scopes: None,
+        name: None,
+        proxy_url: None,
+        url: None,
+    }
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -40,11 +67,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<UpdateArgs, _, _, _>(
         CommandSpec::from_args::<UpdateArgs>("update", "Update an application")
             .with_long(
-                "Update the label or description of a GoDaddy \
-                developer-platform application by its ID. At least one of \
-                --label or --description must be provided. Use \
-                `gddy platform app info --name <name>` to retrieve the \
-                application ID. When the environment's godaddy.toml declares \
+                "Update the label, description, or distribution type of a \
+                GoDaddy developer-platform application by its ID. At least one \
+                of --label, --description, or --distribution-type must be \
+                provided. Use `gddy platform app info --name <name>` to \
+                retrieve the application ID. `--distribution-type private` \
+                limits the application to your organization and deactivates \
+                its active marketplace listing; `public` makes it installable \
+                by anyone. When the environment's godaddy.toml declares \
                 redirect_uris, the same request synchronizes those additional \
                 OAuth callbacks; omitting the key leaves them unchanged.",
             )
@@ -64,20 +94,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .into_cli_error());
                 }
             };
-            // `None` is omitted from the request (the `OmitNoneInInputs` pass
-            // in `platform-app-client/build.rs`), so an omitted manifest key
-            // leaves the remote allowlist unchanged while `Some(vec![])`
-            // clears it.
-            let input = MutationUpdateApplicationInput {
-                label: args.fields.label,
-                description: args.fields.description,
-                redirect_uris,
-                authorization_scopes: None,
-                distribution_type: None,
-                name: None,
-                proxy_url: None,
-                url: None,
-            };
+            let input = update_input(args.fields, redirect_uris);
             let client = super::make_client(&context).await?;
             let app = client
                 .update_application(&args.id, input)
@@ -112,8 +129,51 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 #[cfg(test)]
 mod tests {
+    use super::{DistributionTypeArg, UpdateFields, update_input};
+
     fn update_clap_command() -> clap::Command {
         super::command().spec.clap_command()
+    }
+
+    #[test]
+    fn update_accepts_distribution_type_alone() {
+        for value in ["public", "private"] {
+            update_clap_command()
+                .try_get_matches_from(["update", "--id", "app-1", "--distribution-type", value])
+                .expect("public and private alone must be accepted");
+        }
+    }
+
+    #[test]
+    fn update_rejects_custom_and_unknown_distribution_types() {
+        for value in ["custom", "unlisted"] {
+            let err = update_clap_command()
+                .try_get_matches_from(["update", "--id", "app-1", "--distribution-type", value])
+                .expect_err("value must be rejected at parse time");
+            assert_eq!(err.kind(), clap::error::ErrorKind::InvalidValue, "{err}");
+        }
+    }
+
+    #[test]
+    fn type_only_update_sends_just_the_distribution_type() {
+        let fields = UpdateFields {
+            label: None,
+            description: None,
+            distribution_type: Some(DistributionTypeArg::Public),
+        };
+        let wire = serde_json::to_value(update_input(fields, None)).expect("serialize");
+        assert_eq!(wire, serde_json::json!({ "distributionType": "PUBLIC" }));
+    }
+
+    #[test]
+    fn update_without_distribution_type_leaves_it_out_of_the_request() {
+        let fields = UpdateFields {
+            label: Some("New".to_owned()),
+            description: None,
+            distribution_type: None,
+        };
+        let wire = serde_json::to_value(update_input(fields, None)).expect("serialize");
+        assert_eq!(wire, serde_json::json!({ "label": "New" }));
     }
 
     #[test]
