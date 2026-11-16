@@ -459,6 +459,10 @@ async fn get_application_with_releases_selects_client_id_and_subscriptions() {
 
     mock.assert_async().await;
     assert_eq!(app.client_id.as_deref(), Some("client-1"));
+    assert_eq!(
+        app.distribution_type,
+        application_with_latest_release::DistributionType::PUBLIC
+    );
     let edges = app
         .releases
         .expect("releases connection")

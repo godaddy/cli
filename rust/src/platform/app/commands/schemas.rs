@@ -40,6 +40,7 @@ output_schema!(ApplicationImport {
     "id": "string";
     "name": "string";
     "status": "string";
+    "distributionType": "string";
     "clientId": "string";
     "url": "string";
     "proxyUrl": "string";
