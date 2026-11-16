@@ -5,19 +5,15 @@ use domains_client::types;
 
 use crate::dns::records::{record_value, same_content};
 
-/// One reconcile action for `dns set` over v3's per-record endpoints.
-///
-/// v3 has no atomic single-record replace: `PUT .../dns-records/{recordId}`
-/// responds `200` but silently replaces the *entire* record collection with
-/// just the system records and whatever's in the request body, discarding
-/// everything else in the zone (reproduced live against a test zone; see
-/// <https://github.com/godaddy/cli/issues/136>). So `Replace` is executed as
-/// create-the-new-value-then-delete-the-old-record, never as an in-place PUT.
+/// One reconcile action for `dns set` over the API's per-record endpoints.
 #[derive(Debug, PartialEq)]
 pub(super) enum SetAction {
-    /// Create a record for the desired `--data` value, then delete the
-    /// existing record (`record_id`) it's replacing.
+    /// Replace the existing record (`record_id`) in place with the desired
+    /// `--data` value.
     Replace { record_id: String, data: String },
+    /// The existing record (`record_id`) already is the desired one; nothing to
+    /// send.
+    Unchanged { record_id: String, data: String },
     /// Remove an existing record no longer wanted.
     Delete { record_id: String },
     /// Create a record for a surplus `--data` value.
@@ -29,28 +25,10 @@ pub(super) enum SetAction {
 /// `Delete` the surplus existing, `Create` the surplus desired. Pure so the
 /// plan — the least-destructive way to emulate a set-replace over per-record v3
 /// ops — is unit-testable.
-///
-/// A desired record that some existing record already holds is paired with *that*
-/// record before anything is paired by position. v3 rejects a create that
-/// duplicates a record still present (`DUPLICATE_RECORD`), and under a purely
-/// positional pairing that is not a harmless no-op: [`super::write::apply_replace`]
-/// keeps the old record when its create fails, while the surplus `Delete` later in
-/// the plan still runs — so narrowing `www A {1.2.3.4, 5.6.7.8}` to just `5.6.7.8`
-/// would delete `5.6.7.8` and leave `1.2.3.4` behind, the exact inverse of what was
-/// asked. Pairing retained records first means one that stays in the set is never
-/// re-created.
-///
-/// "Holds" is [`same_content`] — every field but `ttl`/`recordId`, the same test
-/// `apply_replace` uses to skip a no-op — not a shared value. Records at one
-/// type+name can share their value and differ in CAA `flag`/`tag`, TLSA
-/// `usage`/`selector`/`matchingType`, SRV or HTTPS/SVCB fields, and pairing on the
-/// value alone would pick the wrong one.
-///
-/// Every `existing` record must carry a `recordId`; the caller rejects the set
-/// before planning otherwise.
 pub(super) fn plan_set(
     existing: &[types::DnsRecord],
     desired: &[types::DnsRecord],
+    ttl: Option<i64>,
 ) -> Vec<SetAction> {
     let id = |r: &types::DnsRecord| r.record_id.clone().expect("existing record has a recordId");
     let value = |r: &types::DnsRecord| record_value(r).unwrap_or_default().to_owned();
@@ -79,9 +57,14 @@ pub(super) fn plan_set(
     let mut actions = Vec::with_capacity(existing.len().max(desired.len()));
     for (d, want) in desired.iter().enumerate() {
         if let Some(e) = paired[d] {
-            actions.push(SetAction::Replace {
-                record_id: id(&existing[e]),
-                data: value(want),
+            let record_id = id(&existing[e]);
+            let data = value(want);
+            let unchanged =
+                same_content(&existing[e], want) && ttl.is_none_or(|t| t == existing[e].ttl);
+            actions.push(if unchanged {
+                SetAction::Unchanged { record_id, data }
+            } else {
+                SetAction::Replace { record_id, data }
             });
         }
     }
@@ -176,7 +159,7 @@ mod tests {
         let existing = a_stored(&[("r1", "1.1.1.1"), ("r2", "2.2.2.2"), ("r3", "3.3.3.3")]);
         let desired = a_wanted(&["9.9.9.9", "8.8.8.8"]);
         assert_eq!(
-            plan_set(&existing, &desired),
+            plan_set(&existing, &desired, None),
             vec![
                 SetAction::Replace {
                     record_id: "r1".into(),
@@ -193,7 +176,7 @@ mod tests {
         );
         // 1 existing, 3 desired → reuse 1 id, create 2.
         assert_eq!(
-            plan_set(&a_stored(&[("r1", "z")]), &a_wanted(&["a", "b", "c"])),
+            plan_set(&a_stored(&[("r1", "z")]), &a_wanted(&["a", "b", "c"]), None),
             vec![
                 SetAction::Replace {
                     record_id: "r1".into(),
@@ -205,7 +188,7 @@ mod tests {
         );
         // none existing → all creates.
         assert_eq!(
-            plan_set(&[], &a_wanted(&["x"])),
+            plan_set(&[], &a_wanted(&["x"]), None),
             vec![SetAction::Create { data: "x".into() }]
         );
     }
@@ -220,9 +203,9 @@ mod tests {
         // exactly the value the user asked to drop.
         let existing = a_stored(&[("r1", "1.2.3.4"), ("r2", "5.6.7.8")]);
         assert_eq!(
-            plan_set(&existing, &a_wanted(&["5.6.7.8"])),
+            plan_set(&existing, &a_wanted(&["5.6.7.8"]), None),
             vec![
-                SetAction::Replace {
+                SetAction::Unchanged {
                     record_id: "r2".into(),
                     data: "5.6.7.8".into()
                 },
@@ -240,13 +223,13 @@ mod tests {
         // one instead of issuing two creates that both fail as duplicates.
         let existing = a_stored(&[("r1", "1.2.3.4"), ("r2", "5.6.7.8")]);
         assert_eq!(
-            plan_set(&existing, &a_wanted(&["5.6.7.8", "1.2.3.4"])),
+            plan_set(&existing, &a_wanted(&["5.6.7.8", "1.2.3.4"]), None),
             vec![
-                SetAction::Replace {
+                SetAction::Unchanged {
                     record_id: "r2".into(),
                     data: "5.6.7.8".into()
                 },
-                SetAction::Replace {
+                SetAction::Unchanged {
                     record_id: "r1".into(),
                     data: "1.2.3.4".into()
                 },
@@ -260,9 +243,9 @@ mod tests {
         // The freed id r1 is reused positionally rather than deleted-and-created.
         let existing = a_stored(&[("r1", "1.2.3.4"), ("r2", "5.6.7.8")]);
         assert_eq!(
-            plan_set(&existing, &a_wanted(&["5.6.7.8", "9.9.9.9"])),
+            plan_set(&existing, &a_wanted(&["5.6.7.8", "9.9.9.9"]), None),
             vec![
-                SetAction::Replace {
+                SetAction::Unchanged {
                     record_id: "r2".into(),
                     data: "5.6.7.8".into()
                 },
@@ -279,13 +262,13 @@ mod tests {
         // Two identical --data values must not both pair with the same record.
         let existing = a_stored(&[("r1", "1.2.3.4"), ("r2", "1.2.3.4")]);
         assert_eq!(
-            plan_set(&existing, &a_wanted(&["1.2.3.4", "1.2.3.4"])),
+            plan_set(&existing, &a_wanted(&["1.2.3.4", "1.2.3.4"]), None),
             vec![
-                SetAction::Replace {
+                SetAction::Unchanged {
                     record_id: "r1".into(),
                     data: "1.2.3.4".into()
                 },
-                SetAction::Replace {
+                SetAction::Unchanged {
                     record_id: "r2".into(),
                     data: "1.2.3.4".into()
                 },
@@ -304,9 +287,9 @@ mod tests {
             stored("r2", "TLSA", CERT, &tlsa_opts(1)),
         ];
         assert_eq!(
-            plan_set(&existing, &[wanted("TLSA", CERT, &tlsa_opts(1))]),
+            plan_set(&existing, &[wanted("TLSA", CERT, &tlsa_opts(1))], None),
             vec![
-                SetAction::Replace {
+                SetAction::Unchanged {
                     record_id: "r2".into(),
                     data: CERT.into()
                 },
@@ -331,9 +314,9 @@ mod tests {
             wanted("CAA", "digicert.com", &caa_opts("issue")),
         ];
         assert_eq!(
-            plan_set(&existing, &desired),
+            plan_set(&existing, &desired, None),
             vec![
-                SetAction::Replace {
+                SetAction::Unchanged {
                     record_id: "r2".into(),
                     data: "letsencrypt.org".into()
                 },
@@ -342,6 +325,60 @@ mod tests {
                     data: "digicert.com".into()
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn plan_set_ignores_a_ttl_the_caller_did_not_pass() {
+        // The stored record has ttl 600; `a_wanted` builds with the 3600 default.
+        // Without an explicit --ttl that difference is not a change.
+        let mut slow = opts();
+        slow.ttl = Some(600);
+        let existing = [stored("r1", "A", "1.2.3.4", &slow)];
+        assert_eq!(
+            plan_set(&existing, &a_wanted(&["1.2.3.4"]), None),
+            vec![SetAction::Unchanged {
+                record_id: "r1".into(),
+                data: "1.2.3.4".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn plan_set_replaces_when_an_explicit_ttl_differs() {
+        let existing = a_stored(&[("r1", "1.2.3.4")]); // stored at the 3600 default
+        let mut fast = opts();
+        fast.ttl = Some(900);
+        let desired = [wanted("A", "1.2.3.4", &fast)];
+        assert_eq!(
+            plan_set(&existing, &desired, Some(900)),
+            vec![SetAction::Replace {
+                record_id: "r1".into(),
+                data: "1.2.3.4".into()
+            }]
+        );
+        // The same explicit ttl as stored is no change.
+        assert_eq!(
+            plan_set(&existing, &desired, Some(3600)),
+            vec![SetAction::Unchanged {
+                record_id: "r1".into(),
+                data: "1.2.3.4".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn plan_set_treats_an_api_normalized_record_as_unchanged() {
+        // `Example.COM` is stored as `example.com.`; asking for it again is a
+        // no-op, not another replace.
+        let existing = [stored("r1", "CNAME", "example.com.", &opts())];
+        let desired = [wanted("CNAME", "Example.COM", &opts())];
+        assert_eq!(
+            plan_set(&existing, &desired, None),
+            vec![SetAction::Unchanged {
+                record_id: "r1".into(),
+                data: "Example.COM".into()
+            }]
         );
     }
 
@@ -370,9 +407,9 @@ mod tests {
             stored("r2", "SRV", "b.example.com.", &o),
         ];
         assert_eq!(
-            plan_set(&existing, &[wanted("SRV", "b.example.com", &o)]),
+            plan_set(&existing, &[wanted("SRV", "b.example.com", &o)], None),
             vec![
-                SetAction::Replace {
+                SetAction::Unchanged {
                     record_id: "r2".into(),
                     data: "b.example.com".into()
                 },

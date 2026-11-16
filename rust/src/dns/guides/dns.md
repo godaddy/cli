@@ -33,13 +33,13 @@ Without filters, `list` returns every record. `--type` narrows to one record typ
 gddy dns add example.com --type A --name www --data 192.0.2.1 --ttl 3600
 ```
 
-Pass `--data` more than once to add several records for the same type+name in one call — each becomes a separate record, and a failure on one doesn't stop the rest (the result reports created/failed counts with a per-value breakdown). `--ttl` defaults to 3600 seconds when omitted.
+Pass `--data` more than once to add several records for the same type+name in one call — each becomes a separate record. `--ttl` is in seconds, from 600 (10 minutes) to 86400 (24 hours), and defaults to 3600 when omitted.
 
 A name can hold a CNAME or other record types, never both. Adding into a name that already has the other kind fails with an error naming the conflict — see `set --replace-conflicting-types` below if you actually want to replace it.
 
 ## Replacing records (`set`, destructive)
 
-`set` replaces every record matching a type+name pair with exactly the `--data` value(s) you give it. It reconciles rather than deleting and recreating everything: existing records are paired with your `--data` values, whatever's no longer in your list is deleted, and whatever's new is created. There's no atomic in-place replace in v3, so each paired value is written as a new record before the old one it's replacing is deleted — record IDs are not reused across a replace.
+`set` replaces every record matching a type+name pair with exactly the `--data` value(s) you give it.
 
 ```
 gddy dns set example.com --type TXT --name @ --data "v=spf1 -all"
@@ -51,9 +51,9 @@ Preview the plan before writing:
 gddy dns set example.com --type TXT --name @ --data "v=spf1 -all" --dry-run
 ```
 
-The dry-run preview lists the planned action (replace/create/delete) per record so you can confirm it before it runs for real. `set` is not atomic — a partial failure reports how many records were replaced, created, and deleted before it happened.
+The dry-run preview lists the planned action per record so you can confirm it before it runs for real.
 
-To also remove a conflicting CNAME (or, when setting a CNAME, any other type) at that name, add `--replace-conflicting-types`.
+For `SRV` and `TLSA` records, give `add` and `set` the record's own name and the service and protocol (or port and protocol) as separate flags, e.g. `--name chat --service sip --protocol tcp`.
 
 ## Deleting records
 
@@ -73,10 +73,28 @@ Domain names and record names can be typed either as Unicode (`münchen.de`) or 
 
 ## Type-specific flags
 
-Most of these only apply to certain record types — set them only when the type calls for it:
+Some record types need extra flags:
 
-| Flag | Applies to | Notes |
+| Record type | Required flags | Optional |
 |---|---|---|
-| `--priority` | `MX`, `SRV` | |
-| `--port`, `--weight`, `--protocol`, `--service` | `SRV` | |
-| `--flag`, `--tag` | `CAA` | `--tag` is required for CAA (e.g. `issue`, `issuewild`, `iodef`); `--data` carries the CA domain/value |
+| `MX` | `--priority` | |
+| `SRV` | `--priority`, `--weight`, `--port`, `--service`, `--protocol` | |
+| `HTTPS`, `SVCB` | `--priority` (`0` means AliasMode) | `--parameters` |
+| `TLSA` | `--usage`, `--selector`, `--matching-type`, `--port`, `--protocol` | |
+| `CAA` | `--tag` (`issue`, `issuewild` or `iodef`); `--data` carries the CA domain or value | `--flag` (defaults to `0`) |
+
+`--service` and `--protocol` take the plain name, e.g. `--service sip --protocol tcp`. GoDaddy stores them with a leading underscore (`_sip._tcp`), which `gddy` adds for you; `--service _sip` works too. Any name made of letters, digits, `-` and `_` (up to 62 characters before the underscore) is accepted, so custom services work. Where they are shown (`--fields service,protocol`, or JSON), they appear in the underscore form, since that is the DNS name.
+
+Example SRV record:
+
+```
+gddy dns add example.com \
+  --type SRV \
+  --name chat \
+  --data chat-server.example.com. \
+  --priority 10 \
+  --weight 5 \
+  --port 5222 \
+  --service xmpp \
+  --protocol tcp
+```

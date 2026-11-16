@@ -9,8 +9,8 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 
 use super::conflicts::{WriteErrorContext, describe_write_error};
 use super::records::{
-    RecordOptions, RecordWriteArgs, v3_records, validate_caa_fields, validate_svcb_fields,
-    validate_tlsa_fields, verified_result,
+    RecordOptions, RecordWriteArgs, v3_records, validate_caa_fields, validate_record_name,
+    validate_svcb_fields, validate_tlsa_fields, verified_result,
 };
 
 // `dns add` creates one v3 record per `--data` value; it reports each outcome
@@ -105,13 +105,13 @@ pub(super) fn command() -> RuntimeCommandSpec {
         )
         .with_long(
             "Appends one or more DNS records to a domain without modifying any \
-                     existing records. Pass `--data` once per record value to add \
-                     multiple records for the same type+name (each is a separate v3 \
-                     create call). `--ttl` defaults to 3600 when omitted. DNS only \
-                     allows a CNAME or other record types at a name, never both — \
-                     adding into a name that already has the other kind fails with a \
-                     specific error naming the conflicting record. Use `dns set` to \
-                     replace the full record set for a type+name.",
+            existing records. Pass `--data` once per record value to add \
+            multiple records for the same type+name (each is a separate v3 \
+            create call). `--ttl` is 600 to 86400 seconds and defaults to 3600 \
+            when omitted. DNS only allows a CNAME or other record types at a \
+            name, never both — adding into a name that already has the other \
+            kind fails with a specific error naming the conflicting record. Use \
+            `dns set` to replace the full record set for a type+name.",
         )
         .with_system("domain")
         .with_tier(Tier::Mutate)
@@ -125,6 +125,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let record_type = args.record_type;
             let name = args.name;
             let domain_format = args.domain_format.form(&ctx)?;
+            validate_record_name(&record_type, &name)
+                .map_err(crate::error::GddyError::validation)?;
             validate_caa_fields(&record_type, &opts)
                 .map_err(crate::error::GddyError::validation)?;
             validate_tlsa_fields(&record_type, &opts)

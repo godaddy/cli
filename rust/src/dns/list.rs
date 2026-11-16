@@ -107,7 +107,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
 /// The original `certificateData`/`usage`/`selector`/`matchingType` fields
 /// are left in place alongside it. Pure so the merge is unit-testable
 /// without a mock server.
-fn build_list_output(records: &[types::DnsRecord]) -> Result<Vec<Value>, serde_json::Error> {
+pub(super) fn build_list_output(
+    records: &[types::DnsRecord],
+) -> Result<Vec<Value>, serde_json::Error> {
     records
         .iter()
         .map(|rec| {
