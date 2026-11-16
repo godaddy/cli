@@ -224,14 +224,16 @@ pub(super) static RULE_DEFS: &[RuleDef] = &[
             r#"\brmSync\s*\("#,
         ],
     },
-    // SEC112 — requests to untrusted domains (no signal, block)
+    // SEC112 — requests to untrusted domains (no signal, block). Trusts godaddy.com plus
+    // the exact non-production hosts dev-/test-/ote-godaddy.com (and their subdomains).
+    // Keep in sync with `trusted_domains` in config.rs.
     RuleDef {
         id: "SEC112",
         severity: Severity::Block,
         description: "Bundled code makes requests to domains outside the GoDaddy trusted allowlist",
         signal_patterns: &[],
         patterns: &[
-            r#"https?://(?!(?:(?:[a-zA-Z0-9-]+\.)*godaddy\.com|localhost|127\.0\.0\.1)(?:[:/?#\s]|$))[^\s"'\x60<>]+"#,
+            r#"https?://(?!(?:(?:[a-zA-Z0-9-]+\.)*(?:dev-|test-|ote-)?godaddy\.com|localhost|127\.0\.0\.1)(?:[:/?#\s]|$))[^\s"'\x60<>]+"#,
         ],
     },
     // SEC113 — any encoded payload (no signal, warn)
