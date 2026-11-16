@@ -233,7 +233,7 @@ pub(super) static RULE_DEFS: &[RuleDef] = &[
         description: "Bundled code makes requests to domains outside the GoDaddy trusted allowlist",
         signal_patterns: &[],
         patterns: &[
-            r#"https?://(?!(?:(?:[a-zA-Z0-9-]+\.)*(?:dev-|test-|ote-)?godaddy\.com|localhost|127\.0\.0\.1)(?:[:/?#\s]|$))[^\s"'\x60<>]+"#,
+            r#"https?://(?!(?:(?:[a-zA-Z0-9-]+\.)*(?:dev-|test-|ote-)?godaddy\.com|localhost|127\.0\.0\.1)(?:[:/?#\s"'\x60]|$))[^\s"'\x60<>]+"#,
         ],
     },
     // SEC113 — any encoded payload (no signal, warn)

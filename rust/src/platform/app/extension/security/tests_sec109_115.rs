@@ -319,6 +319,41 @@ fn sec112_nonprod_godaddy_domains_allowed() {
 }
 
 #[test]
+fn sec112_bare_host_urls_allowed() {
+    for code in [
+        r#"fetch("https://dev-godaddy.com");"#,
+        r#"fetch('https://test-godaddy.com');"#,
+        "fetch(`https://ote-godaddy.com`);",
+        r#"fetch("https://godaddy.com");"#,
+        r#"fetch("https://api.godaddy.com");"#,
+        r#"fetch("http://localhost");"#,
+        r#"fetch("http://127.0.0.1");"#,
+    ] {
+        let findings = scan_bundle(code, "test.mjs");
+        assert!(
+            findings.iter().all(|f| f.rule_id != "SEC112"),
+            "{code} should be trusted: {findings:?}"
+        );
+    }
+}
+
+#[test]
+fn sec112_bare_host_lookalikes_blocked() {
+    for code in [
+        r#"fetch("https://evil.net");"#,
+        r#"fetch("https://evil-dev-godaddy.com");"#,
+        r#"fetch('https://dev-godaddy.com.evil.net');"#,
+        "fetch(`https://stage-godaddy.com`);",
+    ] {
+        let findings = scan_bundle(code, "test.mjs");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "SEC112"),
+            "{code} should not be trusted: {findings:?}"
+        );
+    }
+}
+
+#[test]
 fn sec112_nonprod_godaddy_lookalikes_blocked() {
     for url in [
         "https://evil-dev-godaddy.com/",
