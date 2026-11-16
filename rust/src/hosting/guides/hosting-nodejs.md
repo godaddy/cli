@@ -1,5 +1,5 @@
 ---
-summary: Deploy a Node.js app to GoDaddy hosting by creating, uploading, previewing, attaching a plan, and publishing
+summary: Create a Node.js app on GoDaddy hosting, upload your code, preview the app, attach it to a plan, and publish it
 ---
 
 # `gddy hosting` — deploying a Node.js application
