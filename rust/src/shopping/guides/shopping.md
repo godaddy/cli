@@ -12,12 +12,12 @@ Use `gddy shopping` to find GoDaddy products, add selected purchase options to a
 - A **checkout session** is your cart. It holds the purchase options you intend to purchase, and the `shopping checkout` commands manage it.
 - A checkout session can show eligible saved **payment methods**. Their availability can depend on the checkout session, including its currency.
 - A checkout session can include required agreements. Review every agreement and its link before placing an order.
-- A checkout session includes important links, such as terms, privacy, refund, shipping, or help information. Review every listed link before placing an order.
+- A checkout session includes important links, for example terms, privacy, refund, shipping, or help information. Review every listed link before placing an order.
 - Complete a checkout session to place an **order**.
 
 ## Find a product
 
-List the currently supported product categories:
+List the supported product categories:
 
 ```bash
 gddy shopping catalog category
@@ -38,7 +38,7 @@ Use `--category` to narrow the results. It can be repeated when more than one ca
 gddy shopping catalog search --category webHosting --category email
 ```
 
-`--limit` controls the number of products, not the number of purchase options. Use a product ID with `catalog get` or `catalog lookup`; use a purchase option ID when creating a checkout session. A requested currency is a preference—the currency returned with the price is authoritative.
+`--limit` controls the number of products, not the number of purchase options. Use a product ID with `catalog get` or `catalog lookup`; use a purchase option ID when creating a checkout session. A requested currency is a preference. The currency returned with the price is authoritative.
 
 If you always shop in one currency, save it once with `gddy config set currency GBP` (undo it with `gddy config unset currency`). `catalog search`, `catalog get`, `catalog lookup` and `checkout create` then use it unless you pass `--currency` or set the `GDDY_CURRENCY` environment variable; precedence is the flag, then the environment variable, then your saved setting. `checkout update` changes a session's currency only when you pass `--currency`, so a saved setting never re-prices an existing checkout session.
 
@@ -55,7 +55,7 @@ gddy --output json shopping catalog search --query hosting
 
 ## Create and review a checkout session
 
-Create a checkout session with one selected purchase option. Add buyer details when they are needed for the product or payment method:
+Create a checkout session with one selected purchase option. Add buyer details when they're needed for the product or payment method:
 
 ```bash
 gddy shopping checkout create \
@@ -86,7 +86,7 @@ Then retrieve the checkout session again to see payment methods eligible for tha
 gddy shopping checkout get <checkout-id> --show-all-payment-instruments
 ```
 
-To select an eligible saved payment method explicitly, provide its ID when creating or updating the checkout session. Only one payment method can be selected. Use `--show-all-payment-instruments` with `checkout get` or `checkout update` to see every eligible method. If the requested method is not selected after an update, the CLI reports it as ineligible.
+To select an eligible saved payment method explicitly, provide its ID when creating or updating the checkout session. Only one payment method can be selected. Use `--show-all-payment-instruments` with `checkout get` or `checkout update` to see every eligible method. If the requested method isn't selected after an update, the CLI reports it as ineligible.
 
 ```bash
 gddy shopping checkout update <checkout-id> \
@@ -121,7 +121,7 @@ gddy shopping checkout complete <checkout-id> \
   --agree
 ```
 
-To provide a billing address, use `--billing-address` with a JSON object containing one or more of these fields: `first_name`, `last_name`, `phone_number`, `street_address`, `extended_address`, `address_locality` (city or locality), `address_region` (state or province), `postal_code`, and `address_country`.
+To provide a billing address, use `--billing-address` with a JSON object. It accepts one or more of these fields: `first_name`, `last_name`, `phone_number`, `street_address`, `extended_address`, `address_locality` (city or locality), `address_region` (state or province), `postal_code`, and `address_country`.
 
 ```bash
 gddy shopping checkout complete <checkout-id> --agree \
@@ -136,7 +136,7 @@ gddy shopping checkout complete <checkout-id> --agree \
 
 ## Review an order
 
-A newly placed order can take a few seconds to become available. Use `--wait` to check until it appears:
+A newly placed order can take a few seconds to become available. Use `--wait` to keep checking until it's available:
 
 ```bash
 gddy shopping order get <order-id> --wait --wait-timeout 15
