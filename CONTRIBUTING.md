@@ -82,7 +82,7 @@ cargo fmt
 cargo check
 
 # Lint guide text (needs Vale 3.24.0; see https://github.com/errata-ai/vale/releases)
-cd .. && vale rust/src/*/guides/*.md && cd rust
+(cd .. && vale rust/src/*/guides/*.md)
 
 # Regenerate the embedded API catalog (needs access to GoDaddy's internal spec repos)
 cargo run -p generate-api-catalog
