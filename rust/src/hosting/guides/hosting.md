@@ -1,5 +1,5 @@
 ---
-summary: Start here for GoDaddy hosting: what the hosting products share and which guide covers yours
+summary: Start here for GoDaddy hosting, including what the hosting products share and which guide covers yours
 ---
 
 # `gddy hosting` — GoDaddy hosting
