@@ -2,7 +2,9 @@
 //! subcommand: type/name validation, the `RecordOptions` bundle, converting
 //! CLI input into v3 `DnsRecord`s, and the paginated `list_dns_records` fetch.
 
-use cli_engine::{CliCoreError, CommandResult, NextAction, NextActionParam};
+use cli_engine::{
+    Alignment, CliCoreError, CommandResult, NextAction, NextActionParam, TableColumn,
+};
 use serde_json::Value;
 
 use crate::domain::api_error;
@@ -461,6 +463,61 @@ pub(super) fn merged_tlsa_data(rec: &types::DnsRecord) -> String {
         ),
         _ => rec.certificate_data.clone().unwrap_or_default(),
     }
+}
+
+/// The fields that tell apart records of one type at one name (an SRV's service,
+/// port and priority; an MX's priority; a CAA's flag and tag; an HTTPS record's
+/// parameters). TLSA's four fields are left out because [`merged_tlsa_data`]
+/// already folds them into `data`.
+pub(super) const DETAIL_FIELDS: &[&str] = &[
+    "priority",
+    "weight",
+    "port",
+    "service",
+    "protocol",
+    "flag",
+    "tag",
+    "parameters",
+];
+
+/// Table columns for [`DETAIL_FIELDS`], each shown only when some listed record
+/// has a value for it, so a table of A and TXT records is unchanged while SRV,
+/// MX and CAA records bring the fields that distinguish them.
+pub(super) fn detail_columns() -> Vec<TableColumn> {
+    let numeric = ["priority", "weight", "port", "flag"];
+    DETAIL_FIELDS
+        .iter()
+        .map(|field| {
+            let header = match *field {
+                "priority" => "Priority",
+                "weight" => "Weight",
+                "port" => "Port",
+                "service" => "Service",
+                "protocol" => "Protocol",
+                "flag" => "Flag",
+                "tag" => "Tag",
+                _ => "Parameters",
+            };
+            let column = TableColumn::new(*field, header).hide_when_empty(true);
+            if numeric.contains(field) {
+                column.align(Alignment::Right)
+            } else {
+                column
+            }
+        })
+        .collect()
+}
+
+/// The [`DETAIL_FIELDS`] a record actually has, as JSON members to merge into a
+/// row of output.
+pub(super) fn detail_values(rec: &types::DnsRecord) -> serde_json::Map<String, Value> {
+    let Ok(Value::Object(all)) = serde_json::to_value(rec) else {
+        return serde_json::Map::new();
+    };
+    DETAIL_FIELDS
+        .iter()
+        .filter_map(|field| all.get(*field).map(|v| ((*field).to_owned(), v.clone())))
+        .collect()
 }
 
 /// Whether two v3 records have the same content — every field except `ttl`

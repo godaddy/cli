@@ -910,3 +910,35 @@ fn same_content_compares_every_field_except_ttl_and_record_id() {
     let desired_caa = v3_record("@", "CAA", "letsencrypt.org", &caa_opts_wild);
     assert!(!same_content(&existing_caa, &desired_caa));
 }
+
+#[test]
+fn the_detail_columns_cover_exactly_the_detail_fields_and_all_hide_when_empty() {
+    let columns = detail_columns();
+    let fields: Vec<&str> = columns.iter().map(|c| c.field.as_str()).collect();
+    assert_eq!(fields, DETAIL_FIELDS);
+    assert!(
+        columns.iter().all(|c| c.hide_when_empty),
+        "every detail column is sparse"
+    );
+}
+
+#[test]
+fn detail_values_carry_only_the_fields_a_record_has() {
+    let a = v3_record("www", "A", "1.2.3.4", &opts());
+    assert!(
+        detail_values(&a).is_empty(),
+        "an A record has no detail fields"
+    );
+
+    let mut srv_opts = opts();
+    srv_opts.priority = Some(10);
+    srv_opts.weight = Some(5);
+    srv_opts.port = Some(5222);
+    srv_opts.service = Some("_xmpp".to_owned());
+    srv_opts.protocol = Some("_tcp".to_owned());
+    let values = detail_values(&v3_record("chat", "SRV", "t.example.com.", &srv_opts));
+    assert_eq!(values["service"], "_xmpp");
+    assert_eq!(values["port"], 5222);
+    assert_eq!(values["priority"], 10);
+    assert!(!values.contains_key("tag") && !values.contains_key("data"));
+}

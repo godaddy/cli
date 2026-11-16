@@ -11,7 +11,8 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 use domains_client::types;
 
 use super::records::{
-    ZONE_AND_NAME, fetch_records, parse_write_type_arg, record_value, verified_result,
+    ZONE_AND_NAME, detail_columns, detail_values, fetch_records, parse_write_type_arg,
+    record_value, verified_result,
 };
 
 output_schema!(DnsDeleteResult {
@@ -88,7 +89,13 @@ fn dry_run_delete_preview(
             } else {
                 "would fail (missing recordId)"
             };
-            json!({"recordId": rec.record_id, "data": record_value(rec), "status": status})
+            // The type-specific fields say which of several records under one
+            // name (an SRV's services, say) would go.
+            let mut row = detail_values(rec);
+            row.insert("recordId".to_owned(), json!(rec.record_id));
+            row.insert("data".to_owned(), json!(record_value(rec)));
+            row.insert("status".to_owned(), json!(status));
+            Value::Object(row)
         })
         .collect();
 
@@ -144,11 +151,17 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("deleted", "Deleted").align(Alignment::Right),
         TableColumn::new("failed", "Failed").align(Alignment::Right),
         TableColumn::new("action", "Action"),
-        TableColumn::new("records", "Records").nested(vec![
-            TableColumn::new("recordId", "Record ID"),
-            TableColumn::new("data", "Data").essential(true),
-            TableColumn::new("status", "Status").essential(true),
-        ]),
+        TableColumn::new("records", "Records")
+            .hide_when_empty(true)
+            .nested({
+                let mut columns = vec![
+                    TableColumn::new("data", "Data").essential(true),
+                    TableColumn::new("status", "Status").essential(true),
+                ];
+                columns.extend(detail_columns());
+                columns.push(TableColumn::new("recordId", "Record ID"));
+                columns
+            }),
     ]
 }
 
@@ -379,6 +392,64 @@ mod tests {
                 "{field:?} was stripped by default_fields; preview: {projected}"
             );
         }
+    }
+
+    fn test_srv_record(record_id: &str, service: &str, port: u16) -> types::DnsRecord {
+        types::DnsRecord {
+            data: Some("chat-server.example.com.".to_owned()),
+            name: "chat".to_owned(),
+            port: Some(port),
+            priority: Some(10),
+            weight: Some(5),
+            protocol: Some("_tcp".to_owned()),
+            service: Some(service.to_owned()),
+            type_: types::DnsRecordType("SRV".to_owned()),
+            ..test_record(record_id, "")
+        }
+    }
+
+    /// Deleting `--type SRV --name chat` removes every service under it, so the
+    /// preview has to say which services those are: otherwise the rows are
+    /// identical and the customer cannot see what is about to go.
+    #[test]
+    fn dry_run_delete_preview_tells_srv_records_apart() {
+        let existing = vec![
+            test_srv_record("r1", "_sip", 5060),
+            test_srv_record("r2", "_xmpp", 5222),
+        ];
+        let preview = dry_run_delete_preview("example.com", "SRV", "chat", &existing);
+
+        let records = preview["records"].as_array().expect("records array");
+        assert_eq!(records[0]["service"], "_sip");
+        assert_eq!(records[1]["port"], 5222);
+
+        let rendered = cli_engine::preview_human_view(preview, &view_columns());
+        assert!(
+            rendered.contains("SERVICE") && rendered.contains("PORT"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("_sip") && rendered.contains("_xmpp"),
+            "{rendered}"
+        );
+    }
+
+    #[test]
+    fn dry_run_delete_preview_adds_no_columns_for_plain_records() {
+        let existing = vec![test_record("r1", "1.2.3.4"), test_record("r2", "5.6.7.8")];
+        let preview = dry_run_delete_preview("example.com", "A", "www", &existing);
+
+        let rendered = cli_engine::preview_human_view(preview, &view_columns());
+
+        for sparse in [
+            "SERVICE", "PORT", "PRIORITY", "PROTOCOL", "WEIGHT", "TAG", "FLAG",
+        ] {
+            assert!(!rendered.contains(sparse), "{sparse} shown: {rendered}");
+        }
+        assert!(
+            rendered.contains("1.2.3.4") && rendered.contains("would delete"),
+            "{rendered}"
+        );
     }
 
     /// Proves `view_columns()`'s field names actually match what
