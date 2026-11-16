@@ -11,8 +11,8 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 use domains_client::types;
 
 use super::records::{
-    ZONE_AND_NAME, detail_columns, detail_values, fetch_records, parse_write_type_arg,
-    record_value, verified_result,
+    ZONE_AND_NAME, detail_columns, detail_values, fetch_records, merged_tlsa_data,
+    parse_write_type_arg, record_value, verified_result,
 };
 
 output_schema!(DnsDeleteResult {
@@ -67,6 +67,19 @@ fn summarize_delete_outcomes(
     }))
 }
 
+/// How a record is named in a delete's preview and in its per-record results: its
+/// value, except for TLSA, whose value alone is just the certificate — two records
+/// that differ only in usage, selector or matching type would otherwise look
+/// identical, and a delete by name removes every one of them. TLSA is shown the
+/// way `dns list` shows it (`usage selector matching-type certificate`).
+fn record_label_value(rec: &types::DnsRecord) -> Option<String> {
+    if rec.type_.as_str() == "TLSA" {
+        Some(merged_tlsa_data(rec)).filter(|text| !text.is_empty())
+    } else {
+        record_value(rec).map(str::to_owned)
+    }
+}
+
 /// Builds the `dns delete --dry-run` preview from the same matched records the
 /// real execution would delete, so the preview can never drift from what
 /// `delete` would actually do.
@@ -93,7 +106,7 @@ fn dry_run_delete_preview(
             // name (an SRV's services, say) would go.
             let mut row = detail_values(rec);
             row.insert("recordId".to_owned(), json!(rec.record_id));
-            row.insert("data".to_owned(), json!(record_value(rec)));
+            row.insert("data".to_owned(), json!(record_label_value(rec)));
             row.insert("status".to_owned(), json!(status));
             Value::Object(row)
         })
@@ -233,7 +246,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         }
                     },
                 };
-                outcomes.push((record_value(rec).unwrap_or("(no data)").to_string(), err));
+                outcomes.push((
+                    record_label_value(rec).unwrap_or_else(|| "(no data)".to_owned()),
+                    err,
+                ));
             }
 
             summarize_delete_outcomes(&domain, &record_type, &name, &outcomes)
@@ -336,10 +352,46 @@ mod tests {
     #[test]
     fn dry_run_delete_preview_shows_tlsa_certificate_data_as_the_value() {
         let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
+        // No numeric fields: it falls back to the certificate alone, not null.
         let existing = vec![test_tlsa_record("r1", cert)];
         let preview = dry_run_delete_preview("example.com", "TLSA", "www", &existing);
         let records = preview["records"].as_array().expect("records array");
         assert_eq!(records[0]["data"], cert);
+    }
+
+    /// Two TLSA records with the same certificate, port and protocol that differ
+    /// only in usage are different records, and `delete --type TLSA --name www`
+    /// removes both: the preview has to show which is which.
+    #[test]
+    fn dry_run_delete_preview_tells_tlsa_records_apart_by_usage_selector_and_matching_type() {
+        let cert = "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971";
+        let tlsa = |id: &str, usage: u8, selector: u8, matching: u8| types::DnsRecord {
+            usage: Some(types::TlsaUsage(usage)),
+            selector: Some(types::TlsaSelector(selector)),
+            matching_type: Some(types::TlsaMatchingType(matching)),
+            port: Some(443),
+            protocol: Some("_tcp".to_owned()),
+            ..test_tlsa_record(id, cert)
+        };
+        let existing = vec![tlsa("r1", 3, 1, 1), tlsa("r2", 1, 0, 2)];
+
+        let preview = dry_run_delete_preview("example.com", "TLSA", "www", &existing);
+
+        let records = preview["records"].as_array().expect("records array");
+        assert_eq!(records[0]["data"], format!("3 1 1 {cert}"));
+        assert_eq!(records[1]["data"], format!("1 0 2 {cert}"));
+        assert_ne!(records[0]["data"], records[1]["data"]);
+    }
+
+    #[test]
+    fn a_record_that_is_not_tlsa_is_labelled_by_its_plain_value() {
+        let a = test_record("r1", "1.2.3.4");
+        assert_eq!(record_label_value(&a).as_deref(), Some("1.2.3.4"));
+        let none = types::DnsRecord {
+            data: None,
+            ..test_record("r2", "")
+        };
+        assert_eq!(record_label_value(&none), None);
     }
 
     /// A record without a recordId can't actually be deleted (the real
