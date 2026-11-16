@@ -1,0 +1,31 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+level: error
+ignorecase: true
+# Re-case the replacement when the match starts a sentence ("Prior to" becomes "Before").
+capitalize: true
+action:
+  name: replace
+swap:
+  on-prem: on-premises
+  on premise: on-premises
+  on-premise: on-premises
+  blacklist: blocklist
+  blacklisted: blocklisted
+  blacklisting: blocklisting
+  whitelist: allowlist
+  whitelisted: allowlisted
+  whitelisting: allowlisting
+  utilize: use
+  utilizes: uses
+  utilized: used
+  utilizing: using
+  utilization: use
+  in order to: to
+  allows you to: lets you
+  is able to: can
+  in the event that: if
+  prior to: before
+  subsequent to: after
+  it is recommended: it's recommended
+  wizard: guided workflow

@@ -1,0 +1,13 @@
+# Words to avoid in guides. Warning level until the guides are cleaned up.
+extends: existence
+message: "Avoid '%s'. Use a plain alternative."
+level: warning
+scope: sentence
+ignorecase: true
+tokens:
+  - '[Aa]bove'
+  - '[Aa]ppears?'
+  - '[Bb]elow'
+  - '[Cc]urrently'
+  - '[Pp]lease'
+  - '[Vv]ia'

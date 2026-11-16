@@ -1,0 +1,9 @@
+# Matches a fixed list of leading gerunds. A heading that starts with another gerund
+# needs a manual check.
+extends: existence
+message: "Heading starts with a gerund ('%s'). Use the imperative form instead, for example 'Configure' not 'Configuring'."
+level: warning
+scope: heading
+ignorecase: false
+tokens:
+  - '^(Adding|Configuring|Creating|Deleting|Deploying|Enabling|Getting|Installing|Managing|Registering|Removing|Running|Setting|Starting|Stopping|Testing|Transferring|Updating|Upgrading|Using|Viewing|Working)\b'

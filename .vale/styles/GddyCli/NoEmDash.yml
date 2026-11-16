@@ -1,0 +1,9 @@
+# Only the em dash character (U+2014). En dashes in number ranges (10–120) are fine.
+# Warning level until the guides are cleaned up.
+extends: existence
+message: "Remove the em dash. Use a colon, period, comma or new sentence."
+level: warning
+scope: text
+nonword: true
+tokens:
+  - '—'

@@ -1,0 +1,7 @@
+extends: existence
+message: "Remove the recap heading '%s'. A guide shouldn't end with a summary or recap section."
+level: warning
+scope: heading
+ignorecase: true
+tokens:
+  - '^(Summary|What you learned|What you did|What we learned|What we covered|Recap|Wrapping up|Conclusion|Key takeaways|Next steps)$'
