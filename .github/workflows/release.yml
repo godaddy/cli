@@ -230,13 +230,33 @@ jobs:
         shell: pwsh
         env:
           SM_CLIENT_CERT_B64: ${{ secrets.SM_CLIENT_CERT_FILE }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY }}
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+          SM_HOST: ${{ vars.SM_HOST }}
+          KEYLOCKER_KEYPAIR_ALIAS: ${{ vars.KEYLOCKER_KEYPAIR_ALIAS }}
         run: |
+          # Fail up front, naming everything that is missing, instead of
+          # failing later inside the base64 decode or the signing action.
+          $missing = @('SM_API_KEY', 'SM_CLIENT_CERT_PASSWORD', 'SM_HOST', 'KEYLOCKER_KEYPAIR_ALIAS') |
+            Where-Object { [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) }
+          if ([string]::IsNullOrWhiteSpace($env:SM_CLIENT_CERT_B64)) { $missing += 'SM_CLIENT_CERT_FILE' }
+          if ($missing) {
+            Write-Host "::error::Windows signing is enabled (ENABLE_WINDOWS_SIGNING=1) but these secrets/variables are not set: $($missing -join ', '). Set them in the repository settings, or set ENABLE_WINDOWS_SIGNING to 0 to skip signing."
+            exit 1
+          }
+          try {
+            $bytes = [Convert]::FromBase64String($env:SM_CLIENT_CERT_B64)
+          } catch {
+            Write-Host '::error::The SM_CLIENT_CERT_FILE secret is not valid base64. It must be the base64 encoding of the client certificate .p12 file.'
+            exit 1
+          }
           $p12 = Join-Path $env:RUNNER_TEMP 'keylocker-client.p12'
-          [IO.File]::WriteAllBytes($p12, [Convert]::FromBase64String($env:SM_CLIENT_CERT_B64))
+          [IO.File]::WriteAllBytes($p12, $bytes)
           "SM_CLIENT_CERT_FILE=$p12" >> $env:GITHUB_ENV
 
       # The action silently skips signing when `input` or `keypair-alias` is
-      # empty, so the verify step below is what catches a missing alias.
+      # empty. The step above checks the alias; the verify step below catches
+      # anything else that leaves the binary unsigned.
       - name: Sign gddy.exe (DigiCert KeyLocker)
         if: matrix.os == 'windows-latest' && vars.ENABLE_WINDOWS_SIGNING == '1'
         uses: digicert/code-signing-software-trust-action@fae23a455ba4bde62b64fd7cb2f81ade788f5a95 # v1.2.1
