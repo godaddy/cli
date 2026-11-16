@@ -265,7 +265,7 @@ async fn fetch_records_keeps_server_side_filtering_everywhere_else() {
     assert_eq!(found.len(), 1, "no name given, nothing to filter out");
 }
 
-#[derive(clap::Parser)]
+#[derive(Debug, clap::Parser)]
 struct WriteCli {
     #[command(flatten)]
     args: RecordWriteArgs,
@@ -416,6 +416,285 @@ fn v3_record_carries_srv_and_caa_fields() {
     let caa = v3_record("@", "CAA", "letsencrypt.org", &caa_opts);
     assert_eq!(caa.flag, Some(128));
     assert_eq!(caa.tag.as_deref(), Some("issue"));
+}
+
+/// Every flag the API requires for a type, as `(type, flags, a complete set of
+/// argv for it)`. The API answers a missing one with a 400 after login; these
+/// must be caught when the arguments are parsed.
+const REQUIRED_FLAGS_BY_TYPE: &[(&str, &[&str], &[&str])] = &[
+    ("MX", &["--priority"], &["--priority", "10"]),
+    (
+        "SRV",
+        &[
+            "--priority",
+            "--weight",
+            "--port",
+            "--service",
+            "--protocol",
+        ],
+        &[
+            "--priority",
+            "1",
+            "--weight",
+            "1",
+            "--port",
+            "80",
+            "--service",
+            "_sip",
+            "--protocol",
+            "_tcp",
+        ],
+    ),
+    ("HTTPS", &["--priority"], &["--priority", "1"]),
+    ("SVCB", &["--priority"], &["--priority", "1"]),
+    (
+        "TLSA",
+        &[
+            "--usage",
+            "--selector",
+            "--matching-type",
+            "--port",
+            "--protocol",
+        ],
+        &[
+            "--usage",
+            "3",
+            "--selector",
+            "1",
+            "--matching-type",
+            "1",
+            "--port",
+            "443",
+            "--protocol",
+            "_tcp",
+        ],
+    ),
+    ("CAA", &["--tag"], &["--tag", "issue"]),
+];
+
+fn parse_type(record_type: &str, extra: &[&str]) -> Result<WriteCli, clap::Error> {
+    use clap::Parser;
+    let mut argv = vec![
+        "t",
+        "example.com",
+        "--type",
+        record_type,
+        "--name",
+        "n",
+        "--data",
+        "x",
+    ];
+    argv.extend_from_slice(extra);
+    WriteCli::try_parse_from(argv)
+}
+
+/// Drop `flag` and its value from a complete argv.
+fn without(flag: &str, argv: &[&str]) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut skip = false;
+    for (i, arg) in argv.iter().enumerate() {
+        if skip {
+            skip = false;
+        } else if *arg == flag {
+            skip = i + 1 < argv.len();
+        } else {
+            out.push((*arg).to_owned());
+        }
+    }
+    out
+}
+
+#[test]
+fn each_type_accepts_its_complete_set_of_flags() {
+    for (record_type, _, complete) in REQUIRED_FLAGS_BY_TYPE {
+        parse_type(record_type, complete).expect(record_type);
+    }
+}
+
+#[test]
+fn each_required_flag_is_reported_by_name_when_missing() {
+    for (record_type, required, complete) in REQUIRED_FLAGS_BY_TYPE {
+        for flag in *required {
+            let argv = without(flag, complete);
+            let refs: Vec<&str> = argv.iter().map(String::as_str).collect();
+            let err = parse_type(record_type, &refs)
+                .expect_err(&format!("{record_type} without {flag} should not parse"));
+            let text = err.to_string();
+            assert!(text.contains(flag), "{record_type} without {flag}: {text}");
+        }
+    }
+}
+
+#[test]
+fn the_lower_case_type_requires_the_same_flags() {
+    // `ignore_case` on --type is what makes the conditions match `--type srv`.
+    let err = parse_type("srv", &["--priority", "1"]).expect_err("srv needs more");
+    assert!(err.to_string().contains("--weight"), "{err}");
+    let err = parse_type(
+        "tlsa",
+        &["--usage", "3", "--selector", "1", "--matching-type", "1"],
+    )
+    .expect_err("tlsa needs port and protocol");
+    assert!(err.to_string().contains("--port"), "{err}");
+}
+
+#[test]
+fn types_that_need_none_of_them_still_parse_with_none() {
+    for record_type in ["A", "AAAA", "CNAME", "TXT"] {
+        parse_type(record_type, &[]).expect(record_type);
+    }
+}
+
+#[test]
+fn the_documented_requirements_match_what_clap_enforces() {
+    // spec_cmd reads CONDITIONALLY_REQUIRED_FLAGS by hand because clap cannot
+    // expose required_if_eq; a flag listed there must really be required for the
+    // types it names, and every flag clap requires must be listed.
+    let listed: std::collections::BTreeSet<&str> = CONDITIONALLY_REQUIRED_FLAGS
+        .iter()
+        .map(|(flag, _)| *flag)
+        .collect();
+    let enforced: std::collections::BTreeSet<&str> = REQUIRED_FLAGS_BY_TYPE
+        .iter()
+        .flat_map(|(_, required, _)| required.iter().map(|f| f.trim_start_matches("--")))
+        .collect();
+    assert_eq!(listed, enforced);
+}
+
+#[test]
+fn service_and_protocol_gain_the_underscore_the_api_requires() {
+    // With or without it, the same label comes out.
+    for (given, want) in [
+        ("sip", "_sip"),
+        ("_sip", "_sip"),
+        ("tcp", "_tcp"),
+        ("_tcp", "_tcp"),
+        ("x509", "_x509"),
+        ("a-b", "_a-b"),
+        ("a_b", "_a_b"),
+        ("SIP", "_SIP"),
+        ("_SIP", "_SIP"),
+        // A deliberate second underscore is the customer's own and is kept.
+        ("__sip", "__sip"),
+        ("sip_", "_sip_"),
+    ] {
+        assert_eq!(
+            parse_underscore_label(given).as_deref(),
+            Ok(want),
+            "{given}"
+        );
+    }
+    // 63 characters in all is the longest label the API accepts, underscore
+    // included: 62 given characters become 63, and 63 given become 64.
+    let longest = "a".repeat(62);
+    assert_eq!(
+        parse_underscore_label(&longest).as_deref(),
+        Ok(format!("_{longest}").as_str())
+    );
+    assert!(parse_underscore_label(&format!("{longest}a")).is_err());
+    assert!(parse_underscore_label(&format!("_{longest}a")).is_err());
+
+    for bad in ["", "_", " sip", "_ sip", "sip.x", "_sip.x", "é", "_é"] {
+        let err = parse_underscore_label(bad).expect_err(bad);
+        assert!(err.contains("sip") && err.contains("62"), "{bad}: {err}");
+    }
+}
+
+#[test]
+fn service_and_protocol_are_normalized_when_the_arguments_are_parsed() {
+    use clap::Parser;
+    // The other flags SRV requires are always given, so only the value under
+    // test can make the parse fail.
+    let parse = |service: &str, protocol: &str| {
+        WriteCli::try_parse_from([
+            "t",
+            "example.com",
+            "--type",
+            "SRV",
+            "--name",
+            "chat",
+            "--data",
+            "t.example.com.",
+            "--priority",
+            "1",
+            "--weight",
+            "1",
+            "--port",
+            "80",
+            "--service",
+            service,
+            "--protocol",
+            protocol,
+        ])
+    };
+    // Plain and underscored spellings are the same request.
+    for (service, protocol) in [
+        ("sip", "tcp"),
+        ("_sip", "_tcp"),
+        ("sip", "_tcp"),
+        ("_sip", "tcp"),
+    ] {
+        let ok = parse(service, protocol).expect("valid");
+        assert_eq!(
+            ok.args.service.as_deref(),
+            Some("_sip"),
+            "{service} {protocol}"
+        );
+        assert_eq!(
+            ok.args.protocol.as_deref(),
+            Some("_tcp"),
+            "{service} {protocol}"
+        );
+    }
+
+    // A value that cannot be a label is still caught before any request.
+    for (flag, service, protocol) in [("--service", "si p", "tcp"), ("--protocol", "sip", "t.cp")] {
+        let err = parse(service, protocol).expect_err("not a label");
+        let text = err.to_string();
+        assert!(
+            text.contains(flag) && text.contains("letters"),
+            "{flag}: {text}"
+        );
+    }
+}
+
+#[test]
+fn the_full_dns_name_is_rejected_for_srv_and_tlsa_and_the_message_says_what_to_use() {
+    let err = validate_record_name("SRV", "_sip._tcp.chat").expect_err("full name");
+    assert!(
+        err.contains("--name chat") && err.contains("--service/--protocol"),
+        "{err}"
+    );
+    assert!(err.contains("_sip._tcp"), "{err}");
+
+    // At the apex the record's own name is `@`.
+    let err = validate_record_name("SRV", "_sip._tcp").expect_err("apex full name");
+    assert!(err.contains("--name @"), "{err}");
+
+    // A name with dots below the record keeps them.
+    let err = validate_record_name("SRV", "_sip._tcp.a.b").expect_err("nested");
+    assert!(err.contains("--name a.b"), "{err}");
+
+    let err = validate_record_name("TLSA", "_443._tcp.www").expect_err("tlsa full name");
+    assert!(
+        err.contains("--name www") && err.contains("--port/--protocol"),
+        "{err}"
+    );
+}
+
+#[test]
+fn the_records_own_name_and_every_other_type_are_accepted() {
+    for name in ["chat", "@", "a.b", "_underscored", "_one.two"] {
+        assert!(validate_record_name("SRV", name).is_ok(), "{name}");
+        assert!(validate_record_name("TLSA", name).is_ok(), "{name}");
+    }
+    // Only SRV and TLSA have a composed name; an underscore name is ordinary elsewhere.
+    for ty in ["A", "TXT", "CNAME", "MX", "CAA"] {
+        assert!(
+            validate_record_name(ty, "_dmarc._tcp.example").is_ok(),
+            "{ty}"
+        );
+    }
 }
 
 #[test]

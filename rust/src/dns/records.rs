@@ -73,6 +73,35 @@ pub(super) fn parse_list_type_arg(raw: &str) -> Result<String, String> {
     }
 }
 
+/// clap value-parser for `--service` and `--protocol` (SRV and TLSA). DNS and the
+/// API both require these labels to start with an underscore (`_sip`, `_tcp`), so
+/// the underscore says nothing the customer could have meant otherwise: `sip` and
+/// `_sip` are accepted alike and the underscore is added when it is missing. The
+/// result is checked the way the API checks it — letters, digits, `-` or `_` after
+/// the underscore, at most 63 characters in all (a DNS label) — and nothing more;
+/// any such name is accepted, so there is no list of known services. A bad value
+/// would otherwise cost a login and a 400, so catch it here with an example.
+pub(super) fn parse_underscore_label(raw: &str) -> Result<String, String> {
+    let label = if raw.starts_with('_') {
+        raw.to_owned()
+    } else {
+        format!("_{raw}")
+    };
+    let valid = label.len() > 1
+        && label.len() <= 63
+        && label[1..]
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    if valid {
+        Ok(label)
+    } else {
+        Err(format!(
+            "{raw:?} must be letters, digits, `-` or `_`, up to 62 characters (for example \
+             `sip` or `tcp`)"
+        ))
+    }
+}
+
 /// Optional record fields shared by `add` and `set`, including the CAA-only
 /// `flag`/`tag`, the TLSA-only `usage`/`selector`/`matching_type`, and the
 /// HTTPS/SVCB-only `parameters` (SvcParams).
@@ -116,6 +145,14 @@ impl RecordOptions {
 /// table by hand. Keep in sync with the attributes below.
 #[cfg_attr(not(feature = "dev-portal-spec"), allow(dead_code))]
 pub(crate) const CONDITIONALLY_REQUIRED_FLAGS: &[(&str, &str)] = &[
+    (
+        "priority",
+        "required when --type is MX, SRV, HTTPS, or SVCB",
+    ),
+    ("weight", "required when --type is SRV"),
+    ("port", "required when --type is SRV or TLSA"),
+    ("service", "required when --type is SRV"),
+    ("protocol", "required when --type is SRV or TLSA"),
     ("tag", "required when --type is CAA"),
     ("usage", "required when --type is TLSA"),
     ("selector", "required when --type is TLSA"),
@@ -157,25 +194,57 @@ pub(super) struct RecordWriteArgs {
     #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(i64).range(MIN_TTL..=MAX_TTL))]
     pub(super) ttl: Option<i64>,
 
-    /// Record priority (MX, SRV, HTTPS, and SVCB only). For HTTPS/SVCB, 0
-    /// means AliasMode.
-    #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(0..=65535))]
+    /// Record priority (MX, SRV, HTTPS, and SVCB only; required for those). For
+    /// HTTPS/SVCB, 0 means AliasMode.
+    #[arg(
+        long,
+        value_name = "N",
+        value_parser = clap::value_parser!(i64).range(0..=65535),
+        required_if_eq_any([
+            ("record_type", "MX"),
+            ("record_type", "SRV"),
+            ("record_type", "HTTPS"),
+            ("record_type", "SVCB"),
+        ])
+    )]
     pub(super) priority: Option<i64>,
 
-    /// Service port (SRV and TLSA only).
-    #[arg(long, value_name = "PORT", value_parser = clap::value_parser!(i64).range(1..=65535))]
+    /// Service port (SRV and TLSA only; required for those).
+    #[arg(
+        long,
+        value_name = "PORT",
+        value_parser = clap::value_parser!(i64).range(1..=65535),
+        required_if_eq_any([("record_type", "SRV"), ("record_type", "TLSA")])
+    )]
     pub(super) port: Option<i64>,
 
-    /// Record weight (SRV only).
-    #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(0..=65535))]
+    /// Record weight (SRV only; required for SRV).
+    #[arg(
+        long,
+        value_name = "N",
+        value_parser = clap::value_parser!(i64).range(0..=65535),
+        required_if_eq("record_type", "SRV")
+    )]
     pub(super) weight: Option<i64>,
 
-    /// Service protocol, e.g. _tcp (SRV and TLSA only).
-    #[arg(long, value_name = "PROTO")]
+    /// Service protocol, e.g. tcp or udp (SRV and TLSA only; required for those).
+    /// A leading underscore is added if you leave it off.
+    #[arg(
+        long,
+        value_name = "PROTO",
+        value_parser = parse_underscore_label,
+        required_if_eq_any([("record_type", "SRV"), ("record_type", "TLSA")])
+    )]
     pub(super) protocol: Option<String>,
 
-    /// Service type (SRV only).
-    #[arg(long, value_name = "SERVICE")]
+    /// Service name, e.g. sip or xmpp (SRV only; required for SRV). A leading
+    /// underscore is added if you leave it off.
+    #[arg(
+        long,
+        value_name = "SERVICE",
+        value_parser = parse_underscore_label,
+        required_if_eq("record_type", "SRV")
+    )]
     pub(super) service: Option<String>,
 
     /// CAA flag byte, 0-255 (CAA only; 0 non-critical, 128 critical). Defaults to 0.
@@ -230,6 +299,36 @@ pub(super) fn validate_caa_fields(record_type: &str, opts: &RecordOptions) -> Re
         ));
     }
     Ok(())
+}
+
+/// `dns add` and `dns set` write the record under the `--name` they are given, so
+/// for SRV and TLSA that must be the record's own name, not the full DNS name the
+/// API also understands as a selector (`_sip._tcp.chat`, `_443._tcp.www`). Written
+/// under the full name, a record whose prefix differs from its service and
+/// protocol lands at a nested name nobody asked for (and `set` would move an
+/// existing record there). Reject it up front and say what to type. Pure so it is
+/// unit-testable and runs before any network call.
+pub(super) fn validate_record_name(record_type: &str, name: &str) -> Result<(), String> {
+    if !COMPOSITE_NAME_TYPES.contains(&record_type) {
+        return Ok(());
+    }
+    let mut labels = name.splitn(3, '.');
+    let (Some(first), Some(second)) = (labels.next(), labels.next()) else {
+        return Ok(());
+    };
+    if !(first.starts_with('_') && second.starts_with('_')) {
+        return Ok(());
+    }
+    let own_name = labels.next().unwrap_or("@");
+    let flags = if record_type == "SRV" {
+        "--service/--protocol"
+    } else {
+        "--port/--protocol"
+    };
+    Err(format!(
+        "use the record's own name, not the full DNS name: for {record_type} write \
+         `--name {own_name}` and give {flags} ({first}.{second} here) separately"
+    ))
 }
 
 /// Validate the TLSA-specific fields against the record type. `--usage`/

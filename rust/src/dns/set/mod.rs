@@ -10,7 +10,7 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 use super::list::build_list_output;
 use super::records::{
     RecordOptions, RecordWriteArgs, fetch_records, v3_records, validate_caa_fields,
-    validate_svcb_fields, validate_tlsa_fields,
+    validate_record_name, validate_svcb_fields, validate_tlsa_fields,
 };
 use super::records::{ZONE_AND_NAME, verified_result};
 
@@ -116,6 +116,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let name = args.write.name;
             let domain_format = args.write.domain_format.form(&ctx)?;
             let replace_conflicting = args.replace_conflicting_types;
+            validate_record_name(&record_type, &name)
+                .map_err(crate::error::GddyError::validation)?;
             validate_caa_fields(&record_type, &opts)
                 .map_err(crate::error::GddyError::validation)?;
             validate_tlsa_fields(&record_type, &opts)

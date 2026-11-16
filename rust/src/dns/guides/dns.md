@@ -53,6 +53,8 @@ gddy dns set example.com --type TXT --name @ --data "v=spf1 -all" --dry-run
 
 The dry-run preview lists the planned action per record so you can confirm it before it runs for real.
 
+For `SRV` and `TLSA` records, give `add` and `set` the record's own name and the service and protocol (or port and protocol) as separate flags, e.g. `--name chat --service sip --protocol tcp`.
+
 ## Deleting records
 
 `delete` removes every record matching a type+name pair:
@@ -71,10 +73,28 @@ Domain names and record names can be typed either as Unicode (`münchen.de`) or 
 
 ## Type-specific flags
 
-Most of these only apply to certain record types — set them only when the type calls for it:
+Some record types need extra flags:
 
-| Flag | Applies to | Notes |
+| Record type | Required flags | Optional |
 |---|---|---|
-| `--priority` | `MX`, `SRV` | |
-| `--port`, `--weight`, `--protocol`, `--service` | `SRV` | |
-| `--flag`, `--tag` | `CAA` | `--tag` is required for CAA (e.g. `issue`, `issuewild`, `iodef`); `--data` carries the CA domain/value |
+| `MX` | `--priority` | |
+| `SRV` | `--priority`, `--weight`, `--port`, `--service`, `--protocol` | |
+| `HTTPS`, `SVCB` | `--priority` (`0` means AliasMode) | `--parameters` |
+| `TLSA` | `--usage`, `--selector`, `--matching-type`, `--port`, `--protocol` | |
+| `CAA` | `--tag` (`issue`, `issuewild` or `iodef`); `--data` carries the CA domain or value | `--flag` (defaults to `0`) |
+
+`--service` and `--protocol` take the plain name, e.g. `--service sip --protocol tcp`. GoDaddy stores them with a leading underscore (`_sip._tcp`), which `gddy` adds for you; `--service _sip` works too. Any name made of letters, digits, `-` and `_` (up to 62 characters before the underscore) is accepted, so custom services work. Where they are shown (`--fields service,protocol`, or JSON), they appear in the underscore form, since that is the DNS name.
+
+Example SRV record:
+
+```
+gddy dns add example.com \
+  --type SRV \
+  --name chat \
+  --data chat-server.example.com. \
+  --priority 10 \
+  --weight 5 \
+  --port 5222 \
+  --service xmpp \
+  --protocol tcp
+```
