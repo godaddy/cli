@@ -6,7 +6,7 @@ use platform_app_client::{create_application, update_application};
 /// registry value that is never accepted as input, so it has no variant here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub(super) enum DistributionTypeArg {
-    /// Listed in the marketplace and installable by anyone.
+    /// Eligible for public distribution through the marketplace.
     Public,
     /// Visible to and installable by the owning organization only.
     Private,
