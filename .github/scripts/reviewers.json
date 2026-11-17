@@ -75,12 +75,15 @@
         "rust/src/platform/**"
       ],
       "users": [
+        "abotsford-godaddy",
         "dsingh5-godaddy",
         "nmolham-godaddy",
+        "rneudorf-godaddy",
         "sgopalan-godaddy",
         "smukherjee-godaddy",
+        "ssmith1-godaddy",
         "tmittal-godaddy",
-        "wcole1-godaddy"
+        "wvega-godaddy"
       ]
     }
   ]
