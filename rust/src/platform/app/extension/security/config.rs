@@ -6,7 +6,18 @@ use super::types::SecurityConfig;
 
 pub fn security_config() -> SecurityConfig {
     SecurityConfig {
-        trusted_domains: vec!["*.godaddy.com", "godaddy.com", "localhost", "127.0.0.1"],
+        trusted_domains: vec![
+            "*.godaddy.com",
+            "godaddy.com",
+            "*.dev-godaddy.com",
+            "dev-godaddy.com",
+            "*.test-godaddy.com",
+            "test-godaddy.com",
+            "*.ote-godaddy.com",
+            "ote-godaddy.com",
+            "localhost",
+            "127.0.0.1",
+        ],
         exclude: vec![
             "**/node_modules/**",
             "**/dist/**",

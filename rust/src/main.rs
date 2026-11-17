@@ -88,6 +88,13 @@ async fn main() -> ExitCode {
             .with_default_auth_provider("godaddy")
             .with_auth_provider(auth_provider)
             .with_auth_extra_commands([scopes::auth_scopes_command()])
+            // gddy registers a single provider, so `provider` is not useful to
+            // display by default, and the granted scope list is long enough to
+            // truncate in `auth status` human output. Both stay available via
+            // `--fields provider,scopes`; `auth login` still shows the scopes
+            // it just granted.
+            .with_auth_status_default_fields("identity,expires_at,env,expired,refreshable")
+            .with_auth_login_default_fields("identity,expires_at,env,refreshable,scopes")
             .with_min_stage(cli_engine::Stage::Ga)
             .with_environments(Arc::clone(environments::instance()))
             .with_root_next_actions(Arc::new(|| {

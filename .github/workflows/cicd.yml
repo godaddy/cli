@@ -70,3 +70,29 @@ jobs:
             echo "ERROR: unresolved external \$ref(s) in committed API catalog schemas (shown above)"
             exit 1
           fi
+
+  guides-lint:
+    # Lints the embedded guide text with Vale. Findings are reported but don't fail
+    # the job yet (fail_on_error: false); a later change sets it to true. Don't make
+    # this job a required check before then. The action reports through pull request
+    # annotations, so it runs only on pull requests.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Lint guide text
+        uses: vale-cli/vale-action@518a9136acc6e6668ce7c00d367051e0941e87ff # v3.0.0
+        with:
+          version: 3.24.0
+          reviewdog_version: 0.21.0
+          fail_on_error: false
+          sync: false
+          files: rust/src
+          glob: "**/guides/*.md"
