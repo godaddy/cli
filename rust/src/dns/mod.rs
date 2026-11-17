@@ -238,14 +238,29 @@ mod tests {
         }
     }
 
-    /// `set`/`delete` opted into handler-driven `--dry-run` (to build a real
+    /// `add`/`set`/`delete` opted into handler-driven `--dry-run` (to build a real
     /// preview via `fetch_records`), which means the handler now runs under
     /// `--dry-run` too — unlike the generic short-circuit, that must not skip
     /// the fail-closed `Required`-auth check.
     #[tokio::test]
-    async fn dns_set_and_delete_dry_run_still_require_auth() {
+    async fn dns_write_dry_runs_still_require_auth() {
         const AUTH_FAILURE_EXIT: i32 = 2;
-        let cases: [&[&str]; 2] = [
+        let cases: [&[&str]; 3] = [
+            &[
+                "gddy",
+                "dns",
+                "add",
+                "example.com",
+                "--type",
+                "A",
+                "--name",
+                "www",
+                "--data",
+                "5.6.7.8",
+                "--dry-run",
+                "--output",
+                "json",
+            ],
             &[
                 "gddy",
                 "dns",

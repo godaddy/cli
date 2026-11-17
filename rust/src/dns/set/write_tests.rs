@@ -46,8 +46,10 @@ async fn write_with_conflict_handling_creates_without_conflict() {
         .mock_async(|when, then| {
             when.method(POST)
                 .path("/v3/domains/zones/example.com/dns-records");
-            then.status(201)
-                .json_body(json!({ "type": "A", "name": "www", "data": "1.2.3.4", "ttl": 3600 }));
+            then.status(201).json_body(json!({
+                "type": "A", "name": "www", "data": "1.2.3.4", "ttl": 3600,
+                "recordId": "new-1"
+            }));
         })
         .await;
 
@@ -68,6 +70,15 @@ async fn write_with_conflict_handling_creates_without_conflict() {
     assert_eq!(outcomes.len(), 1);
     assert_eq!(outcomes[0].kind, "created");
     assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
+    // The id the API assigned reaches the result, so a real run can report it.
+    assert_eq!(outcomes[0].record_id.as_deref(), Some("new-1"));
+    assert_eq!(
+        outcomes[0]
+            .new
+            .as_ref()
+            .and_then(|r| r.record_id.as_deref()),
+        Some("new-1")
+    );
 }
 
 #[tokio::test]
