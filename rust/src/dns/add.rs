@@ -12,9 +12,9 @@ use super::conflicts::{
     WriteErrorContext, conflicting_records, describe_duplicate_record, describe_write_error,
 };
 use super::records::{
-    RecordOptions, RecordWriteArgs, ZONE_AND_NAME, change_columns, change_entry, fetch_records,
-    same_content, v3_record, v3_records, validate_caa_fields, validate_record_name,
-    validate_svcb_fields, validate_tlsa_fields, verified_result,
+    RecordOptions, RecordWriteArgs, ZONE_AND_NAME, as_stored, change_columns, change_entry,
+    composed_owner, fetch_records, same_content, v3_record, v3_records, validate_caa_fields,
+    validate_record_name, validate_svcb_fields, validate_tlsa_fields, verified_result,
 };
 
 // `dns add` creates one v3 record per `--data` value; it reports each outcome
@@ -119,7 +119,11 @@ fn add_blocker(
     let duplicate = existing_at_name
         .iter()
         .any(|r| r.type_.as_str() == record_type && same_content(r, &record));
-    if duplicate || !conflicting_records(record_type, existing_at_name).is_empty() {
+    // A name holds one CNAME, whatever its target, so a CNAME with a different
+    // value than the one already there is refused just like an exact duplicate.
+    let second_cname =
+        record_type == "CNAME" && existing_at_name.iter().any(|r| r.type_.as_str() == "CNAME");
+    if duplicate || second_cname || !conflicting_records(record_type, existing_at_name).is_empty() {
         Some(describe_duplicate_record(
             record_type,
             data,
@@ -134,10 +138,23 @@ fn add_blocker(
     }
 }
 
+/// The name `add` has to look under for what would block it: the record's own
+/// name, except for SRV and TLSA, which the API files under the composed owner
+/// (`_sip._tcp.chat`). A CNAME at the short name `chat` is a different owner and
+/// blocks nothing there.
+fn owner_to_check(name: &str, record: Option<&types::DnsRecord>) -> String {
+    record
+        .and_then(composed_owner)
+        .unwrap_or_else(|| name.to_owned())
+}
+
 /// The `dns add --dry-run` preview: one `create` per `--data` value, each with the
 /// record it would write, or a `fail` entry carrying the reason when something
-/// already in the zone would make the API refuse it. The `new` record has no
-/// recordId yet — the API assigns it — so a real run's result differs only there.
+/// already in the zone — or created earlier in this same command — would make the
+/// API refuse it. `existing_at_name` is every record at the name (see
+/// [`owner_to_check`]). The `new` record has no recordId yet, and is shown the way
+/// the API will store it (a hostname lower-cased with a trailing dot, say), so a
+/// real run reports the same value.
 fn dry_run_add_preview(
     domain: &str,
     record_type: &str,
@@ -147,21 +164,25 @@ fn dry_run_add_preview(
     existing_at_name: &[types::DnsRecord],
 ) -> Value {
     let mut failed = 0;
-    let records: Vec<Value> = v3_records(name, record_type, data, opts)
-        .iter()
+    // The zone as the add would leave it so far: each value is checked against
+    // the records that are there and those the earlier values would create.
+    let mut simulated = existing_at_name.to_vec();
+    let mut records = Vec::with_capacity(data.len());
+    for (record, value) in v3_records(name, record_type, data, opts)
+        .into_iter()
         .zip(data)
-        .map(|(record, value)| {
-            let mut entry = change_entry("create", None, None, Some(record));
-            if let Some(reason) =
-                add_blocker(domain, name, record_type, value, opts, existing_at_name)
-            {
+    {
+        let mut entry = change_entry("create", None, None, Some(&as_stored(&record)));
+        match add_blocker(domain, name, record_type, value, opts, &simulated) {
+            Some(reason) => {
                 failed += 1;
                 entry["action"] = json!("fail");
                 entry["error"] = json!(reason);
             }
-            entry
-        })
-        .collect();
+            None => simulated.push(record),
+        }
+        records.push(entry);
+    }
     add_result(
         domain,
         record_type,
@@ -232,9 +253,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
             if ctx.dry_run() {
                 // Every type at the name, not just this one: a CNAME and other
-                // types can't share it.
+                // types can't share it. SRV and TLSA live at a composed owner.
+                let owner = owner_to_check(&name, records.first());
                 let at_name =
-                    fetch_records(&client, domain.as_str(), None, Some(&name), debug).await?;
+                    fetch_records(&client, domain.as_str(), None, Some(&owner), debug).await?;
                 let mut preview =
                     dry_run_add_preview(&domain, &record_type, &name, &data, &opts, &at_name);
                 domain_format.convert_fields(&mut preview, ZONE_AND_NAME);
@@ -514,5 +536,72 @@ mod tests {
                 "{field:?} was stripped by default_fields; preview: {projected}"
             );
         }
+    }
+
+    /// A name holds one CNAME whatever its target, so a second one with a different
+    /// value is refused by the API and must not be previewed as a create.
+    #[test]
+    fn dry_run_add_flags_a_second_cname_with_a_different_target() {
+        let existing = [stored("r1", "CNAME", "www", "old.example.com.")];
+        let data = vec!["new.example.com".to_string()];
+        let preview = dry_run_add_preview("example.com", "CNAME", "www", &data, &opts(), &existing);
+        assert_eq!(preview["failed"], 1);
+        assert_eq!(preview["records"][0]["action"], "fail");
+    }
+
+    /// The real loop creates the first of two identical values and the API refuses
+    /// the second as a duplicate; the preview has to say the same.
+    #[test]
+    fn dry_run_add_flags_a_value_repeated_within_the_command() {
+        let data = vec!["192.0.2.1".to_string(), "192.0.2.1".to_string()];
+        let preview = dry_run_add_preview("example.com", "A", "www", &data, &opts(), &[]);
+        assert_eq!(preview["created"], 1);
+        assert_eq!(preview["failed"], 1);
+        assert_eq!(preview["records"][0]["action"], "create");
+        assert_eq!(preview["records"][1]["action"], "fail");
+    }
+
+    /// Spellings the API stores as one record (`Example.COM` and `example.com.`)
+    /// count as repeats too.
+    #[test]
+    fn dry_run_add_flags_a_repeat_the_api_would_store_as_the_same_record() {
+        let data = vec![
+            "Target.Example.COM".to_string(),
+            "target.example.com.".to_string(),
+        ];
+        let preview = dry_run_add_preview("example.com", "CNAME", "www", &data, &opts(), &[]);
+        assert_eq!(preview["records"][1]["action"], "fail");
+    }
+
+    /// The preview shows the value the way the API will return it, so a script
+    /// comparing a preview with the real result sees the same `new.data`.
+    #[test]
+    fn dry_run_add_shows_hostnames_the_way_the_api_stores_them() {
+        let data = vec!["Target.Example.COM".to_string()];
+        let preview = dry_run_add_preview("example.com", "CNAME", "WWW", &data, &opts(), &[]);
+        assert_eq!(preview["records"][0]["new"]["data"], "target.example.com.");
+    }
+
+    /// An SRV record is filed under its composed owner, so that is the name the
+    /// preview has to look at — a CNAME at the short name is a different owner.
+    #[test]
+    fn dry_run_add_looks_for_srv_and_tlsa_records_at_the_composed_owner() {
+        let srv = types::DnsRecord {
+            service: Some("_sip".to_owned()),
+            protocol: Some("_tcp".to_owned()),
+            ..v3_record("chat", "SRV", "t.example.com", &opts())
+        };
+        assert_eq!(owner_to_check("chat", Some(&srv)), "_sip._tcp.chat");
+
+        let tlsa = types::DnsRecord {
+            port: Some(443),
+            protocol: Some("_tcp".to_owned()),
+            ..v3_record("@", "TLSA", "abcd", &opts())
+        };
+        assert_eq!(owner_to_check("@", Some(&tlsa)), "_443._tcp");
+
+        let a = v3_record("www", "A", "1.2.3.4", &opts());
+        assert_eq!(owner_to_check("www", Some(&a)), "www");
+        assert_eq!(owner_to_check("www", None), "www");
     }
 }

@@ -6,7 +6,7 @@
 use domains_client::types;
 use serde_json::{Value, json};
 
-use super::super::records::{RecordOptions, change_entry, record_value, v3_record};
+use super::super::records::{RecordOptions, as_stored, change_entry, record_value, v3_record};
 use super::plan::SetAction;
 
 /// The `action` of a `set` that has nothing to do, in a preview and a real run alike.
@@ -167,17 +167,19 @@ pub(super) fn dry_run_set_preview(
     // The record a write of `value` would leave: what `--data` and the flags
     // describe, kept at the old record's TTL when none was given (as the real
     // replace does).
-    let wanted = |value: &str, replacing: Option<&types::DnsRecord>| types::DnsRecord {
-        record_id: replacing.and_then(|r| r.record_id.clone()),
-        ..v3_record(
-            name,
-            record_type,
-            value,
-            &RecordOptions {
-                ttl: opts.ttl.or(replacing.map(|r| r.ttl)),
-                ..opts.clone()
-            },
-        )
+    let wanted = |value: &str, replacing: Option<&types::DnsRecord>| {
+        as_stored(&types::DnsRecord {
+            record_id: replacing.and_then(|r| r.record_id.clone()),
+            ..v3_record(
+                name,
+                record_type,
+                value,
+                &RecordOptions {
+                    ttl: opts.ttl.or(replacing.map(|r| r.ttl)),
+                    ..opts.clone()
+                },
+            )
+        })
     };
     let records: Vec<Value> = plan
         .iter()
