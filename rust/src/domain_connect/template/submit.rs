@@ -1,107 +1,82 @@
-//! `gddy domain-connect template submit` — Submit template (stubbed)
+//! `gddy domain-connect template submit` — validate and submit a template.
 
-#![allow(clippy::print_stderr)]
+use cli_engine::{CommandResult, CommandSpec, RuntimeCommandSpec, Tier};
 
-use cli_engine::{CommandSpec, RuntimeCommandSpec};
-use serde_json::json;
+use super::client::outcome;
+use super::common::{human_submit, issue_lines, make_client, read_template, result_json};
+use crate::error::GddyError;
+use crate::output_schema::output_schema;
+use crate::scopes::{DOMAIN_CONNECT_TEMPLATE_READ, DOMAIN_CONNECT_TEMPLATE_WRITE};
+
+output_schema!(SubmitOutput {
+    "file": "string";
+    "providerId": "string";
+    "serviceId": "string";
+    "action": "string";
+    "outcome": "string";
+    "operation": "string", optional;
+    "issues": "[]object";
+    "summary": "string", optional;
+    "pr": "object", optional;
+});
 
 #[derive(Debug, Clone, clap::Args)]
-struct SubmitArgs {
+struct Args {
     /// Template file to submit
     #[arg(value_name = "FILE")]
     file: String,
 }
 
-pub fn command() -> RuntimeCommandSpec {
-    RuntimeCommandSpec::new_typed_with_context::<SubmitArgs, _, _, _>(
-        CommandSpec::from_args::<SubmitArgs>("submit", "Submit a template to the registry")
+pub(super) fn command() -> RuntimeCommandSpec {
+    RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
+        CommandSpec::from_args::<Args>("submit", "Submit a Domain Connect template")
             .with_long(
-                "Submit a Domain Connect template to the public registry.\n\
+                "Validate a template and, when it is ready, submit it to GoDaddy. GoDaddy DNS \
+                 stores the template, the provider is claimed for your account, and a pull \
+                 request is opened (or your existing one updated) on the public \
+                 Domain-Connect/Templates repository. The pull request URL is printed; track \
+                 progress there.\n\
                  \n\
-                 This command is currently STUBBED and will:\n\
-                 - Read the template file\n\
-                 - Validate basic structure\n\
-                 - Mock a backend API call\n\
-                 - Print success message\n\
+                 A template that is INVALID or BLOCKED is not submitted; the issues are printed \
+                 and the command exits non-zero. Run `template validate` first to iterate.\n\
                  \n\
                  Example:\n\
-                   gddy domain-connect template submit acme.com.wordpress.json",
-            ),
-        |_ctx, args: SubmitArgs| async move {
-            // Convert to absolute path for display
-            let file_path = std::path::Path::new(&args.file);
-            let absolute_path = if file_path.is_absolute() {
-                file_path.to_path_buf()
-            } else {
-                std::env::current_dir()
-                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
-                    .join(file_path)
-            };
+                   gddy domain-connect template submit acme.com.managed-wordpress.json",
+            )
+            .with_system("domain-connect")
+            .with_tier(Tier::Mutate)
+            .with_scopes(&[DOMAIN_CONNECT_TEMPLATE_READ, DOMAIN_CONNECT_TEMPLATE_WRITE])
+            .with_output_schema::<SubmitOutput>(),
+        |ctx, args: Args| async move {
+            let (path, template) = read_template(&args.file)?;
+            let client = make_client(&ctx).await?;
+            let result = client.submit(&template).await?;
 
-            eprintln!("📤 Submitting template: {}", absolute_path.display());
-
-            // Check if file exists
-            if !file_path.exists() {
-                return Err(cli_engine::CliCoreError::message(format!(
-                    "File not found: {}\n\nMake sure you run this command from the directory containing the template file,\nor provide the full path to the file.",
-                    absolute_path.display()
-                )));
+            if result.outcome != outcome::SUBMITTED {
+                let mut message = format!("{}: {}", path.display(), result.outcome);
+                for line in issue_lines(&result) {
+                    message.push('\n');
+                    message.push_str(&line);
+                }
+                let error = GddyError::validation(message).with_system("domain-connect");
+                let error = if result.outcome == outcome::BLOCKED {
+                    error.with_fix(
+                        "Use a providerId you own, raise the template version when modifying an \
+                         existing service, or contact #domains-dcc if the provider exists but is unclaimed.",
+                    )
+                } else {
+                    error.with_fix("Fix the listed issues and run `gddy domain-connect template validate` until READY.")
+                };
+                return Err(error.into_cli_error());
             }
 
-            // Read file
-            let content = std::fs::read_to_string(&args.file).map_err(|e| {
-                cli_engine::CliCoreError::message(format!(
-                    "Failed to read file {}: {}",
-                    absolute_path.display(),
-                    e
-                ))
-            })?;
-
-            // Parse JSON to validate it's valid
-            let template: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
-                cli_engine::CliCoreError::message(format!("Invalid JSON in template: {}", e))
-            })?;
-
-            // Extract key fields for display
-            let provider_id = template
-                .get("providerId")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            let service_id = template
-                .get("serviceId")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-
-            eprintln!("\n🔍 Validating template...");
-            eprintln!("   Provider: {}", provider_id);
-            eprintln!("   Service:  {}", service_id);
-
-            // Simulate backend call (STUBBED)
-            eprintln!("\n🌐 Calling backend API... (STUBBED)");
-            eprintln!("   POST https://api.dev-godaddy.com/v1/domain-connect/templates");
-            eprintln!("   {{ action: 'submit', template: {{...}} }}");
-
-            // Simulate delay
-            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-            // Mock success response
-            eprintln!("\n✅ SUCCESS (Mock)");
-            eprintln!("   Status: 201 Created");
-            eprintln!("   PR URL: https://github.com/Domain-Connect/Templates/pull/123 (mock)");
-            eprintln!("   Branch: add/{}.{} (mock)", provider_id, service_id);
-
-            eprintln!("\n💡 This is a STUBBED response. Backend integration coming soon!");
-
-            // Return structured result
-            Ok(cli_engine::CommandResult::new(json!({
-                "status": "success",
-                "mock": true,
-                "providerId": provider_id,
-                "serviceId": service_id,
-                "file": args.file,
-                "prUrl": "https://github.com/Domain-Connect/Templates/pull/123",
-                "message": "Template submitted successfully (mocked)",
-            })))
+            let data = result_json(&path, &template, &result);
+            let output = if ctx.middleware.output_format == "human" {
+                human_submit(&path, &result, data)
+            } else {
+                data
+            };
+            Ok(CommandResult::new(output))
         },
     )
 }
