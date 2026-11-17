@@ -8,7 +8,7 @@ level: warning
 scope: text
 nonword: true
 tokens:
-  - '(?<![\w/.:-])[A-Za-z][A-Za-z-]*/[A-Za-z][A-Za-z-]*(?![\w/.:-])'
+  - '(?<![\w/.:-])[A-Za-z][A-Za-z-]*(?:/[A-Za-z][A-Za-z-]*)+(?![\w/-]|[.:]\w)'
 exceptions:
   - '(?i)and/or'
   - '(?i)\w+/(?:s|sec|min|h|hr|hour|day|week|month|year)'
