@@ -655,6 +655,33 @@ pub(super) fn comparable(record: &types::DnsRecord, compare_ttl: bool) -> Value 
     value
 }
 
+/// The record as the API will hold it once written, for a preview to show what a
+/// real run will return: names lower-cased, hostname-valued data lower-cased with
+/// a trailing dot, CAA data and TLSA hex lower-cased (the rules [`comparable`]
+/// compares by). Keeps the TTL and any recordId. A record that does not survive
+/// the round trip is returned as given.
+pub(super) fn as_stored(record: &types::DnsRecord) -> types::DnsRecord {
+    let mut value = comparable(record, true);
+    if let Some(fields) = value.as_object_mut() {
+        // `comparable` trims the dot off hostnames to compare them; the API keeps it.
+        if let Some(Value::String(data)) = fields.get_mut("data")
+            && !data.is_empty()
+            && matches!(
+                record.type_.as_str(),
+                "ALIAS" | "CNAME" | "MX" | "SRV" | "HTTPS" | "SVCB"
+            )
+        {
+            data.push('.');
+        }
+    }
+    serde_json::from_value::<types::DnsRecord>(value)
+        .map(|stored| types::DnsRecord {
+            record_id: record.record_id.clone(),
+            ..stored
+        })
+        .unwrap_or_else(|_| record.clone())
+}
+
 /// Types the API stores under a composed name (`_service._proto.name` for SRV,
 /// `_port._proto.name` for TLSA), while a list response shows only the short
 /// `name` plus separate fields. A server-side `name` filter for those types
@@ -727,14 +754,12 @@ pub(super) async fn fetch_records(
     Ok(all)
 }
 
-/// Whether `wanted` names `record`: either the short name the record is listed
-/// under, or the composed name the API itself understands (`_service._proto.name`
-/// for SRV, `_port._proto.name` for TLSA), so a selector written either way finds
-/// it. Case does not matter.
-fn listed_name_matches(record: &types::DnsRecord, wanted: &str) -> bool {
-    if record.name.eq_ignore_ascii_case(wanted) {
-        return true;
-    }
+/// The name the API files a record under. For SRV (`_service._proto.name`) and
+/// TLSA (`_port._proto.name`) that is the composed owner, while a list response
+/// shows only the short `name` plus separate fields; every other type is filed
+/// under its own name. At the zone apex (`@`) the composed owner is the prefix
+/// alone. `None` for an SRV or TLSA record missing a field the prefix needs.
+pub(super) fn composed_owner(record: &types::DnsRecord) -> Option<String> {
     let prefix = match record.type_.as_str() {
         "SRV" => record
             .service
@@ -745,14 +770,21 @@ fn listed_name_matches(record: &types::DnsRecord, wanted: &str) -> bool {
             .port
             .zip(record.protocol.as_deref())
             .map(|(port, protocol)| format!("_{port}.{protocol}")),
-        _ => None,
-    };
-    // At the zone apex (`@`) the composed name is the prefix alone.
-    let composed = prefix.map(|prefix| match record.name.as_str() {
+        _ => return Some(record.name.clone()),
+    }?;
+    Some(match record.name.as_str() {
         "@" => prefix,
         name => format!("{prefix}.{name}"),
-    });
-    composed.is_some_and(|composed| composed.eq_ignore_ascii_case(wanted))
+    })
+}
+
+/// Whether `wanted` names `record`: either the short name the record is listed
+/// under, or the composed name the API itself understands (see
+/// [`composed_owner`]), so a selector written either way finds it. Case does not
+/// matter.
+fn listed_name_matches(record: &types::DnsRecord, wanted: &str) -> bool {
+    record.name.eq_ignore_ascii_case(wanted)
+        || composed_owner(record).is_some_and(|owner| owner.eq_ignore_ascii_case(wanted))
 }
 
 /// Next action pointing back at `dns list` to verify a write, pre-filled with
