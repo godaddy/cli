@@ -168,8 +168,8 @@ mod tests {
         // Listed index first, then the product guides, by their summaries.
         let position = |summary: &str| topics.find(summary).expect(summary);
         assert!(
-            position("Start here for GoDaddy hosting") < position("Deploy a Node.js app")
-                && position("Deploy a Node.js app") < position("Create a managed WordPress site"),
+            position("Start here for GoDaddy hosting") < position("Create a Node.js app")
+                && position("Create a Node.js app") < position("Create a managed WordPress site"),
             "{topics}"
         );
         let index = run_guide(&on, Some("hosting")).await;
