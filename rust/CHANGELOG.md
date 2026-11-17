@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.38](https://github.com/godaddy/cli/compare/v0.2.37...v0.2.38) (2026-11-16)
+
+
+### Features
+
+* **auth:** show a tighter default set of columns in auth status and auth login ([#362](https://github.com/godaddy/cli/issues/362)) ([bf14311](https://github.com/godaddy/cli/commit/bf14311e8e68f662476a54d73df1e860fcf2fd6a))
+
+
+### Bug Fixes
+
+* **deps:** update dependencies flagged by cargo audit ([#374](https://github.com/godaddy/cli/issues/374)) ([3bc01ad](https://github.com/godaddy/cli/commit/3bc01ad1d6c4397ba7c30c6781f010648276f6f5))
+* **dns:** replace records in place with dns set and confirm the final result ([#359](https://github.com/godaddy/cli/issues/359)) ([f10b2c4](https://github.com/godaddy/cli/commit/f10b2c4ef78fa91c97e791a2ad8e5a1bba3176f1))
+* **scanner:** trust non production GoDaddy domains in SEC112 ([#373](https://github.com/godaddy/cli/issues/373)) ([4e46dca](https://github.com/godaddy/cli/commit/4e46dcad8b581b3302c2b20009ba457d73847b82))
+
+
+### Documentation
+
+* **hosting:** remove the colon from two guide summaries ([#370](https://github.com/godaddy/cli/issues/370)) ([1d06513](https://github.com/godaddy/cli/commit/1d0651396f813303c3c537f333b7cf338259f606))
+* **shopping:** fix style findings in the shopping guide ([#376](https://github.com/godaddy/cli/issues/376)) ([2c578ca](https://github.com/godaddy/cli/commit/2c578ca79fce9a0246f2d4e7d8c00d6063e26d10))
+
 ## [0.2.37](https://github.com/godaddy/cli/compare/v0.2.36...v0.2.37) (2026-11-10)
 
 
