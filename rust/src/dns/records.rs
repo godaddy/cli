@@ -664,8 +664,11 @@ pub(super) fn as_stored(record: &types::DnsRecord) -> types::DnsRecord {
     let mut value = comparable(record, true);
     if let Some(fields) = value.as_object_mut() {
         // `comparable` trims the dot off hostnames to compare them; the API keeps it.
+        // The root target `.` is all dot, so trimming leaves it empty; that is
+        // still a value to restore, unlike a record that had none.
+        let had_data = record.data.as_deref().is_some_and(|data| !data.is_empty());
         if let Some(Value::String(data)) = fields.get_mut("data")
-            && !data.is_empty()
+            && had_data
             && matches!(
                 record.type_.as_str(),
                 "ALIAS" | "CNAME" | "MX" | "SRV" | "HTTPS" | "SVCB"
