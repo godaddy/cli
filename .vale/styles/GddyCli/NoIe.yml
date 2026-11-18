@@ -1,0 +1,9 @@
+# "i.e." has no short replacement that keeps its meaning, so the rule asks for a rewrite
+# and offers no automatic fix.
+extends: existence
+message: "Don't use 'i.e.'. Rewrite the sentence, or use 'in other words'."
+level: error
+ignorecase: true
+nonword: true
+tokens:
+  - '\bi\.e\.'

@@ -72,7 +72,8 @@ jobs:
           fi
 
   guides-lint:
-    # Lints the embedded guide text with Vale. Findings are reported but don't fail
+    # Lints the embedded guide text with Vale (the local rules plus one package rule, which
+    # the action downloads with `vale sync`). Findings are reported but do not fail
     # the job yet (fail_on_error: false); a later change sets it to true. Don't make
     # this job a required check before then. The action reports through pull request
     # annotations, so it runs only on pull requests.
@@ -93,6 +94,5 @@ jobs:
           version: 3.24.0
           reviewdog_version: 0.21.0
           fail_on_error: false
-          sync: false
           files: rust/src
           glob: "**/guides/*.md"

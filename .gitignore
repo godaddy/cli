@@ -24,3 +24,7 @@ __pycache__
 
 # Local end-to-end test evidence
 stash/
+
+# Vale package styles downloaded by `vale sync`
+.vale/styles/Microsoft/
+.vale/styles/config/

@@ -1,0 +1,12 @@
+# Flags a heading whose first word is a gerund (a capitalized word ending in "ing"),
+# for example "Listing records". Words that end in "ing" but aren't verbs are listed in
+# the exceptions. Add a word there if a noun heading is flagged by mistake.
+extends: existence
+message: "Heading starts with a gerund ('%s'). Use the imperative form instead, for example 'Configure' not 'Configuring'."
+level: warning
+scope: heading
+ignorecase: false
+tokens:
+  - '^[A-Z][a-z]+ing\b'
+exceptions:
+  - '^(Billing|Hosting|Networking|Pricing|Shopping|Something|Anything|Everything|Nothing|Morning|Evening|Warning|Warnings|String|Strings|Ring|Thing|Things|Spring|King|Ping)\b'

@@ -1,0 +1,7 @@
+extends: existence
+message: "Use 'might' for possibility and 'may' for permission only: '%s'."
+level: warning
+scope: sentence
+ignorecase: true
+tokens:
+  - '\bmay (not |be |cause |fail|result|change|vary|differ|take|require|need|have|include|contain|return|receive|lose|break|affect|impact|prevent|block|delay|timeout|expire|exceed|overlap|conflict)'
