@@ -11,6 +11,8 @@ use cli_engine::CliCoreError;
 use crate::domain::{ApiFailure, api_failure};
 use crate::error::GddyError;
 
+use super::conflicts::duplicate_record_issue;
+
 /// What went wrong with one record's write.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum FailureKind {
@@ -42,10 +44,10 @@ impl DnsFailure {
         }
     }
 
-    /// Classify a failed API call from the response it got. `duplicate` is for
-    /// the caller that has already recognised a `DUPLICATE_RECORD` issue.
-    pub(super) fn from_api(failure: ApiFailure, duplicate: bool) -> Self {
-        let kind = if duplicate {
+    /// Classify a failed API call from the response it got. A `DUPLICATE_RECORD`
+    /// issue means the record exists, whatever the error's own `name` says.
+    pub(super) fn from_api(failure: ApiFailure) -> Self {
+        let kind = if duplicate_record_issue(&failure.body) {
             FailureKind::RecordExists
         } else {
             match failure.api_name().as_deref() {
@@ -64,7 +66,7 @@ impl DnsFailure {
         debug: bool,
         err: domains_client::Error<()>,
     ) -> Self {
-        Self::from_api(api_failure(action, debug, err).await, false)
+        Self::from_api(api_failure(action, debug, err).await)
     }
 
     pub(super) fn kind(&self) -> FailureKind {
@@ -169,7 +171,7 @@ mod tests {
 
     #[test]
     fn the_api_error_name_picks_the_kind() {
-        let kind = |status, body: &str| DnsFailure::from_api(failure(status, body), false).kind();
+        let kind = |status, body: &str| DnsFailure::from_api(failure(status, body)).kind();
         assert_eq!(
             kind(404, r#"{"name":"ZONE_NOT_FOUND"}"#),
             FailureKind::ZoneNotFound
@@ -190,7 +192,7 @@ mod tests {
     fn a_duplicate_record_issue_is_record_exists_whatever_the_name() {
         let body = r#"{"name":"VALIDATION_ERROR","details":[{"issue":"DUPLICATE_RECORD"}]}"#;
         assert_eq!(
-            DnsFailure::from_api(failure(422, body), true).kind(),
+            DnsFailure::from_api(failure(422, body)).kind(),
             FailureKind::RecordExists
         );
     }
