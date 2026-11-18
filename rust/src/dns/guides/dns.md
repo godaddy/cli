@@ -88,6 +88,21 @@ Some record types need extra flags:
 
 `--service` and `--protocol` take the plain name, for example `--service sip --protocol tcp`. GoDaddy stores them with a leading underscore (`_sip._tcp`), which `gddy` adds for you; `--service _sip` works too. Any name made of letters, digits, `-` and `_` (up to 62 characters before the underscore) is accepted, so custom services work. Listings show the underscore form, since that is the DNS name.
 
+## Records with different values
+
+Every flag above except `--ttl` can be given once, to apply to every `--data` value, or once per `--data` value, to pair with them in order. This is how one command writes records that differ, such as mail servers at three priorities:
+
+```
+gddy dns set example.com \
+  --type MX \
+  --name @ \
+  --data aspmx.l.mail-example.com --priority 1 \
+  --data alt1.aspmx.l.mail-example.com --priority 5 \
+  --data alt2.aspmx.l.mail-example.com --priority 10
+```
+
+`set` makes the name hold exactly those records, so an old MX record that isn't listed is removed. Any other count is an error: `--priority` given twice for three `--data` values doesn't say which record is left over. Pairing is by order, not by position on the command line, so check the plan with `--dry-run` before a destructive `set`.
+
 Example SRV record:
 
 ```
