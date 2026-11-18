@@ -1,7 +1,7 @@
 # A slash is fine for a rate or ratio (req/min, km/h). In prose, a slash that stands in for
 # "and" or "or" ("create/upload", "true/false") leaves the reader to guess. Write the word.
 # Text in code style is skipped by Vale, so `a/b` and paths in backticks aren't flagged.
-# "and/or" is reported by GddyCli.NoAndOr.
+# "CI/CD" is the standard term and is allowed. "and/or" is reported by GddyCli.NoAndOr.
 extends: existence
 message: "Replace the slash in '%s' with 'and' or 'or', whichever is true."
 level: warning
@@ -11,4 +11,5 @@ tokens:
   - '(?<![\w/.:-])[A-Za-z][A-Za-z-]*(?:/[A-Za-z][A-Za-z-]*)+(?![\w/-]|[.:]\w)'
 exceptions:
   - '(?i)and/or'
+  - 'CI/CD'
   - '(?i)\w+/(?:s|sec|min|h|hr|hour|day|week|month|year)'
