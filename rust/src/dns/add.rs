@@ -148,11 +148,31 @@ fn owner_to_check(name: &str, record: Option<&types::DnsRecord>) -> String {
         .unwrap_or_else(|| name.to_owned())
 }
 
+/// Every owner `add` has to look under: one per distinct [`owner_to_check`] of
+/// the records, since per-record `--service`/`--protocol` (or TLSA `--port`) can
+/// put them at different names. Case-insensitive, in first-seen order.
+fn distinct_owners(name: &str, records: &[types::DnsRecord]) -> Vec<String> {
+    let mut owners: Vec<String> = Vec::new();
+    for record in records {
+        let owner = owner_to_check(name, Some(record));
+        if !owners.iter().any(|o| o.eq_ignore_ascii_case(&owner)) {
+            owners.push(owner);
+        }
+    }
+    owners
+}
+
+/// Whether `record` is filed under `owner` — the composed name for SRV and TLSA,
+/// its own name for everything else.
+fn at_owner(record: &types::DnsRecord, owner: &str) -> bool {
+    composed_owner(record).is_some_and(|o| o.eq_ignore_ascii_case(owner))
+}
+
 /// The `dns add --dry-run` preview: one `create` per `--data` value, each with the
 /// record it would write, or a `fail` entry carrying the reason when something
 /// already in the zone — or created earlier in this same command — would make the
 /// API refuse it. `existing_at_name` is every record at the name (see
-/// [`owner_to_check`]). The `new` record has no recordId yet, and is shown the way
+/// [`distinct_owners`]). The `new` record has no recordId yet, and is shown the way
 /// the API will store it (a hostname lower-cased with a trailing dot, say), so a
 /// real run reports the same value.
 fn dry_run_add_preview(
@@ -174,7 +194,14 @@ fn dry_run_add_preview(
         .zip(opts)
     {
         let mut entry = change_entry("create", None, None, Some(&as_stored(&record)));
-        match add_blocker(domain, name, record_type, value, opts, &simulated) {
+        // Only what is at this record's own owner can block it.
+        let owner = owner_to_check(name, Some(&record));
+        let here: Vec<types::DnsRecord> = simulated
+            .iter()
+            .filter(|r| at_owner(r, &owner))
+            .cloned()
+            .collect();
+        match add_blocker(domain, name, record_type, value, opts, &here) {
             Some(reason) => {
                 failed += 1;
                 entry["action"] = json!("fail");
@@ -262,9 +289,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
             if ctx.dry_run() {
                 // Every type at the name, not just this one: a CNAME and other
                 // types can't share it. SRV and TLSA live at a composed owner.
-                let owner = owner_to_check(&name, records.first());
-                let at_name =
-                    fetch_records(&client, domain.as_str(), None, Some(&owner), debug).await?;
+                let mut at_name = Vec::new();
+                for owner in distinct_owners(&name, &records) {
+                    at_name.extend(
+                        fetch_records(&client, domain.as_str(), None, Some(&owner), debug).await?,
+                    );
+                }
                 let mut preview =
                     dry_run_add_preview(&domain, &record_type, &name, &data, &opts, &at_name);
                 domain_format.convert_fields(&mut preview, ZONE_AND_NAME);
@@ -703,5 +733,63 @@ mod tests {
         assert_eq!(records[1]["new"]["priority"], 5);
         assert_eq!(preview["created"], 1);
         assert_eq!(preview["failed"], 1);
+    }
+
+    fn srv_opts(service: &str) -> RecordOptions {
+        RecordOptions {
+            priority: Some(10),
+            weight: Some(5),
+            port: Some(5060),
+            service: Some(service.to_owned()),
+            protocol: Some("_tcp".to_owned()),
+            ..opts()
+        }
+    }
+
+    /// SRV records with different services live at different owners
+    /// (`_sip._tcp.chat`, `_xmpp._tcp.chat`); each is checked against its own.
+    #[test]
+    fn dry_run_add_checks_each_srv_record_against_its_own_owner() {
+        let data = vec!["a.example.com.".to_owned(), "a.example.com.".to_owned()];
+        let per_record = [srv_opts("_sip"), srv_opts("_xmpp")];
+        // The second owner already holds exactly that record; the first owner
+        // holds an unrelated CNAME-free name.
+        let existing = [types::DnsRecord {
+            record_id: Some("r1".to_owned()),
+            ..v3_record("chat", "SRV", "a.example.com.", &per_record[1])
+        }];
+        let preview =
+            dry_run_add_preview("example.com", "SRV", "chat", &data, &per_record, &existing);
+        let records = preview["records"].as_array().expect("records");
+        assert_eq!(records[0]["action"], "create");
+        assert_eq!(records[1]["action"], "fail");
+    }
+
+    /// A CNAME at one owner blocks only the record filed there.
+    #[test]
+    fn dry_run_add_does_not_let_a_cname_at_one_owner_block_another() {
+        let data = vec!["a.example.com.".to_owned(), "a.example.com.".to_owned()];
+        let per_record = [srv_opts("_sip"), srv_opts("_xmpp")];
+        let existing = [stored(
+            "r1",
+            "CNAME",
+            "_sip._tcp.chat",
+            "elsewhere.example.com.",
+        )];
+        let preview =
+            dry_run_add_preview("example.com", "SRV", "chat", &data, &per_record, &existing);
+        let records = preview["records"].as_array().expect("records");
+        assert_eq!(records[0]["action"], "fail");
+        assert_eq!(records[1]["action"], "create");
+    }
+
+    #[test]
+    fn the_owners_to_fetch_are_every_distinct_composed_name() {
+        let record = |service: &str| v3_record("chat", "SRV", "t.example.com.", &srv_opts(service));
+        let records = [record("_sip"), record("_xmpp"), record("_SIP")];
+        assert_eq!(
+            distinct_owners("chat", &records),
+            ["_sip._tcp.chat", "_xmpp._tcp.chat"]
+        );
     }
 }
