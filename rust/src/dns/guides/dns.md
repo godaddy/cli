@@ -15,7 +15,7 @@ summary: Manage DNS records with gddy by listing, adding, setting, and deleting 
 
 `NS` and `SOA` records are managed by GoDaddy and read-only. You can list them, but not add, set, or delete them.
 
-## Listing records
+## List records
 
 ```
 gddy dns list example.com
@@ -37,7 +37,7 @@ Pass `--data` more than once to add several records for the same type+name in on
 
 A name can hold a CNAME or other record types, never both. Adding into a name that already has the other kind fails with an error naming the conflict. To replace it instead, use `set --replace-conflicting-types`, covered in the `set` section.
 
-## Replacing records (`set`, destructive)
+## Replace records (`set`, destructive)
 
 `set` replaces every record matching a type+name pair with exactly the `--data` value(s) you give it.
 
