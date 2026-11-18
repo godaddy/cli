@@ -46,7 +46,7 @@ mod fixes {
     pub(super) const NOT_FOUND_HOSTING: &str = "Use: gddy hosting app list";
     pub(super) const ONBOARDING: &str =
         "Run: gddy platform app onboard, then retry after completion.";
-    pub(super) const RECORD_EXISTS: &str = "Inspect the existing records with: gddy dns list <domain> --type <type> --name <name>. To replace them instead of adding, use: gddy dns set";
+    pub(super) const RECORD_EXISTS: &str = "List every record in the zone with: gddy dns list <domain>; a record of another type, such as a CNAME, can block the name. To replace records instead of adding, use: gddy dns set (add --replace-conflicting-types to remove a conflicting record of another type)";
     pub(super) const RECORD_NOT_FOUND: &str =
         "The record may already be gone. Inspect the current records with: gddy dns list <domain>";
     pub(super) const SECURITY: &str =
@@ -418,6 +418,17 @@ mod tests {
             "{:?}",
             server.error_fix()
         );
+    }
+
+    #[test]
+    fn record_exists_points_at_an_unfiltered_listing_so_a_blocking_cname_shows() {
+        let err = GddyError::record_exists("already there");
+        assert_eq!(err.error_code(), codes::RECORD_EXISTS);
+        let fix = err.error_fix().expect("fix");
+        // A listing filtered to the attempted type would hide a CNAME at the name.
+        assert!(fix.contains("gddy dns list <domain>;"), "{fix}");
+        assert!(!fix.contains("--type"), "{fix}");
+        assert!(fix.contains("--replace-conflicting-types"), "{fix}");
     }
 
     #[test]
