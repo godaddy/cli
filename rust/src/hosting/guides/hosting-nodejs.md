@@ -2,19 +2,19 @@
 summary: Create a Node.js app on GoDaddy hosting, upload your code, preview the app, attach it to a plan, and publish it
 ---
 
-# `gddy hosting` — deploying a Node.js application
+# `gddy hosting`: deploy a Node.js application
 
-This guide covers the full lifecycle of a hosted Node.js application: create an app, upload source code, test on a staging URL, attach to a hosting plan, and publish to production.
+This guide covers the full lifecycle of a hosted Node.js application. Create an app, upload source code, test on a staging URL, attach to a hosting plan, and publish to production.
 
 ## Concepts
 
-**App** — the hosted Node.js application. Create it first. Later commands take `--app-id`.
+**App**: the hosted Node.js application. Create it first. Later commands take `--app-id`.
 
-**Environments** — each app has PREVIEW (staging) and PUBLISH (production). The CLI calls this `variant`. Uploads land on PREVIEW. `deployment publish` promotes that build to PUBLISH.
+**Environments**: each app has PREVIEW (staging) and PUBLISH (production). The CLI calls this `variant`. Uploads land on PREVIEW. `deployment publish` promotes that build to PUBLISH.
 
-**Subscription** — a hosting plan you already bought (resources and billing). Attach the app to one before the first publish. Don't have one? See *Buy a plan*.
+**Subscription**: a hosting plan you already bought (resources and billing). Attach the app to one before the first publish. Don't have one? See *Buy a plan*.
 
-**Slot** — available space within a subscription for an attached app. Each app attached to a subscription takes up one slot, and a given subscription can have one or more slots.
+**Slot**: available space within a subscription for an attached app. Each app attached to a subscription takes up one slot, and a given subscription can have one or more slots.
 
 ## Create the app
 
@@ -104,7 +104,7 @@ gddy shopping catalog search --category webHosting
 
 AI assistants: if an existing plan has an open slot, tell the user and let them choose between attaching the app to it and buying a new plan. Buying is a purchase, so follow the consent steps in `gddy guide shopping` before checkout.
 
-When the order completes, poll `gddy hosting subscription list --hosting-product=WEB_HOSTING` until a plan with a free slot appears whose `subscriptionId` was not in the list before checkout. Attach the app to that plan.
+When the order completes, poll `gddy hosting subscription list --hosting-product=WEB_HOSTING` until a plan with a free slot shows up whose `subscriptionId` wasn't in the list before checkout. Attach the app to that plan.
 
 ## Publish
 
@@ -129,9 +129,9 @@ gddy hosting domain attach --app-id <app-id> --hostname www.example.com
 gddy hosting domain get --app-id <app-id> --domain-id <domain-id>
 ```
 
-`domainType` on list/get is `CUSTOM` for an attached customer hostname. `PREFIX` is the platform hostname, whose prefix can be changed in the hosting UI (not using this CLI).
+`domainType` on list and get is `CUSTOM` for an attached customer hostname. `PREFIX` is the platform hostname, whose prefix can be changed in the hosting UI (not using this CLI).
 
-For a CUSTOM domain whose DNS is **not** on GoDaddy, poll `hosting domain get` and apply records at the external DNS host as fields become non-null:
+For a CUSTOM domain whose DNS **isn't** on GoDaddy, poll `hosting domain get` and apply records at the external DNS host as fields become non-null:
 
 | When | Record | Target |
 |---|---|---|
@@ -140,7 +140,7 @@ For a CUSTOM domain whose DNS is **not** on GoDaddy, poll `hosting domain get` a
 
 Keep polling until `verificationStatus` is `ACTIVE`. `cdnStatus` follows CDN provisioning (`INIT` → `PENDING` → `ACTIVE`).
 
-## Redeploying
+## Redeploy
 
 Upload the source again, wait for the import to complete, then publish again. Skip *Create the app* and *Attach a plan*.
 
@@ -158,5 +158,5 @@ Upload the source again, wait for the import to complete, then publish again. Sk
 
 ## See also
 
-- `gddy guide hosting` — the other hosting products and the commands they share.
-- `gddy guide auth` — how authentication and credential storage work.
+- `gddy guide hosting`: the other hosting products and the commands they share.
+- `gddy guide auth`: how authentication and credential storage work.
