@@ -1,19 +1,32 @@
 //! `gddy domain-connect template init` — Create a template interactively
 
-#![allow(clippy::print_stderr)]
+use std::io::{BufRead, Write};
 
-use cli_engine::{CommandSpec, RuntimeCommandSpec};
-use dialoguer::{Confirm, Input};
-use serde_json::json;
+use cli_engine::{
+    CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
+};
+use serde_json::{Value, json};
 
 use super::Template;
 use super::interactive::{
     RecordType, prompt_a_record, prompt_aaaa_record, prompt_apexcname_record, prompt_caa_record,
     prompt_cname_record, prompt_mx_record, prompt_ns_record, prompt_optional_string,
     prompt_record_type, prompt_redir301_record, prompt_redir302_record, prompt_spfm_record,
-    prompt_srv_record, prompt_txt_record,
+    prompt_srv_record, prompt_string, prompt_txt_record,
 };
 use super::parsers::*;
+use crate::error::GddyError;
+use crate::next_action::next_action;
+use crate::output_schema::output_schema;
+use crate::scopes::{DOMAIN_CONNECT_TEMPLATE_READ, DOMAIN_CONNECT_TEMPLATE_WRITE};
+
+output_schema!(InitOutput {
+    "providerId": "string";
+    "serviceId": "string";
+    "fileName": "string";
+    "recordCount": "number";
+    "template": "object";
+});
 
 #[derive(Debug, Clone, clap::Args)]
 struct InitArgs {
@@ -142,45 +155,45 @@ struct InitArgs {
     essential: Option<String>,
 }
 
-fn run_interactive() -> Result<Template, cli_engine::CliCoreError> {
-    eprintln!("\n📝 Create Domain Connect Template\n");
+fn run_interactive() -> cli_engine::Result<Template> {
+    let stdin = std::io::stdin();
+    let mut reader = stdin.lock();
+    let mut writer = std::io::stderr();
+
+    writeln!(writer, "\n📝 Create Domain Connect Template\n")
+        .map_err(|e| GddyError::unexpected(format!("Output error: {}", e)).into_cli_error())?;
 
     // Step 1: Basic template info
-    let provider_id: String = Input::new()
-        .with_prompt("Provider ID (e.g., acme.com)")
-        .validate_with(|input: &String| {
-            if input.contains('.') {
-                Ok(())
-            } else {
-                Err("Provider ID must be a domain (e.g., acme.com)")
-            }
-        })
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let provider_id = loop {
+        let input = prompt_string(&mut reader, &mut writer, "Provider ID (e.g., acme.com)")?;
+        if input.contains('.') {
+            break input;
+        }
+        writeln!(
+            writer,
+            "   ⚠ Provider ID must be a domain (e.g., acme.com)\n"
+        )
+        .map_err(|e| GddyError::unexpected(format!("Output error: {}", e)).into_cli_error())?;
+    };
 
-    let provider_name: String = Input::new()
-        .with_prompt("Provider Name")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let provider_name = prompt_string(&mut reader, &mut writer, "Provider Name")?;
 
-    let service_id: String = Input::new()
-        .with_prompt("Service ID (e.g., email)")
-        .validate_with(|input: &String| {
-            if input.chars().all(|c| c.is_alphanumeric() || c == '-') {
-                Ok(())
-            } else {
-                Err("Service ID must be alphanumeric with hyphens only")
-            }
-        })
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let service_id = loop {
+        let input = prompt_string(&mut reader, &mut writer, "Service ID (e.g., email)")?;
+        if input.chars().all(|c| c.is_alphanumeric() || c == '-') {
+            break input;
+        }
+        writeln!(
+            writer,
+            "   ⚠ Service ID must be alphanumeric with hyphens only\n"
+        )
+        .map_err(|e| GddyError::unexpected(format!("Output error: {}", e)).into_cli_error())?;
+    };
 
-    let service_name: String = Input::new()
-        .with_prompt("Service Name")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let service_name = prompt_string(&mut reader, &mut writer, "Service Name")?;
 
-    let description = prompt_optional_string("Description (optional)")?;
+    let description = prompt_optional_string(&mut reader, &mut writer, "Description (optional)")
+        .map_err(|e| GddyError::unexpected(format!("Input error: {}", e)).into_cli_error())?;
 
     let mut template = Template::from_basic_inputs(
         provider_id,
@@ -191,42 +204,82 @@ fn run_interactive() -> Result<Template, cli_engine::CliCoreError> {
     );
 
     // Step 2: Add records
-    eprintln!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    eprintln!("📋 Add DNS Records\n");
+    writeln!(writer, "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        .map_err(|e| GddyError::unexpected(format!("Output error: {}", e)).into_cli_error())?;
+    writeln!(writer, "📋 Add DNS Records\n")
+        .map_err(|e| GddyError::unexpected(format!("Output error: {}", e)).into_cli_error())?;
 
     loop {
-        let add_record = Confirm::new()
-            .with_prompt("Add a record?")
-            .default(false)
-            .interact()
-            .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+        write!(writer, "Add a record? (y/N): ")
+            .map_err(|e| GddyError::unexpected(format!("Output error: {}", e)).into_cli_error())?;
+        writer
+            .flush()
+            .map_err(|e| GddyError::unexpected(format!("Output error: {}", e)).into_cli_error())?;
 
-        if !add_record {
+        let mut line = String::new();
+        reader
+            .read_line(&mut line)
+            .map_err(|e| GddyError::unexpected(format!("Input error: {}", e)).into_cli_error())?;
+
+        let trimmed = line.trim().to_lowercase();
+        if trimmed != "y" && trimmed != "yes" {
             break;
         }
 
-        let record_type = prompt_record_type()?;
+        let record_type = prompt_record_type(&mut reader, &mut writer)?;
 
         let record = match record_type {
-            RecordType::A => prompt_a_record()?,
-            RecordType::AAAA => prompt_aaaa_record()?,
-            RecordType::CNAME => prompt_cname_record()?,
-            RecordType::MX => prompt_mx_record()?,
-            RecordType::TXT => prompt_txt_record()?,
-            RecordType::SRV => prompt_srv_record()?,
-            RecordType::NS => prompt_ns_record()?,
-            RecordType::SPFM => prompt_spfm_record()?,
-            RecordType::REDIR301 => prompt_redir301_record()?,
-            RecordType::REDIR302 => prompt_redir302_record()?,
-            RecordType::APEXCNAME => prompt_apexcname_record()?,
-            RecordType::CAA => prompt_caa_record()?,
+            RecordType::A => prompt_a_record(&mut reader, &mut writer)?,
+            RecordType::AAAA => prompt_aaaa_record(&mut reader, &mut writer)?,
+            RecordType::CNAME => prompt_cname_record(&mut reader, &mut writer)?,
+            RecordType::MX => prompt_mx_record(&mut reader, &mut writer)?,
+            RecordType::TXT => prompt_txt_record(&mut reader, &mut writer)?,
+            RecordType::SRV => prompt_srv_record(&mut reader, &mut writer)?,
+            RecordType::NS => prompt_ns_record(&mut reader, &mut writer)?,
+            RecordType::SPFM => prompt_spfm_record(&mut reader, &mut writer)?,
+            RecordType::REDIR301 => prompt_redir301_record(&mut reader, &mut writer)?,
+            RecordType::REDIR302 => prompt_redir302_record(&mut reader, &mut writer)?,
+            RecordType::APEXCNAME => prompt_apexcname_record(&mut reader, &mut writer)?,
+            RecordType::CAA => prompt_caa_record(&mut reader, &mut writer)?,
         };
 
         template.records.push(record);
-        eprintln!("\n✅ Added {} record\n", record_type.as_str());
+        writeln!(writer, "\n✅ Added {} record\n", record_type.as_str())
+            .map_err(|e| GddyError::unexpected(format!("Output error: {}", e)).into_cli_error())?;
     }
 
     Ok(template)
+}
+
+fn init_next_actions(filename: &str) -> Vec<NextAction> {
+    vec![
+        next_action(
+            "domain-connect template validate <file>",
+            "Validate the generated template",
+        )
+        .with_param("file", NextActionParam::value(filename)),
+        next_action(
+            "domain-connect template submit <file>",
+            "Submit the template to GoDaddy",
+        )
+        .with_param("file", NextActionParam::value(filename)),
+    ]
+}
+
+fn human_init(_filename: &str, full_path: &str, record_count: usize, mut data: Value) -> Value {
+    let summary_lines = [
+        format!("Template saved: {}", full_path),
+        format!(
+            "Records: {}",
+            if record_count == 1 {
+                "1 record".to_string()
+            } else {
+                format!("{} records", record_count)
+            }
+        ),
+    ];
+    data["summary"] = Value::String(summary_lines.join("\n"));
+    data
 }
 
 pub fn command() -> RuntimeCommandSpec {
@@ -257,35 +310,37 @@ pub fn command() -> RuntimeCommandSpec {
                  Record format: key=value pairs separated by commas.\n\
                  Common keys: host, value, data, priority, ttl, group, essential\n\
                  Example: --add-mx \"host=@,value=mail.com,priority=10,ttl=3600\"",
-            ),
-        |_ctx, args: InitArgs| async move {
+            )
+            .with_system("domain-connect")
+            .with_tier(Tier::Mutate)
+            .with_scopes(&[DOMAIN_CONNECT_TEMPLATE_READ, DOMAIN_CONNECT_TEMPLATE_WRITE])
+            .with_output_schema::<InitOutput>(),
+        |ctx, args: InitArgs| async move {
             let template = if args.no_interactive {
-                // Non-interactive mode: build from flags
-                let provider_id = args
-                    .provider_id
-                    .ok_or_else(|| cli_engine::CliCoreError::message("--provider-id required"))?;
-                let provider_name = args
-                    .provider_name
-                    .ok_or_else(|| cli_engine::CliCoreError::message("--provider-name required"))?;
-                let service_id = args
-                    .service_id
-                    .ok_or_else(|| cli_engine::CliCoreError::message("--service-id required"))?;
-                let service_name = args
-                    .service_name
-                    .ok_or_else(|| cli_engine::CliCoreError::message("--service-name required"))?;
+                // Non-interactive mode: build from flags (clap validates required fields)
+                let provider_id = args.provider_id.expect("clap validates required_if_eq");
+                let provider_name = args.provider_name.expect("clap validates required_if_eq");
+                let service_id = args.service_id.expect("clap validates required_if_eq");
+                let service_name = args.service_name.expect("clap validates required_if_eq");
 
                 // Validate provider ID (should be domain-like)
                 if !provider_id.contains('.') {
-                    return Err(cli_engine::CliCoreError::message(
+                    return Err(GddyError::validation(
                         "Provider ID must be a domain (e.g., acme.com)",
-                    ));
+                    )
+                    .with_fix("Use a fully-qualified domain name for --provider-id")
+                    .with_system("domain-connect")
+                    .into_cli_error());
                 }
 
                 // Validate service ID (alphanumeric + hyphen)
                 if !service_id.chars().all(|c| c.is_alphanumeric() || c == '-') {
-                    return Err(cli_engine::CliCoreError::message(
+                    return Err(GddyError::validation(
                         "Service ID must be alphanumeric with hyphens only",
-                    ));
+                    )
+                    .with_fix("Use only letters, numbers, and hyphens in --service-id")
+                    .with_system("domain-connect")
+                    .into_cli_error());
                 }
 
                 // Build template from flags
@@ -378,7 +433,7 @@ pub fn command() -> RuntimeCommandSpec {
             // Convert to JSON
             let json_output = template
                 .to_json_pretty()
-                .map_err(|e| cli_engine::CliCoreError::message(e.to_string()))?;
+                .map_err(|e| GddyError::unexpected(e.to_string()).into_cli_error())?;
 
             // Generate filename from template
             let filename = format!("{}.{}.json", template.provider_id, template.service_id);
@@ -390,36 +445,32 @@ pub fn command() -> RuntimeCommandSpec {
 
             // Write to file
             std::fs::write(&filename, &json_output).map_err(|e| {
-                cli_engine::CliCoreError::message(format!(
-                    "Failed to write file {}: {}",
-                    filename, e
-                ))
+                GddyError::unexpected(format!("Failed to write file {}: {}", filename, e))
+                    .with_fix("Check file permissions and disk space")
+                    .with_system("domain-connect")
+                    .into_cli_error()
             })?;
 
-            // Print to stderr so user can see it
-            eprintln!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            eprintln!("📄 Generated Domain Connect Template:\n");
-            eprintln!("{}", json_output);
-            eprintln!("\n✅ Template saved to: {}", full_path.display());
-            eprintln!(
-                "   {} record{}",
-                template.records.len(),
-                if template.records.len() == 1 { "" } else { "s" }
-            );
-
-            eprintln!(
-                "\n💡 Next steps:\n   1. Review: cat {}\n   2. Submit: gddy domain-connect template submit {}",
-                filename, filename
-            );
-
-            // Return structured result
-            Ok(cli_engine::CommandResult::new(json!({
+            let data = json!({
                 "providerId": template.provider_id,
                 "serviceId": template.service_id,
                 "fileName": filename,
                 "recordCount": template.records.len(),
                 "template": template,
-            })))
+            });
+
+            let output = if ctx.middleware.output_format == "human" {
+                human_init(
+                    &filename,
+                    &full_path.display().to_string(),
+                    template.records.len(),
+                    data,
+                )
+            } else {
+                data
+            };
+
+            Ok(CommandResult::new(output).with_next_actions(init_next_actions(&filename)))
         },
     )
 }

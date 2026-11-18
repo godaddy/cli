@@ -1,10 +1,11 @@
 //! Interactive prompts for Domain Connect template creation
 
 #![allow(clippy::upper_case_acronyms)]
-#![allow(clippy::print_stderr)]
+
+use std::io::{self, BufRead, Write};
 
 use super::types::Record;
-use dialoguer::{Input, Select};
+use crate::error::GddyError;
 
 /// Record type enum for interactive selection
 #[derive(Debug, Clone, Copy)]
@@ -42,98 +43,187 @@ impl RecordType {
     }
 }
 
-pub(crate) fn prompt_record_type() -> Result<RecordType, cli_engine::CliCoreError> {
+pub(crate) fn prompt_record_type<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+) -> cli_engine::Result<RecordType> {
     let options = vec![
-        "A (IPv4 address)",
-        "AAAA (IPv6 address)",
-        "CNAME (Canonical name)",
-        "MX (Mail exchanger)",
-        "TXT (Text record)",
-        "SRV (Service record)",
-        "NS (Name server)",
-        "SPFM (SPF Macro)",
-        "REDIR301 (301 Permanent Redirect)",
-        "REDIR302 (302 Temporary Redirect)",
-        "APEXCNAME (Apex CNAME)",
-        "CAA (Certificate Authority Authorization)",
+        ("A", "IPv4 address"),
+        ("AAAA", "IPv6 address"),
+        ("CNAME", "Canonical name"),
+        ("MX", "Mail exchanger"),
+        ("TXT", "Text record"),
+        ("SRV", "Service record"),
+        ("NS", "Name server"),
+        ("SPFM", "SPF Macro"),
+        ("REDIR301", "301 Permanent Redirect"),
+        ("REDIR302", "302 Temporary Redirect"),
+        ("APEXCNAME", "Apex CNAME"),
+        ("CAA", "Certificate Authority Authorization"),
     ];
 
-    let selection = Select::new()
-        .with_prompt("Record type")
-        .items(&options)
-        .interact()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    writeln!(writer, "\nRecord type:")?;
+    for (idx, (record_type, description)) in options.iter().enumerate() {
+        writeln!(writer, "  {}. {} ({})", idx + 1, record_type, description)?;
+    }
+    write!(writer, "Select (1-{}): ", options.len())?;
+    writer.flush()?;
 
-    Ok(match selection {
-        0 => RecordType::A,
-        1 => RecordType::AAAA,
-        2 => RecordType::CNAME,
-        3 => RecordType::MX,
-        4 => RecordType::TXT,
-        5 => RecordType::SRV,
-        6 => RecordType::NS,
-        7 => RecordType::SPFM,
-        8 => RecordType::REDIR301,
-        9 => RecordType::REDIR302,
-        10 => RecordType::APEXCNAME,
-        11 => RecordType::CAA,
-        _ => return Err(cli_engine::CliCoreError::message("Invalid selection")),
-    })
-}
+    let mut line = String::new();
+    reader.read_line(&mut line)?;
 
-pub(crate) fn prompt_optional_string(
-    prompt: &str,
-) -> Result<Option<String>, cli_engine::CliCoreError> {
-    let value: String = Input::new()
-        .with_prompt(prompt)
-        .allow_empty(true)
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let selection = line.trim().parse::<usize>().map_err(|_| {
+        GddyError::validation("Must be a valid number")
+            .with_fix("Enter a number from 1 to 12")
+            .into_cli_error()
+    })?;
 
-    Ok(if value.trim().is_empty() {
-        None
-    } else {
-        Some(value.trim().to_string())
-    })
-}
-
-pub(crate) fn prompt_optional_i32(
-    prompt: &str,
-    default: i32,
-) -> Result<i32, cli_engine::CliCoreError> {
-    let value: String = Input::new()
-        .with_prompt(format!("{} (default: {})", prompt, default))
-        .allow_empty(true)
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
-
-    if value.trim().is_empty() {
-        Ok(default)
-    } else {
-        value
-            .trim()
-            .parse()
-            .map_err(|_| cli_engine::CliCoreError::message("Must be a valid number"))
+    match selection {
+        1 => Ok(RecordType::A),
+        2 => Ok(RecordType::AAAA),
+        3 => Ok(RecordType::CNAME),
+        4 => Ok(RecordType::MX),
+        5 => Ok(RecordType::TXT),
+        6 => Ok(RecordType::SRV),
+        7 => Ok(RecordType::NS),
+        8 => Ok(RecordType::SPFM),
+        9 => Ok(RecordType::REDIR301),
+        10 => Ok(RecordType::REDIR302),
+        11 => Ok(RecordType::APEXCNAME),
+        12 => Ok(RecordType::CAA),
+        _ => Err(GddyError::validation(format!(
+            "Invalid selection: {}. Must be between 1 and 12",
+            selection
+        ))
+        .with_fix("Enter a number from 1 to 12")
+        .into_cli_error()),
     }
 }
 
-pub(crate) fn prompt_a_record() -> Result<Record, cli_engine::CliCoreError> {
-    eprintln!("\n━━━ A Record (IPv4) ━━━");
+pub(crate) fn prompt_optional_string<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+    prompt: &str,
+) -> io::Result<Option<String>> {
+    write!(writer, "{}: ", prompt)?;
+    writer.flush()?;
 
-    let host: String = Input::new()
-        .with_prompt("Host (required, e.g., @ for apex or www)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let mut line = String::new();
+    reader.read_line(&mut line)?;
 
-    let ip_variable: String = Input::new()
-        .with_prompt("IP variable name (required, e.g., ip, IP4, rootip)")
-        .default("ip".to_string())
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let trimmed = line.trim();
+    Ok(if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    })
+}
 
-    let group_id = prompt_optional_string("Group ID (optional, groups related records)")?;
-    let essential = prompt_optional_string("Essential (optional, OnApply/Always/No)")?;
-    let ttl = prompt_optional_i32("TTL (optional)", 3600)?;
+pub(crate) fn prompt_string<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+    prompt: &str,
+) -> cli_engine::Result<String> {
+    write!(writer, "{}: ", prompt)?;
+    writer.flush()?;
+
+    let mut line = String::new();
+    reader.read_line(&mut line)?;
+
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return Err(GddyError::validation(format!("{} cannot be empty", prompt))
+            .with_fix("Enter a non-empty value")
+            .into_cli_error());
+    }
+
+    Ok(trimmed.to_string())
+}
+
+pub(crate) fn prompt_string_with_default<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+    prompt: &str,
+    default: &str,
+) -> io::Result<String> {
+    write!(writer, "{} (default: {}): ", prompt, default)?;
+    writer.flush()?;
+
+    let mut line = String::new();
+    reader.read_line(&mut line)?;
+
+    let trimmed = line.trim();
+    Ok(if trimmed.is_empty() {
+        default.to_string()
+    } else {
+        trimmed.to_string()
+    })
+}
+
+pub(crate) fn prompt_optional_i32<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+    prompt: &str,
+    default: i32,
+) -> cli_engine::Result<i32> {
+    write!(writer, "{} (default: {}): ", prompt, default)?;
+    writer.flush()?;
+
+    let mut line = String::new();
+    reader.read_line(&mut line)?;
+
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        Ok(default)
+    } else {
+        trimmed.parse().map_err(|_| {
+            GddyError::validation("Must be a valid number")
+                .with_fix("Enter an integer value")
+                .into_cli_error()
+        })
+    }
+}
+
+pub(crate) fn prompt_i32<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+    prompt: &str,
+) -> cli_engine::Result<i32> {
+    write!(writer, "{}: ", prompt)?;
+    writer.flush()?;
+
+    let mut line = String::new();
+    reader.read_line(&mut line)?;
+
+    line.trim().parse().map_err(|_| {
+        GddyError::validation("Must be a valid number")
+            .with_fix("Enter an integer value")
+            .into_cli_error()
+    })
+}
+
+pub(crate) fn prompt_a_record<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+) -> cli_engine::Result<Record> {
+    writeln!(writer, "\n━━━ A Record (IPv4) ━━━")?;
+
+    let host = prompt_string(reader, writer, "Host (required, e.g., @ for apex or www)")?;
+    let ip_variable = prompt_string_with_default(
+        reader,
+        writer,
+        "IP variable name (required, e.g., ip, IP4, rootip)",
+        "ip",
+    )?;
+
+    let group_id = prompt_optional_string(
+        reader,
+        writer,
+        "Group ID (optional, groups related records)",
+    )?;
+    let essential =
+        prompt_optional_string(reader, writer, "Essential (optional, OnApply/Always/No)")?;
+    let ttl = prompt_optional_i32(reader, writer, "TTL (optional)", 3600)?;
 
     Ok(Record {
         record_type: "A".to_string(),
@@ -156,23 +246,24 @@ pub(crate) fn prompt_a_record() -> Result<Record, cli_engine::CliCoreError> {
     })
 }
 
-pub(crate) fn prompt_aaaa_record() -> Result<Record, cli_engine::CliCoreError> {
-    eprintln!("\n━━━ AAAA Record (IPv6) ━━━");
+pub(crate) fn prompt_aaaa_record<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+) -> cli_engine::Result<Record> {
+    writeln!(writer, "\n━━━ AAAA Record (IPv6) ━━━")?;
 
-    let host: String = Input::new()
-        .with_prompt("Host (required, e.g., @ for apex or www)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let host = prompt_string(reader, writer, "Host (required, e.g., @ for apex or www)")?;
+    let ipv6_variable = prompt_string_with_default(
+        reader,
+        writer,
+        "IPv6 variable name (required, e.g., IP6, ipv6)",
+        "IP6",
+    )?;
 
-    let ipv6_variable: String = Input::new()
-        .with_prompt("IPv6 variable name (required, e.g., IP6, ipv6)")
-        .default("IP6".to_string())
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
-
-    let group_id = prompt_optional_string("Group ID (optional)")?;
-    let essential = prompt_optional_string("Essential (optional, OnApply/Always/No)")?;
-    let ttl = prompt_optional_i32("TTL (optional)", 3600)?;
+    let group_id = prompt_optional_string(reader, writer, "Group ID (optional)")?;
+    let essential =
+        prompt_optional_string(reader, writer, "Essential (optional, OnApply/Always/No)")?;
+    let ttl = prompt_optional_i32(reader, writer, "TTL (optional)", 3600)?;
 
     Ok(Record {
         record_type: "AAAA".to_string(),
@@ -195,22 +286,19 @@ pub(crate) fn prompt_aaaa_record() -> Result<Record, cli_engine::CliCoreError> {
     })
 }
 
-pub(crate) fn prompt_cname_record() -> Result<Record, cli_engine::CliCoreError> {
-    eprintln!("\n━━━ CNAME Record ━━━");
+pub(crate) fn prompt_cname_record<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+) -> cli_engine::Result<Record> {
+    writeln!(writer, "\n━━━ CNAME Record ━━━")?;
 
-    let host: String = Input::new()
-        .with_prompt("Host (required, e.g., www)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let host = prompt_string(reader, writer, "Host (required, e.g., www)")?;
+    let target = prompt_string(reader, writer, "Target (required, e.g., @ or example.com)")?;
 
-    let target: String = Input::new()
-        .with_prompt("Target (required, e.g., @ or example.com)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
-
-    let group_id = prompt_optional_string("Group ID (optional)")?;
-    let essential = prompt_optional_string("Essential (optional, OnApply/Always/No)")?;
-    let ttl = prompt_optional_i32("TTL (optional)", 3600)?;
+    let group_id = prompt_optional_string(reader, writer, "Group ID (optional)")?;
+    let essential =
+        prompt_optional_string(reader, writer, "Essential (optional, OnApply/Always/No)")?;
+    let ttl = prompt_optional_i32(reader, writer, "TTL (optional)", 3600)?;
 
     Ok(Record {
         record_type: "CNAME".to_string(),
@@ -233,24 +321,25 @@ pub(crate) fn prompt_cname_record() -> Result<Record, cli_engine::CliCoreError> 
     })
 }
 
-pub(crate) fn prompt_mx_record() -> Result<Record, cli_engine::CliCoreError> {
-    eprintln!("\n━━━ MX Record (Mail Exchanger) ━━━");
+pub(crate) fn prompt_mx_record<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+) -> cli_engine::Result<Record> {
+    writeln!(writer, "\n━━━ MX Record (Mail Exchanger) ━━━")?;
 
-    let host: String = Input::new()
-        .with_prompt("Host (required, e.g., @ for apex)")
-        .default("@".to_string())
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let host =
+        prompt_string_with_default(reader, writer, "Host (required, e.g., @ for apex)", "@")?;
+    let mail_server = prompt_string(
+        reader,
+        writer,
+        "Mail server (required, e.g., mail.example.com)",
+    )?;
 
-    let mail_server: String = Input::new()
-        .with_prompt("Mail server (required, e.g., mail.example.com)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
-
-    let priority = prompt_optional_i32("Priority (required)", 10)?;
-    let group_id = prompt_optional_string("Group ID (optional, e.g., mail)")?;
-    let essential = prompt_optional_string("Essential (optional, OnApply/Always/No)")?;
-    let ttl = prompt_optional_i32("TTL (optional)", 3600)?;
+    let priority = prompt_optional_i32(reader, writer, "Priority (required)", 10)?;
+    let group_id = prompt_optional_string(reader, writer, "Group ID (optional, e.g., mail)")?;
+    let essential =
+        prompt_optional_string(reader, writer, "Essential (optional, OnApply/Always/No)")?;
+    let ttl = prompt_optional_i32(reader, writer, "TTL (optional)", 3600)?;
 
     Ok(Record {
         record_type: "MX".to_string(),
@@ -273,22 +362,19 @@ pub(crate) fn prompt_mx_record() -> Result<Record, cli_engine::CliCoreError> {
     })
 }
 
-pub(crate) fn prompt_txt_record() -> Result<Record, cli_engine::CliCoreError> {
-    eprintln!("\n━━━ TXT Record ━━━");
+pub(crate) fn prompt_txt_record<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+) -> cli_engine::Result<Record> {
+    writeln!(writer, "\n━━━ TXT Record ━━━")?;
 
-    let host: String = Input::new()
-        .with_prompt("Host (required, e.g., @ or _dmarc)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let host = prompt_string(reader, writer, "Host (required, e.g., @ or _dmarc)")?;
+    let data = prompt_string(reader, writer, "Data (required, e.g., v=spf1 ~all)")?;
 
-    let data: String = Input::new()
-        .with_prompt("Data (required, e.g., v=spf1 ~all)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
-
-    let group_id = prompt_optional_string("Group ID (optional)")?;
-    let essential = prompt_optional_string("Essential (optional, OnApply/Always/No)")?;
-    let ttl = prompt_optional_i32("TTL (optional)", 3600)?;
+    let group_id = prompt_optional_string(reader, writer, "Group ID (optional)")?;
+    let essential =
+        prompt_optional_string(reader, writer, "Essential (optional, OnApply/Always/No)")?;
+    let ttl = prompt_optional_i32(reader, writer, "TTL (optional)", 3600)?;
 
     Ok(Record {
         record_type: "TXT".to_string(),
@@ -311,42 +397,29 @@ pub(crate) fn prompt_txt_record() -> Result<Record, cli_engine::CliCoreError> {
     })
 }
 
-pub(crate) fn prompt_srv_record() -> Result<Record, cli_engine::CliCoreError> {
-    eprintln!("\n━━━ SRV Record (Service Locator) ━━━");
-    eprintln!("    Example: _sip._tcp points to sip.example.com:5060");
+pub(crate) fn prompt_srv_record<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+) -> cli_engine::Result<Record> {
+    writeln!(writer, "\n━━━ SRV Record (Service Locator) ━━━")?;
+    writeln!(
+        writer,
+        "    Example: _sip._tcp points to sip.example.com:5060"
+    )?;
 
-    let service: String = Input::new()
-        .with_prompt("Service (required, e.g., _sip)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let service = prompt_string(reader, writer, "Service (required, e.g., _sip)")?;
+    let protocol = prompt_string(reader, writer, "Protocol (required, e.g., _tcp, _udp)")?;
+    let name = prompt_string_with_default(reader, writer, "Name/Host (required, e.g., @)", "@")?;
+    let target = prompt_string(reader, writer, "Target (required, e.g., sip.example.com)")?;
 
-    let protocol: String = Input::new()
-        .with_prompt("Protocol (required, e.g., _tcp, _udp)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let priority = prompt_optional_i32(reader, writer, "Priority (required)", 100)?;
+    let weight = prompt_optional_i32(reader, writer, "Weight (required)", 1)?;
+    let port = prompt_i32(reader, writer, "Port (required, e.g., 5060)")?;
 
-    let name: String = Input::new()
-        .with_prompt("Name/Host (required, e.g., @)")
-        .default("@".to_string())
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
-
-    let target: String = Input::new()
-        .with_prompt("Target (required, e.g., sip.example.com)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
-
-    let priority = prompt_optional_i32("Priority (required)", 100)?;
-    let weight = prompt_optional_i32("Weight (required)", 1)?;
-
-    let port: i32 = Input::new()
-        .with_prompt("Port (required, e.g., 5060)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
-
-    let group_id = prompt_optional_string("Group ID (optional)")?;
-    let essential = prompt_optional_string("Essential (optional, OnApply/Always/No)")?;
-    let ttl = prompt_optional_i32("TTL (optional)", 3600)?;
+    let group_id = prompt_optional_string(reader, writer, "Group ID (optional)")?;
+    let essential =
+        prompt_optional_string(reader, writer, "Essential (optional, OnApply/Always/No)")?;
+    let ttl = prompt_optional_i32(reader, writer, "TTL (optional)", 3600)?;
 
     Ok(Record {
         record_type: "SRV".to_string(),
@@ -369,22 +442,23 @@ pub(crate) fn prompt_srv_record() -> Result<Record, cli_engine::CliCoreError> {
     })
 }
 
-pub(crate) fn prompt_ns_record() -> Result<Record, cli_engine::CliCoreError> {
-    eprintln!("\n━━━ NS Record (Name Server) ━━━");
+pub(crate) fn prompt_ns_record<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+) -> cli_engine::Result<Record> {
+    writeln!(writer, "\n━━━ NS Record (Name Server) ━━━")?;
 
-    let host: String = Input::new()
-        .with_prompt("Host (required, e.g., @ or subdomain)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let host = prompt_string(reader, writer, "Host (required, e.g., @ or subdomain)")?;
+    let nameserver = prompt_string(
+        reader,
+        writer,
+        "Name server (required, e.g., ns1.example.com)",
+    )?;
 
-    let nameserver: String = Input::new()
-        .with_prompt("Name server (required, e.g., ns1.example.com)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
-
-    let group_id = prompt_optional_string("Group ID (optional)")?;
-    let essential = prompt_optional_string("Essential (optional, OnApply/Always/No)")?;
-    let ttl = prompt_optional_i32("TTL (optional)", 3600)?;
+    let group_id = prompt_optional_string(reader, writer, "Group ID (optional)")?;
+    let essential =
+        prompt_optional_string(reader, writer, "Essential (optional, OnApply/Always/No)")?;
+    let ttl = prompt_optional_i32(reader, writer, "TTL (optional)", 3600)?;
 
     Ok(Record {
         record_type: "NS".to_string(),
@@ -407,24 +481,24 @@ pub(crate) fn prompt_ns_record() -> Result<Record, cli_engine::CliCoreError> {
     })
 }
 
-pub(crate) fn prompt_spfm_record() -> Result<Record, cli_engine::CliCoreError> {
-    eprintln!("\n━━━ SPFM Record (SPF Macro) ━━━");
-    eprintln!("    Domain Connect specific - SPF include rules");
+pub(crate) fn prompt_spfm_record<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+) -> cli_engine::Result<Record> {
+    writeln!(writer, "\n━━━ SPFM Record (SPF Macro) ━━━")?;
+    writeln!(writer, "    Domain Connect specific - SPF include rules")?;
 
-    let host: String = Input::new()
-        .with_prompt("Host (required, e.g., @)")
-        .default("@".to_string())
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let host = prompt_string_with_default(reader, writer, "Host (required, e.g., @)", "@")?;
+    let spf_rules = prompt_string(
+        reader,
+        writer,
+        "SPF rules (required, e.g., include:_spf.example.com)",
+    )?;
 
-    let spf_rules: String = Input::new()
-        .with_prompt("SPF rules (required, e.g., include:_spf.example.com)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
-
-    let group_id = prompt_optional_string("Group ID (optional)")?;
-    let essential = prompt_optional_string("Essential (optional, OnApply/Always/No)")?;
-    let ttl = prompt_optional_i32("TTL (optional)", 3600)?;
+    let group_id = prompt_optional_string(reader, writer, "Group ID (optional)")?;
+    let essential =
+        prompt_optional_string(reader, writer, "Essential (optional, OnApply/Always/No)")?;
+    let ttl = prompt_optional_i32(reader, writer, "TTL (optional)", 3600)?;
 
     Ok(Record {
         record_type: "SPFM".to_string(),
@@ -447,22 +521,23 @@ pub(crate) fn prompt_spfm_record() -> Result<Record, cli_engine::CliCoreError> {
     })
 }
 
-pub(crate) fn prompt_redir301_record() -> Result<Record, cli_engine::CliCoreError> {
-    eprintln!("\n━━━ REDIR301 Record (301 Redirect) ━━━");
-    eprintln!("    Domain Connect specific - HTTP 301 redirect");
+pub(crate) fn prompt_redir301_record<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+) -> cli_engine::Result<Record> {
+    writeln!(writer, "\n━━━ REDIR301 Record (301 Redirect) ━━━")?;
+    writeln!(writer, "    Domain Connect specific - HTTP 301 redirect")?;
 
-    let host: String = Input::new()
-        .with_prompt("Host (required, e.g., @ or www)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let host = prompt_string(reader, writer, "Host (required, e.g., @ or www)")?;
+    let target = prompt_string(
+        reader,
+        writer,
+        "Redirect target (required, e.g., https://www.%fqdn%)",
+    )?;
 
-    let target: String = Input::new()
-        .with_prompt("Redirect target (required, e.g., https://www.%fqdn%)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
-
-    let group_id = prompt_optional_string("Group ID (optional)")?;
-    let essential = prompt_optional_string("Essential (optional, OnApply/Always/No)")?;
+    let group_id = prompt_optional_string(reader, writer, "Group ID (optional)")?;
+    let essential =
+        prompt_optional_string(reader, writer, "Essential (optional, OnApply/Always/No)")?;
 
     Ok(Record {
         record_type: "REDIR301".to_string(),
@@ -485,22 +560,26 @@ pub(crate) fn prompt_redir301_record() -> Result<Record, cli_engine::CliCoreErro
     })
 }
 
-pub(crate) fn prompt_redir302_record() -> Result<Record, cli_engine::CliCoreError> {
-    eprintln!("\n━━━ REDIR302 Record (302 Redirect) ━━━");
-    eprintln!("    Domain Connect specific - HTTP 302 temporary redirect");
+pub(crate) fn prompt_redir302_record<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+) -> cli_engine::Result<Record> {
+    writeln!(writer, "\n━━━ REDIR302 Record (302 Redirect) ━━━")?;
+    writeln!(
+        writer,
+        "    Domain Connect specific - HTTP 302 temporary redirect"
+    )?;
 
-    let host: String = Input::new()
-        .with_prompt("Host (required, e.g., @ or www)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let host = prompt_string(reader, writer, "Host (required, e.g., @ or www)")?;
+    let target = prompt_string(
+        reader,
+        writer,
+        "Redirect target (required, e.g., https://www.%fqdn%)",
+    )?;
 
-    let target: String = Input::new()
-        .with_prompt("Redirect target (required, e.g., https://www.%fqdn%)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
-
-    let group_id = prompt_optional_string("Group ID (optional)")?;
-    let essential = prompt_optional_string("Essential (optional, OnApply/Always/No)")?;
+    let group_id = prompt_optional_string(reader, writer, "Group ID (optional)")?;
+    let essential =
+        prompt_optional_string(reader, writer, "Essential (optional, OnApply/Always/No)")?;
 
     Ok(Record {
         record_type: "REDIR302".to_string(),
@@ -523,24 +602,24 @@ pub(crate) fn prompt_redir302_record() -> Result<Record, cli_engine::CliCoreErro
     })
 }
 
-pub(crate) fn prompt_apexcname_record() -> Result<Record, cli_engine::CliCoreError> {
-    eprintln!("\n━━━ APEXCNAME Record (Apex CNAME) ━━━");
-    eprintln!("    Domain Connect specific - CNAME at domain apex");
+pub(crate) fn prompt_apexcname_record<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+) -> cli_engine::Result<Record> {
+    writeln!(writer, "\n━━━ APEXCNAME Record (Apex CNAME) ━━━")?;
+    writeln!(writer, "    Domain Connect specific - CNAME at domain apex")?;
 
-    let host: String = Input::new()
-        .with_prompt("Host (required, typically @)")
-        .default("@".to_string())
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let host = prompt_string_with_default(reader, writer, "Host (required, typically @)", "@")?;
+    let points_to = prompt_string(
+        reader,
+        writer,
+        "Points to (required, e.g., target.example.com)",
+    )?;
 
-    let points_to: String = Input::new()
-        .with_prompt("Points to (required, e.g., target.example.com)")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
-
-    let group_id = prompt_optional_string("Group ID (optional)")?;
-    let essential = prompt_optional_string("Essential (optional, OnApply/Always/No)")?;
-    let ttl = prompt_optional_i32("TTL (optional)", 3600)?;
+    let group_id = prompt_optional_string(reader, writer, "Group ID (optional)")?;
+    let essential =
+        prompt_optional_string(reader, writer, "Essential (optional, OnApply/Always/No)")?;
+    let ttl = prompt_optional_i32(reader, writer, "TTL (optional)", 3600)?;
 
     Ok(Record {
         record_type: "APEXCNAME".to_string(),
@@ -563,23 +642,26 @@ pub(crate) fn prompt_apexcname_record() -> Result<Record, cli_engine::CliCoreErr
     })
 }
 
-pub(crate) fn prompt_caa_record() -> Result<Record, cli_engine::CliCoreError> {
-    eprintln!("\n━━━ CAA Record (Certificate Authority Authorization) ━━━");
+pub(crate) fn prompt_caa_record<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+) -> cli_engine::Result<Record> {
+    writeln!(
+        writer,
+        "\n━━━ CAA Record (Certificate Authority Authorization) ━━━"
+    )?;
 
-    let host: String = Input::new()
-        .with_prompt("Host (required, e.g., @)")
-        .default("@".to_string())
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
+    let host = prompt_string_with_default(reader, writer, "Host (required, e.g., @)", "@")?;
+    let data = prompt_string(
+        reader,
+        writer,
+        "Data (required, e.g., 0 issue \"letsencrypt.org\")",
+    )?;
 
-    let data: String = Input::new()
-        .with_prompt("Data (required, e.g., 0 issue \"letsencrypt.org\")")
-        .interact_text()
-        .map_err(|e| cli_engine::CliCoreError::message(format!("Input error: {}", e)))?;
-
-    let group_id = prompt_optional_string("Group ID (optional)")?;
-    let essential = prompt_optional_string("Essential (optional, OnApply/Always/No)")?;
-    let ttl = prompt_optional_i32("TTL (optional)", 3600)?;
+    let group_id = prompt_optional_string(reader, writer, "Group ID (optional)")?;
+    let essential =
+        prompt_optional_string(reader, writer, "Essential (optional, OnApply/Always/No)")?;
+    let ttl = prompt_optional_i32(reader, writer, "TTL (optional)", 3600)?;
 
     Ok(Record {
         record_type: "CAA".to_string(),
@@ -600,4 +682,106 @@ pub(crate) fn prompt_caa_record() -> Result<Record, cli_engine::CliCoreError> {
         txt_conflict_matching_mode: None,
         txt_conflict_matching_prefix: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use super::*;
+
+    #[test]
+    fn prompt_string_accepts_input() {
+        let mut input = Cursor::new(b"acme.com\n");
+        let mut output = Vec::new();
+        let result = prompt_string(&mut input, &mut output, "Provider ID");
+        assert_eq!(result.expect("prompt"), "acme.com");
+    }
+
+    #[test]
+    fn prompt_string_rejects_empty() {
+        let mut input = Cursor::new(b"\n");
+        let mut output = Vec::new();
+        let result = prompt_string(&mut input, &mut output, "Provider ID");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("cannot be empty"));
+    }
+
+    #[test]
+    fn prompt_optional_string_allows_empty() {
+        let mut input = Cursor::new(b"\n");
+        let mut output = Vec::new();
+        let result = prompt_optional_string(&mut input, &mut output, "Description");
+        assert_eq!(result.expect("prompt"), None);
+    }
+
+    #[test]
+    fn prompt_optional_string_returns_value() {
+        let mut input = Cursor::new(b"test value\n");
+        let mut output = Vec::new();
+        let result = prompt_optional_string(&mut input, &mut output, "Description");
+        assert_eq!(result.expect("prompt"), Some("test value".to_string()));
+    }
+
+    #[test]
+    fn prompt_string_with_default_uses_default_on_empty() {
+        let mut input = Cursor::new(b"\n");
+        let mut output = Vec::new();
+        let result = prompt_string_with_default(&mut input, &mut output, "Host", "@");
+        assert_eq!(result.expect("prompt"), "@");
+    }
+
+    #[test]
+    fn prompt_string_with_default_accepts_value() {
+        let mut input = Cursor::new(b"www\n");
+        let mut output = Vec::new();
+        let result = prompt_string_with_default(&mut input, &mut output, "Host", "@");
+        assert_eq!(result.expect("prompt"), "www");
+    }
+
+    #[test]
+    fn prompt_optional_i32_uses_default_on_empty() {
+        let mut input = Cursor::new(b"\n");
+        let mut output = Vec::new();
+        let result = prompt_optional_i32(&mut input, &mut output, "TTL", 3600);
+        assert_eq!(result.expect("prompt"), 3600);
+    }
+
+    #[test]
+    fn prompt_optional_i32_accepts_value() {
+        let mut input = Cursor::new(b"7200\n");
+        let mut output = Vec::new();
+        let result = prompt_optional_i32(&mut input, &mut output, "TTL", 3600);
+        assert_eq!(result.expect("prompt"), 7200);
+    }
+
+    #[test]
+    fn prompt_optional_i32_rejects_invalid() {
+        let mut input = Cursor::new(b"not-a-number\n");
+        let mut output = Vec::new();
+        let result = prompt_optional_i32(&mut input, &mut output, "TTL", 3600);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn prompt_record_type_accepts_valid_selection() {
+        let mut input = Cursor::new(b"1\n");
+        let mut output = Vec::new();
+        let result = prompt_record_type(&mut input, &mut output);
+        assert!(matches!(result.expect("prompt"), RecordType::A));
+    }
+
+    #[test]
+    fn prompt_record_type_rejects_out_of_range() {
+        let mut input = Cursor::new(b"99\n");
+        let mut output = Vec::new();
+        let result = prompt_record_type(&mut input, &mut output);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid selection")
+        );
+    }
 }

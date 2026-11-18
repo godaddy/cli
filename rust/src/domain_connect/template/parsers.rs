@@ -1,6 +1,7 @@
 //! Record parser functions for Domain Connect templates
 
 use super::types::{Record, Template};
+use crate::error::GddyError;
 use cli_engine::CliCoreError;
 use std::collections::HashMap;
 
@@ -12,10 +13,13 @@ pub(crate) fn parse_record_attrs(input: &str) -> Result<HashMap<String, String>,
         if parts.len() == 2 {
             attrs.insert(parts[0].trim().to_string(), parts[1].trim().to_string());
         } else {
-            return Err(CliCoreError::message(format!(
+            return Err(GddyError::validation(format!(
                 "Invalid format '{}'. Expected key=value pairs separated by commas",
                 pair
-            )));
+            ))
+            .with_fix("Use format: key1=value1,key2=value2")
+            .with_system("domain-connect")
+            .into_cli_error());
         }
     }
 
@@ -29,10 +33,13 @@ pub(crate) fn get_required_attr(
     record_type: &str,
 ) -> Result<String, CliCoreError> {
     attrs.get(key).cloned().ok_or_else(|| {
-        CliCoreError::message(format!(
+        GddyError::validation(format!(
             "{} record requires '{}' attribute",
             record_type, key
         ))
+        .with_fix(format!("Add {}=<value> to the record definition", key))
+        .with_system("domain-connect")
+        .into_cli_error()
     })
 }
 
@@ -55,8 +62,12 @@ pub(crate) fn get_optional_i32(
     default: i32,
 ) -> Result<i32, CliCoreError> {
     if let Some(val) = attrs.get(key) {
-        val.parse()
-            .map_err(|_| CliCoreError::message(format!("Invalid number for '{}': {}", key, val)))
+        val.parse().map_err(|_| {
+            GddyError::validation(format!("Invalid number for '{}': {}", key, val))
+                .with_fix(format!("Use an integer value for {}", key))
+                .with_system("domain-connect")
+                .into_cli_error()
+        })
     } else {
         Ok(default)
     }
