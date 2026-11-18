@@ -1,8 +1,8 @@
 ---
-summary: Register a domain with gddy — quote, review, then purchase
+summary: Quote, review, and purchase a domain with gddy
 ---
 
-# Buying a domain with `gddy`
+# Buy a domain with `gddy`
 
 Registering a domain is a **two-step, quote-then-purchase** flow:
 
@@ -13,14 +13,14 @@ Registering a domain is a **two-step, quote-then-purchase** flow:
 
 A purchase is **paid and not reversible**, so `purchase` has two gates (`--agree`, `--confirm`) on top of the token. The quote token locks the registration price and settings you reviewed.
 
-**The quoted price does not include taxes and fees.** The ICANN fee and any applicable taxes are added when you register, so the total charged is higher than the price shown by `suggest`, `available` and `quote`. Whether tax applies depends on the billing address of your payment method. The `Premium Fees` column is something else: it lists the extra cost of a premium domain and is empty for a non-premium domain. Once the registration completes, `purchase` gives you the order ID, and `gddy shopping order get <order-id>` shows the total charged.
+**The quoted price doesn't include taxes and fees.** The ICANN fee and any applicable taxes are added when you register, so the total charged is higher than the price shown by `suggest`, `available` and `quote`. Whether tax applies depends on the billing address of your payment method. The `Premium Fees` column is something else: it lists the extra cost of a premium domain and is empty for a non-premium domain. Once the registration completes, `purchase` gives you the order ID, and `gddy shopping order get <order-id>` shows the total charged.
 
-Registration completes **asynchronously**: `purchase` submits the registration and waits briefly for the registry, reporting the operation's `status` (`COMPLETED` when done). The domain then appears in `gddy domain list`. If `purchase` gives up waiting before reaching a terminal status, it will give you an operation ID which you can use to check its progress with:
+Registration completes **asynchronously**: `purchase` submits the registration and waits briefly for the registry, reporting the operation's `status` (`COMPLETED` when done). The domain then shows up in `gddy domain list`. If `purchase` gives up waiting before reaching a terminal status, it will give you an operation ID which you can use to check its progress with:
 `gddy domain operation status <operation-id>`.
 
 ## The flow
 
-1. **Find a name** (optional) — if you don't have one in mind, get suggestions
+1. **Find a name** (optional): if you don't have one in mind, get suggestions
    from a seed word or phrase:
    ```
    gddy domain suggest "avocado jewelry"
@@ -34,20 +34,20 @@ Registration completes **asynchronously**: `purchase` submits the registration a
    `--length-min`/`--length-max`, and cap the count with the global `--limit`.
    Suggestions are available-by-contract, but availability is re-checked at
    quote time.
-2. **Check availability** (optional) — confirm a name and see its price:
+2. **Check availability** (optional): confirm a name and see its price:
    `gddy domain available example.com`
-3. **Quote it** — this is where you choose the registration settings and review
+3. **Quote it**: this is where you choose the registration settings and review
    the terms and price:
    ```
    gddy domain quote example.com
    ```
    The output shows the price, the required legal agreements, the resolved
-   contact/preference settings, and the `quoteToken` (with its `expiresAt`). Set
+   contact and preference settings, and the `quoteToken` (with its `expiresAt`). Set
    registration options here (they're locked into the token):
-   - `--period <1-10>` — registration length in years (default 1).
-   - `--privacy` — add privacy protection.
-   - `--no-renew` — disable auto-renew (on by default).
-   - `--nameserver <host>` — custom nameserver (repeatable); omit for GoDaddy's.
+   - `--period <1-10>`: registration length in years (default 1).
+   - `--privacy`: add privacy protection.
+   - `--no-renew`: disable auto-renew (on by default).
+   - `--nameserver <host>`: custom nameserver (repeatable); omit for GoDaddy's.
 4. **Purchase**, accepting the agreements and confirming the charge:
    ```
    gddy domain purchase --quote-token <token> --agree --confirm
@@ -57,7 +57,7 @@ The quote is cached locally (next to your `contacts.toml`), so **run `quote` and
 
 ### The three decisions
 
-- **The quote token** selects *which* quote you're buying — the exact domain,
+- **The quote token** selects *which* quote you're buying: the exact domain,
   settings, and registration price you reviewed.
 - `--agree` is your **consent** to the quote's legal agreements. Run `purchase`
   without it and it lists the agreements you must accept.
@@ -72,7 +72,7 @@ You can type a name either as Unicode (`münchen.de`) or in its encoded form (`x
 
 ## Contacts
 
-A registration has four contact roles: **registrant**, **admin**, **billing**, and **tech**. If you don't supply them, the API uses your GoDaddy account's default contacts — which is usually what you want. Contacts are part of the quote, so configure them *before* you quote.
+A registration has four contact roles: **registrant**, **admin**, **billing**, and **tech**. If you don't supply them, the API uses your GoDaddy account's default contacts, which is usually what you want. Contacts are part of the quote, so configure them *before* you quote.
 
 If you register many domains and want to set your own contacts once, save them in a `contacts.toml` in your `gddy` config directory. The quickest start is to generate a template and edit it:
 
@@ -86,7 +86,7 @@ That writes a starter `contacts.toml` (with every role commented out) to:
 - macOS: `~/Library/Application Support/gddy/contacts.toml`
 - Windows: `%APPDATA%\gddy\contacts.toml`
 
-Open it, uncomment the role(s) you want, and fill in the values. Each role is an optional table: a role you omit falls back to the account default; a role you uncomment must be **complete** (the required fields below), or the file fails to load.
+Open it, uncomment the role(s) you want, and fill in the values. Each role is an optional table. A role you omit falls back to the account default. A role you uncomment must be **complete**, with every required field from the example that follows, or the file fails to load.
 
 ```toml
 [registrant]

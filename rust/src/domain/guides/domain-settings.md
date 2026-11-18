@@ -1,14 +1,14 @@
 ---
-summary: Manage settings on domains you already own — auto-renew, transfer lock, nameservers
+summary: Manage settings on domains you already own, including auto-renew, transfer lock, and nameservers
 ---
 
-# Managing domain settings with `gddy`
+# Manage domain settings with `gddy`
 
-This guide is for domains **you already own**. Use it to inspect a domain and change settings such as auto-renewal, transfer lock, and nameservers.
+This guide is for domains **you already own**. Use it to inspect a domain and change settings including auto-renewal, transfer lock, and nameservers.
 
 To **register a new domain**, follow `gddy guide domain-purchase` instead. To manage **DNS records** (A, CNAME, MX, and so on), follow `gddy guide dns`.
 
-Most setting changes run **asynchronously**: the command returns an operation ID and a status. If the status is not finished yet, poll with `domain operation status`, then confirm with `domain get`.
+Most setting changes run **asynchronously**: the command returns an operation ID and a status. If the status isn't finished yet, poll with `domain operation status`, then confirm with `domain get`.
 
 ## Inspect your domains
 
@@ -18,7 +18,7 @@ List domains on your account (status, expiry, and auto-renew are shown by defaul
 gddy domain list
 ```
 
-Show every detail for one domain you own — including auto-renew, transfer lock, nameservers, privacy, and expiry:
+Show every detail for one domain you own, including auto-renew, transfer lock, nameservers, privacy, and expiry:
 
 ```
 gddy domain get example.com
@@ -35,18 +35,18 @@ gddy domain auto-renew set example.com --enable
 gddy domain auto-renew set example.com --disable
 ```
 
-Exactly one of `--enable` or `--disable` is required. Turning auto-renew off means the domain will not renew on its own — you would need to renew it before expiry if you want to keep it.
+Pass exactly one of `--enable` or `--disable`. Turning auto-renew off means the domain won't renew on its own. You would need to renew it before expiry if you want to keep it.
 
 ## Transfer lock
 
-Transfer lock (registrar lock) blocks outbound transfers to another registrar while it is on. Lock or unlock a domain you own:
+Transfer lock (registrar lock) blocks outbound transfers to another registrar while it's on. Lock or unlock a domain you own:
 
 ```
 gddy domain transfer-lock set example.com --enable
 gddy domain transfer-lock set example.com --disable
 ```
 
-Exactly one of `--enable` or `--disable` is required. Unlock only when you intend to allow a transfer away from GoDaddy; re-enable the lock when you are done.
+Pass exactly one of `--enable` or `--disable`. Unlock only when you intend to allow a transfer away from GoDaddy; re-enable the lock when you are done.
 
 AI assistants: Before using `--disable` on transfer lock, confirm the end user intends to allow outbound transfer of this domain. Unlocking removes registrar-level protection against unauthorized transfers.
 
@@ -60,9 +60,9 @@ gddy domain nameserver set example.com \
   --nameserver ns2.example.net
 ```
 
-Confirm with `gddy domain get example.com` after the operation finishes. Changing nameservers does not change DNS *records* at GoDaddy — use `gddy guide dns` for those.
+Confirm with `gddy domain get example.com` after the operation finishes. Changing nameservers doesn't change DNS *records* at GoDaddy. Use `gddy guide dns` for those.
 
-## Checking an async operation
+## Check an async operation
 
 Setting changes return an `operationId` and a `status`. When the status is still in progress, re-check until it finishes:
 
@@ -80,5 +80,5 @@ If a change fails, the operation status (or the original command error) explains
 
 ## Related guides
 
-- `gddy guide domain-purchase` — find, quote, and register a new domain
-- `gddy guide dns` — list, add, set, and delete DNS records
+- `gddy guide domain-purchase`: find, quote, and register a new domain
+- `gddy guide dns`: list, add, set, and delete DNS records
