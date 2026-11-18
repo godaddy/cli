@@ -42,7 +42,7 @@ fn parse_record_attrs_value_with_equals() {
 fn parse_record_attrs_invalid_no_equals() {
     let result = parse_record_attrs("host");
     assert!(result.is_err());
-    let err = result.unwrap_err();
+    let err = result.expect_err("expected an error");
     assert!(err.to_string().contains("Invalid format"));
 }
 
@@ -80,7 +80,7 @@ fn get_required_attr_errors_when_missing() {
     let attrs = HashMap::new();
     let result = get_required_attr(&attrs, "value", "A");
     assert!(result.is_err());
-    let err = result.unwrap_err();
+    let err = result.expect_err("expected an error");
     assert!(
         err.to_string()
             .contains("A record requires 'value' attribute")
@@ -108,7 +108,7 @@ fn get_optional_i32_errors_on_invalid_number() {
     attrs.insert("ttl".to_string(), "not-a-number".to_string());
     let result = get_optional_i32(&attrs, "ttl", 3600);
     assert!(result.is_err());
-    let err = result.unwrap_err();
+    let err = result.expect_err("expected an error");
     assert!(err.to_string().contains("Invalid number"));
 }
 
