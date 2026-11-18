@@ -1,0 +1,8 @@
+# A step number in a heading ("## 1. Create the application") goes stale when steps move.
+extends: existence
+message: "Don't number headings. Remove the step number from '%s'."
+level: warning
+scope: heading
+nonword: true
+tokens:
+  - '^\d+\.\s'

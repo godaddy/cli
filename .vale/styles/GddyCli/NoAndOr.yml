@@ -1,0 +1,8 @@
+# "and/or" leaves the reader to guess. Say which one is true.
+extends: existence
+message: "Don't use 'and/or'. Decide which one is true and say 'and' or 'or'."
+level: warning
+scope: text
+nonword: true
+tokens:
+  - '\band/or\b'

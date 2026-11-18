@@ -1,0 +1,49 @@
+# Filler and inflated words with a plain alternative. Keep the tokens in alphabetical order.
+extends: existence
+message: "'%s' is banned vocabulary. Use a plain alternative."
+level: error
+scope: sentence
+ignorecase: true
+tokens:
+  # Single words
+  - '\badditionally\b'
+  - '\bcommence[ds]?\b'
+  - '\bcomprehensive\b'
+  - '\bcutting-edge\b'
+  - '\bdeep dive\b'
+  - '\bdelve[ds]?\b'
+  - '\bempower(s|ed|ing|ment)?\b'
+  - '\bendeavou?rs?\b'
+  - '\bessentially\b'
+  - '\bfacilitate[ds]?\b'
+  - '\bfundamentally\b'
+  - '\bfurthermore\b'
+  - '\bgame-?changing\b'
+  - '\bharness(es|ed|ing)?\b'
+  - '\bholistic(ally)?\b'
+  - '\binherently\b'
+  - '\blandscape\b'
+  - '\bleverage[ds]?\b'
+  - '\bmoreover\b'
+  - '\bnotably\b'
+  - '\bparadigm\b'
+  - '\bpivotal\b'
+  - '\brobust(ness)?\b'
+  - '\bseamless(ly)?\b'
+  - '\bsuch as\b'
+  - '\bsynerg(y|ies|istic)\b'
+  - '\bunpack(s|ed|ing)?\b'
+  - '\butilize[ds]?\b'
+  # Phrases
+  - 'important to note'
+  - 'in order to'
+  - "in today's world"
+  - 'it bears mentioning'
+  - 'it should be noted'
+  - "it's worth noting"
+  - 'key to understanding'
+  - 'needless to say'
+  - 'offers a way to'
+  - 'plays a crucial role'
+  - 'prior to'
+  - 'serves as'

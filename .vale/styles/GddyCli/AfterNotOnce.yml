@@ -1,0 +1,9 @@
+extends: existence
+message: "Use 'After' instead of '%s' to start a sentence. 'Once' implies a one-time event."
+level: warning
+scope: sentence
+ignorecase: false
+tokens:
+  - '^Once you'
+  - '^Once the'
+  - '^Once your'
