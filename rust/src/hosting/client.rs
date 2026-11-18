@@ -86,6 +86,11 @@ impl HostingClient {
         }
     }
 
+    /// The API base URL this client calls.
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
     fn upload_http(&self) -> &Client {
         self.upload_http.get_or_init(make_api_upload_http_client)
     }
@@ -263,13 +268,19 @@ impl HostingClient {
         response(client.get_app().app_id(app_id).send().await).await
     }
 
-    pub async fn create_app(&self, app_type: &str, body: Value) -> Result<Value, ClientError> {
+    pub async fn create_app(
+        &self,
+        app_type: &str,
+        body: Value,
+        idempotency_key: &str,
+    ) -> Result<Value, ClientError> {
         let client = self.api()?;
         let body: CreateAppRequest = deserialize(body)?;
         response(
             client
                 .create_app()
                 .app_type(AppType::from(app_type.to_owned()))
+                .idempotency_key(idempotency_key)
                 .body(body)
                 .send()
                 .await,

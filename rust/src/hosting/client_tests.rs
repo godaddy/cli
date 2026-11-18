@@ -82,6 +82,7 @@ async fn create_app_sends_app_type_query_and_json_body() {
             when.method(POST)
                 .path("/v1/hosting/apps")
                 .query_param("appType", "NODEJS")
+                .header("idempotency-key", "5d3c7f0e-2b8a-4f61-9a0d-7c1e3b2a4f50")
                 .json_body(json!({ "name": "my-app" }));
             then.status(202)
                 .json_body(json!({ "operationId": "op-1", "status": "PENDING" }));
@@ -89,7 +90,11 @@ async fn create_app_sends_app_type_query_and_json_body() {
         .await;
 
     let body = client(&server.base_url())
-        .create_app("NODEJS", json!({ "name": "my-app" }))
+        .create_app(
+            "NODEJS",
+            json!({ "name": "my-app" }),
+            "5d3c7f0e-2b8a-4f61-9a0d-7c1e3b2a4f50",
+        )
         .await
         .expect("create app");
 

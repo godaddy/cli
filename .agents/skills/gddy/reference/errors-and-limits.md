@@ -24,6 +24,7 @@ Always branch on `code`, never on `message` — message text can change between 
 |---|---|---|
 | Any `GET` | Yes | Always safe to retry. |
 | `POST /v1/domains/purchase` (and registration create) | **No** | Retrying without reusing an `Idempotency-Key` (v3) or otherwise confirming state first can double-purchase/double-charge. Check current state (e.g. does the domain already show up under the account) before retrying a failed purchase. |
+| `gddy hosting app create` | WordPress (`--app-type MHWP`): **yes**, on the same machine before the time the `fix` gives (under 24 h after the first attempt). Node.js: **no** | Follow the error's `fix`. WordPress: when the `fix` says to run the same command again with the same `--name` before a given time, that run returns the first request's operation, not a second site. On another machine, after that time, or when the `fix` says to list first, run `gddy hosting app list --app-type MHWP` before retrying. Node.js: run `gddy hosting app list --app-type NODEJS` first, or a retry can create a second app. |
 | `PUT` (e.g. DNS record replace / `gddy dns set`) | Yes | Safe to retry — it fully replaces state each time. |
 | `PATCH` (e.g. DNS record add / `gddy dns add`) | **No** | Appends; retrying a failed "add" can create duplicate records. Check current state before retrying. |
 | `DELETE` (e.g. `gddy dns delete`) | Yes | Safe to retry — deleting something already gone is a no-op. |
