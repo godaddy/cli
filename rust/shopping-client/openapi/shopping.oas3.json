@@ -1357,6 +1357,14 @@
           "category": {
             "type": "string"
           },
+          "common_name": {
+            "type": "string",
+            "ucp_request": "omit"
+          },
+          "display_name": {
+            "type": "string",
+            "ucp_request": "omit"
+          },
           "id": {
             "type": "string"
           },
@@ -1366,6 +1374,19 @@
           },
           "price": {
             "$ref": "#/components/schemas/amount",
+            "ucp_request": "omit"
+          },
+          "term": {
+            "properties": {
+              "number_of_terms": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "term_type": {
+                "type": "string"
+              }
+            },
+            "type": "object",
             "ucp_request": "omit"
           },
           "title": {
