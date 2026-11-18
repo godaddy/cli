@@ -160,7 +160,7 @@ fn dry_run_add_preview(
     record_type: &str,
     name: &str,
     data: &[String],
-    opts: &RecordOptions,
+    opts: &[RecordOptions],
     existing_at_name: &[types::DnsRecord],
 ) -> Value {
     let mut failed = 0;
@@ -168,9 +168,10 @@ fn dry_run_add_preview(
     // the records that are there and those the earlier values would create.
     let mut simulated = existing_at_name.to_vec();
     let mut records = Vec::with_capacity(data.len());
-    for (record, value) in v3_records(name, record_type, data, opts)
+    for ((record, value), opts) in v3_records(name, record_type, data, opts)
         .into_iter()
         .zip(data)
+        .zip(opts)
     {
         let mut entry = change_entry("create", None, None, Some(&as_stored(&record)));
         match add_blocker(domain, name, record_type, value, opts, &simulated) {
@@ -232,19 +233,26 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_view(view_columns())
         .with_scopes(&[DOMAINS_DNS_UPDATE]),
         |ctx, args: RecordWriteArgs| async move {
-            let opts = RecordOptions::from_write_args(&args);
+            let opts =
+                RecordOptions::per_record(&args).map_err(crate::error::GddyError::validation)?;
             let domain = args.domain;
             let record_type = args.record_type;
             let name = args.name;
             let domain_format = args.domain_format.form(&ctx)?;
             validate_record_name(&record_type, &name)
                 .map_err(crate::error::GddyError::validation)?;
-            validate_caa_fields(&record_type, &opts)
-                .map_err(crate::error::GddyError::validation)?;
-            validate_tlsa_fields(&record_type, &opts)
-                .map_err(crate::error::GddyError::validation)?;
-            validate_svcb_fields(&record_type, &opts)
-                .map_err(crate::error::GddyError::validation)?;
+            for record_opts in &opts {
+                validate_caa_fields(&record_type, record_opts)
+                    .map_err(crate::error::GddyError::validation)?;
+            }
+            for record_opts in &opts {
+                validate_tlsa_fields(&record_type, record_opts)
+                    .map_err(crate::error::GddyError::validation)?;
+            }
+            for record_opts in &opts {
+                validate_svcb_fields(&record_type, record_opts)
+                    .map_err(crate::error::GddyError::validation)?;
+            }
             let data = args.data;
             let records = v3_records(&name, &record_type, &data, &opts);
 
@@ -269,7 +277,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             // which of the records were actually created. `data` and `records`
             // are parallel (one record per `--data` value).
             let mut outcomes = Vec::with_capacity(records.len());
-            for (value, record) in data.iter().zip(records) {
+            for ((value, record), opts) in data.iter().zip(records).zip(&opts) {
                 let outcome = match client
                     .create_dns_record()
                     .zone(domain.as_str())
@@ -285,7 +293,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                             name: name.as_str(),
                             desired_type: record_type.as_str(),
                             desired_data: value.as_str(),
-                            opts: &opts,
+                            opts,
                             action: "adding DNS record",
                             debug,
                         },
@@ -369,7 +377,14 @@ mod tests {
     fn a_real_add_reports_the_same_records_as_its_preview_apart_from_the_new_ids() {
         let o = opts();
         let data = vec!["1.2.3.4".to_string(), "5.6.7.8".to_string()];
-        let preview = dry_run_add_preview("example.com", "A", "www", &data, &o, &[]);
+        let preview = dry_run_add_preview(
+            "example.com",
+            "A",
+            "www",
+            &data,
+            &vec![o.clone(); data.len()],
+            &[],
+        );
         let done = summarize_add_outcomes(
             "example.com",
             "A",
@@ -459,7 +474,14 @@ mod tests {
     #[test]
     fn dry_run_add_lists_each_record_it_would_create() {
         let data = vec!["1.2.3.4".to_string(), "5.6.7.8".to_string()];
-        let preview = dry_run_add_preview("example.com", "A", "www", &data, &opts(), &[]);
+        let preview = dry_run_add_preview(
+            "example.com",
+            "A",
+            "www",
+            &data,
+            &vec![opts(); data.len()],
+            &[],
+        );
         assert_eq!(preview["action"], "would add");
         assert_eq!(preview["created"], 2);
         assert_eq!(preview["failed"], 0);
@@ -476,7 +498,14 @@ mod tests {
     fn dry_run_add_flags_an_exact_duplicate_as_a_failure() {
         let existing = [stored("r1", "A", "www", "1.2.3.4")];
         let data = vec!["1.2.3.4".to_string(), "5.6.7.8".to_string()];
-        let preview = dry_run_add_preview("example.com", "A", "www", &data, &opts(), &existing);
+        let preview = dry_run_add_preview(
+            "example.com",
+            "A",
+            "www",
+            &data,
+            &vec![opts(); data.len()],
+            &existing,
+        );
         assert_eq!(preview["created"], 1);
         assert_eq!(preview["failed"], 1);
         let records = preview["records"].as_array().expect("records array");
@@ -496,7 +525,14 @@ mod tests {
     fn dry_run_add_flags_a_cname_conflict_as_a_failure() {
         let existing = [stored("r1", "CNAME", "www", "target.example.com.")];
         let data = vec!["1.2.3.4".to_string()];
-        let preview = dry_run_add_preview("example.com", "A", "www", &data, &opts(), &existing);
+        let preview = dry_run_add_preview(
+            "example.com",
+            "A",
+            "www",
+            &data,
+            &vec![opts(); data.len()],
+            &existing,
+        );
         assert_eq!(preview["failed"], 1);
         let records = preview["records"].as_array().expect("records array");
         assert_eq!(records[0]["action"], "fail");
@@ -513,7 +549,14 @@ mod tests {
     fn dry_run_add_allows_another_value_of_the_same_type() {
         let existing = [stored("r1", "A", "www", "9.9.9.9")];
         let data = vec!["1.2.3.4".to_string()];
-        let preview = dry_run_add_preview("example.com", "A", "www", &data, &opts(), &existing);
+        let preview = dry_run_add_preview(
+            "example.com",
+            "A",
+            "www",
+            &data,
+            &vec![opts(); data.len()],
+            &existing,
+        );
         assert_eq!(preview["failed"], 0);
         assert_eq!(preview["records"][0]["action"], "create");
     }
@@ -523,7 +566,14 @@ mod tests {
     #[test]
     fn dry_run_add_survives_default_field_projection() {
         let data = vec!["1.2.3.4".to_string()];
-        let preview = dry_run_add_preview("example.com", "A", "www", &data, &opts(), &[]);
+        let preview = dry_run_add_preview(
+            "example.com",
+            "A",
+            "www",
+            &data,
+            &vec![opts(); data.len()],
+            &[],
+        );
         let projected = cli_engine::output::filter_fields(
             &preview,
             "domain,type,name,created,failed,action,records",
@@ -544,7 +594,14 @@ mod tests {
     fn dry_run_add_flags_a_second_cname_with_a_different_target() {
         let existing = [stored("r1", "CNAME", "www", "old.example.com.")];
         let data = vec!["new.example.com".to_string()];
-        let preview = dry_run_add_preview("example.com", "CNAME", "www", &data, &opts(), &existing);
+        let preview = dry_run_add_preview(
+            "example.com",
+            "CNAME",
+            "www",
+            &data,
+            &vec![opts(); data.len()],
+            &existing,
+        );
         assert_eq!(preview["failed"], 1);
         assert_eq!(preview["records"][0]["action"], "fail");
     }
@@ -554,7 +611,14 @@ mod tests {
     #[test]
     fn dry_run_add_flags_a_value_repeated_within_the_command() {
         let data = vec!["192.0.2.1".to_string(), "192.0.2.1".to_string()];
-        let preview = dry_run_add_preview("example.com", "A", "www", &data, &opts(), &[]);
+        let preview = dry_run_add_preview(
+            "example.com",
+            "A",
+            "www",
+            &data,
+            &vec![opts(); data.len()],
+            &[],
+        );
         assert_eq!(preview["created"], 1);
         assert_eq!(preview["failed"], 1);
         assert_eq!(preview["records"][0]["action"], "create");
@@ -569,7 +633,14 @@ mod tests {
             "Target.Example.COM".to_string(),
             "target.example.com.".to_string(),
         ];
-        let preview = dry_run_add_preview("example.com", "CNAME", "www", &data, &opts(), &[]);
+        let preview = dry_run_add_preview(
+            "example.com",
+            "CNAME",
+            "www",
+            &data,
+            &vec![opts(); data.len()],
+            &[],
+        );
         assert_eq!(preview["records"][1]["action"], "fail");
     }
 
@@ -578,7 +649,14 @@ mod tests {
     #[test]
     fn dry_run_add_shows_hostnames_the_way_the_api_stores_them() {
         let data = vec!["Target.Example.COM".to_string()];
-        let preview = dry_run_add_preview("example.com", "CNAME", "WWW", &data, &opts(), &[]);
+        let preview = dry_run_add_preview(
+            "example.com",
+            "CNAME",
+            "WWW",
+            &data,
+            &vec![opts(); data.len()],
+            &[],
+        );
         assert_eq!(preview["records"][0]["new"]["data"], "target.example.com.");
     }
 
@@ -603,5 +681,27 @@ mod tests {
         let a = v3_record("www", "A", "1.2.3.4", &opts());
         assert_eq!(owner_to_check("www", Some(&a)), "www");
         assert_eq!(owner_to_check("www", None), "www");
+    }
+
+    #[test]
+    fn dry_run_add_previews_each_record_with_its_own_priority_and_checks_it_alone() {
+        let data = vec!["a.example.com".to_owned(), "b.example.com".to_owned()];
+        let per_record = [1, 5].map(|priority| RecordOptions {
+            priority: Some(priority),
+            ..opts()
+        });
+        // The same host already exists at priority 1: only the first value is a
+        // duplicate; the second differs in priority and would be added.
+        let existing = [types::DnsRecord {
+            record_id: Some("r1".to_owned()),
+            ..v3_record("@", "MX", "a.example.com", &per_record[0])
+        }];
+        let preview = dry_run_add_preview("example.com", "MX", "@", &data, &per_record, &existing);
+        let records = preview["records"].as_array().expect("records");
+        assert_eq!(records[0]["action"], "fail");
+        assert_eq!(records[1]["action"], "create");
+        assert_eq!(records[1]["new"]["priority"], 5);
+        assert_eq!(preview["created"], 1);
+        assert_eq!(preview["failed"], 1);
     }
 }

@@ -107,7 +107,7 @@ pub(super) fn parse_underscore_label(raw: &str) -> Result<String, String> {
 /// Optional record fields shared by `add` and `set`, including the CAA-only
 /// `flag`/`tag`, the TLSA-only `usage`/`selector`/`matching_type`, and the
 /// HTTPS/SVCB-only `parameters` (SvcParams).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(super) struct RecordOptions {
     pub(super) ttl: Option<i64>,
     pub(super) priority: Option<i64>,
@@ -124,21 +124,56 @@ pub(super) struct RecordOptions {
 }
 
 impl RecordOptions {
-    pub(super) fn from_write_args(args: &RecordWriteArgs) -> Self {
-        RecordOptions {
-            ttl: args.ttl,
-            priority: args.priority,
-            port: args.port,
-            weight: args.weight,
-            protocol: args.protocol.clone(),
-            service: args.service.clone(),
-            flag: args.flag,
-            tag: args.tag.clone(),
-            usage: args.usage,
-            selector: args.selector,
-            matching_type: args.matching_type,
-            parameters: args.parameters.clone(),
-        }
+    /// One `RecordOptions` per `--data` value, in the same order. Every flag but
+    /// `--ttl` (a record set has one TTL) may be given once, to apply to every
+    /// record, or once per `--data` value, to pair with them by position — so an
+    /// MX set with priorities 1, 5 and 10 is three `--priority` next to three
+    /// `--data`. Any other count is an error, since there is no telling which
+    /// record the odd one out belongs to. Pure so it runs before any network call.
+    pub(super) fn per_record(args: &RecordWriteArgs) -> Result<Vec<Self>, String> {
+        let records = args.data.len();
+        let priority = spread("priority", &args.priority, records)?;
+        let port = spread("port", &args.port, records)?;
+        let weight = spread("weight", &args.weight, records)?;
+        let protocol = spread("protocol", &args.protocol, records)?;
+        let service = spread("service", &args.service, records)?;
+        let flag = spread("flag", &args.flag, records)?;
+        let tag = spread("tag", &args.tag, records)?;
+        let usage = spread("usage", &args.usage, records)?;
+        let selector = spread("selector", &args.selector, records)?;
+        let matching_type = spread("matching-type", &args.matching_type, records)?;
+        let parameters = spread("parameters", &args.parameters, records)?;
+        Ok((0..records)
+            .map(|i| RecordOptions {
+                ttl: args.ttl,
+                priority: priority[i],
+                port: port[i],
+                weight: weight[i],
+                protocol: protocol[i].clone(),
+                service: service[i].clone(),
+                flag: flag[i],
+                tag: tag[i].clone(),
+                usage: usage[i],
+                selector: selector[i],
+                matching_type: matching_type[i],
+                parameters: parameters[i].clone(),
+            })
+            .collect())
+    }
+}
+
+/// Spread a repeatable flag's `values` over `records` records: none given leaves
+/// every record without it, one applies to all of them, and one per record pairs
+/// with them in order. Anything else is an error that says how to fix it.
+fn spread<T: Clone>(flag: &str, values: &[T], records: usize) -> Result<Vec<Option<T>>, String> {
+    match values.len() {
+        0 => Ok(vec![None; records]),
+        1 => Ok(vec![Some(values[0].clone()); records]),
+        n if n == records => Ok(values.iter().cloned().map(Some).collect()),
+        n => Err(format!(
+            "--{flag} was given {n} times for {records} --data values; give it once to use it \
+             for every record, or once per --data value to pair them in order"
+        )),
     }
 }
 
@@ -197,7 +232,7 @@ pub(super) struct RecordWriteArgs {
     pub(super) ttl: Option<i64>,
 
     /// Record priority (MX, SRV, HTTPS, and SVCB only; required for those). For
-    /// HTTPS/SVCB, 0 means AliasMode.
+    /// HTTPS/SVCB, 0 means AliasMode. Repeat to pair with `--data` in order.
     #[arg(
         long,
         value_name = "N",
@@ -209,77 +244,86 @@ pub(super) struct RecordWriteArgs {
             ("record_type", "SVCB"),
         ])
     )]
-    pub(super) priority: Option<i64>,
+    pub(super) priority: Vec<i64>,
 
-    /// Service port (SRV and TLSA only; required for those).
+    /// Service port (SRV and TLSA only; required for those). Repeat to pair with
+    /// `--data` in order.
     #[arg(
         long,
         value_name = "PORT",
         value_parser = clap::value_parser!(i64).range(1..=65535),
         required_if_eq_any([("record_type", "SRV"), ("record_type", "TLSA")])
     )]
-    pub(super) port: Option<i64>,
+    pub(super) port: Vec<i64>,
 
-    /// Record weight (SRV only; required for SRV).
+    /// Record weight (SRV only; required for SRV). Repeat to pair with `--data`
+    /// in order.
     #[arg(
         long,
         value_name = "N",
         value_parser = clap::value_parser!(i64).range(0..=65535),
         required_if_eq("record_type", "SRV")
     )]
-    pub(super) weight: Option<i64>,
+    pub(super) weight: Vec<i64>,
 
     /// Service protocol, e.g. tcp or udp (SRV and TLSA only; required for those).
-    /// A leading underscore is added if you leave it off.
+    /// A leading underscore is added if you leave it off. Repeat to pair with
+    /// `--data` in order.
     #[arg(
         long,
         value_name = "PROTO",
         value_parser = parse_underscore_label,
         required_if_eq_any([("record_type", "SRV"), ("record_type", "TLSA")])
     )]
-    pub(super) protocol: Option<String>,
+    pub(super) protocol: Vec<String>,
 
     /// Service name, e.g. sip or xmpp (SRV only; required for SRV). A leading
-    /// underscore is added if you leave it off.
+    /// underscore is added if you leave it off. Repeat to pair with `--data` in
+    /// order.
     #[arg(
         long,
         value_name = "SERVICE",
         value_parser = parse_underscore_label,
         required_if_eq("record_type", "SRV")
     )]
-    pub(super) service: Option<String>,
+    pub(super) service: Vec<String>,
 
     /// CAA flag byte, 0-255 (CAA only; 0 non-critical, 128 critical). Defaults to 0.
+    /// Repeat to pair with `--data` in order.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(0..=255))]
-    pub(super) flag: Option<i64>,
+    pub(super) flag: Vec<i64>,
 
     // A CAA record needs a tag; enforce it at parse time (before auth) — which
     // holds for `--type caa` as well as `--type CAA` only because `record_type`
     // sets `ignore_case`. The reverse guard — flag/tag only valid for CAA —
     // lives in the handler (`validate_caa_fields`), which clap can't express.
     /// CAA property tag, e.g. issue/issuewild/iodef (CAA only; required for CAA).
+    /// Repeat to pair with `--data` in order.
     #[arg(long, value_name = "TAG", required_if_eq("record_type", "CAA"))]
-    pub(super) tag: Option<String>,
+    pub(super) tag: Vec<String>,
 
     /// TLSA certificate usage, 0-3 (RFC 6698 §2.1.1; TLSA only; required for
     /// TLSA). 0 PKIX-TA, 1 PKIX-EE, 2 DANE-TA, 3 DANE-EE.
+    /// Repeat to pair with `--data` in order.
     #[arg(long = "usage", value_name = "N", value_parser = clap::value_parser!(i64).range(0..=3), required_if_eq("record_type", "TLSA"))]
-    pub(super) usage: Option<i64>,
+    pub(super) usage: Vec<i64>,
 
     /// TLSA selector, 0-1 (RFC 6698 §2.1.2; TLSA only; required for TLSA). 0
-    /// full certificate, 1 SubjectPublicKeyInfo.
+    /// full certificate, 1 SubjectPublicKeyInfo. Repeat to pair with `--data` in
+    /// order.
     #[arg(long = "selector", value_name = "N", value_parser = clap::value_parser!(i64).range(0..=1), required_if_eq("record_type", "TLSA"))]
-    pub(super) selector: Option<i64>,
+    pub(super) selector: Vec<i64>,
 
     /// TLSA matching type, 0-2 (RFC 6698 §2.1.3; TLSA only; required for
     /// TLSA). 0 exact match, 1 SHA-256, 2 SHA-512.
+    /// Repeat to pair with `--data` in order.
     #[arg(long = "matching-type", value_name = "N", value_parser = clap::value_parser!(i64).range(0..=2), required_if_eq("record_type", "TLSA"))]
-    pub(super) matching_type: Option<i64>,
+    pub(super) matching_type: Vec<i64>,
 
     /// SvcParams for HTTPS/SVCB records (RFC 9460), e.g. "alpn=h2,h3
-    /// port=8443" (HTTPS/SVCB only).
+    /// port=8443" (HTTPS/SVCB only). Repeat to pair with `--data` in order.
     #[arg(long, value_name = "PARAMS")]
-    pub(super) parameters: Option<String>,
+    pub(super) parameters: Vec<String>,
 }
 
 /// Validate the CAA-specific fields against the record type. A CAA record needs a
@@ -410,14 +454,19 @@ pub(super) fn v3_record(
     }
 }
 
-/// Build the v3 `DnsRecord`s for `add` — one per `--data` value (parallel to it).
+/// Build the v3 `DnsRecord`s for `add` and `set` — one per `--data` value, each
+/// with its own options (`opts` is parallel to `data`; see
+/// [`RecordOptions::per_record`]).
 pub(super) fn v3_records(
     name: &str,
     ty: &str,
     data: &[String],
-    opts: &RecordOptions,
+    opts: &[RecordOptions],
 ) -> Vec<types::DnsRecord> {
-    data.iter().map(|d| v3_record(name, ty, d, opts)).collect()
+    data.iter()
+        .zip(opts)
+        .map(|(d, o)| v3_record(name, ty, d, o))
+        .collect()
 }
 
 /// The user-facing "value" of a fetched v3 `DnsRecord`: `data` for every type

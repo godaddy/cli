@@ -97,7 +97,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_view(view_columns())
         .with_scopes(&[DOMAINS_DNS_UPDATE]),
         |ctx, args: SetArgs| async move {
-            let opts = RecordOptions::from_write_args(&args.write);
+            let opts = RecordOptions::per_record(&args.write)
+                .map_err(crate::error::GddyError::validation)?;
+            let ttl = args.write.ttl;
             let domain = args.write.domain;
             let record_type = args.write.record_type;
             let name = args.write.name;
@@ -105,12 +107,18 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let replace_conflicting = args.replace_conflicting_types;
             validate_record_name(&record_type, &name)
                 .map_err(crate::error::GddyError::validation)?;
-            validate_caa_fields(&record_type, &opts)
-                .map_err(crate::error::GddyError::validation)?;
-            validate_tlsa_fields(&record_type, &opts)
-                .map_err(crate::error::GddyError::validation)?;
-            validate_svcb_fields(&record_type, &opts)
-                .map_err(crate::error::GddyError::validation)?;
+            for record_opts in &opts {
+                validate_caa_fields(&record_type, record_opts)
+                    .map_err(crate::error::GddyError::validation)?;
+            }
+            for record_opts in &opts {
+                validate_tlsa_fields(&record_type, record_opts)
+                    .map_err(crate::error::GddyError::validation)?;
+            }
+            for record_opts in &opts {
+                validate_svcb_fields(&record_type, record_opts)
+                    .map_err(crate::error::GddyError::validation)?;
+            }
             let data = args.write.data;
 
             let debug = !ctx.middleware.debug.is_empty();
@@ -146,7 +154,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .into_cli_error());
             }
             let desired = v3_records(&name, &record_type, &data, &opts);
-            let plan = plan_set(&existing, &desired, opts.ttl);
+            let plan = plan_set(&existing, &desired, ttl);
             if ctx.dry_run() {
                 let mut preview =
                     dry_run_set_preview(&domain, &record_type, &name, &plan, &existing, &opts);
@@ -165,13 +173,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     SetAction::Replace {
                         record_id,
                         data: value,
+                        desired: at,
                     } => {
                         let req = WriteRequest {
                             domain: domain.as_str(),
                             name: name.as_str(),
                             record_type: record_type.as_str(),
                             value: &value,
-                            opts: &opts,
+                            opts: &opts[at],
                             replace_conflicting,
                             replacing: None,
                             debug,
@@ -190,6 +199,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     SetAction::Unchanged {
                         data: value,
                         record_id,
+                        ..
                     } => {
                         let old = stored(&record_id);
                         let mut outcome = SetOutcome::new("unchanged", value, None);
@@ -198,13 +208,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         outcome.new = old.cloned();
                         outcomes.push(outcome);
                     }
-                    SetAction::Create { data: value } => {
+                    SetAction::Create {
+                        data: value,
+                        desired: at,
+                    } => {
                         let req = WriteRequest {
                             domain: domain.as_str(),
                             name: name.as_str(),
                             record_type: record_type.as_str(),
                             value: &value,
-                            opts: &opts,
+                            opts: &opts[at],
                             replace_conflicting,
                             replacing: None,
                             debug,
@@ -243,7 +256,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 &record_type,
                 &name,
                 &desired,
-                opts.ttl.is_some(),
+                ttl.is_some(),
                 debug,
             )
             .await?;
