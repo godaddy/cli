@@ -2,7 +2,7 @@
 # Em-dashes are overused by LLMs and generally using colons, periods, commas, parenthesis, or new sentences are better.
 # Warning level until the guides are cleaned up.
 extends: existence
-message: "Remove the em dash. Use a colon, period, comma or new sentence."
+message: "Remove the em dash. Use a colon, period, comma, parenthesis, or new sentence."
 level: warning
 scope: text
 nonword: true
