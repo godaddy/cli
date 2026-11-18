@@ -1,4 +1,5 @@
 # Only the em dash character (U+2014). En dashes in number ranges (10–120) are fine.
+# Em-dashes are overused by LLMs and generally using colons, periods, commas, parenthesis, or new sentences are better.
 # Warning level until the guides are cleaned up.
 extends: existence
 message: "Remove the em dash. Use a colon, period, comma or new sentence."
