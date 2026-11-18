@@ -1,7 +1,7 @@
 //! HTTP client for the Domain Connect Templates API.
 //!
 //! Spec: gdcorp-platform/domains.domain-connect-specification v2.
-//! Both operations are controllers under `/v1/domains/` and return a
+//! Both operations are controllers under `/v2/domains/` and return a
 //! `TemplateActionResult` on `200`; submit also returns it on `409` (blocked)
 //! and `422` (invalid). Every other status carries the platform `Error`.
 //!
@@ -16,8 +16,8 @@ use serde_json::Value;
 
 use crate::error::GddyError;
 
-const VALIDATE_PATH: &str = "/v1/domains/validate-domain-connect-template";
-const SUBMIT_PATH: &str = "/v1/domains/submit-domain-connect-template";
+const VALIDATE_PATH: &str = "/v2/domains/validate-domain-connect-template";
+const SUBMIT_PATH: &str = "/v2/domains/submit-domain-connect-template";
 const SYSTEM: &str = "domain-connect";
 
 /// `TemplateActionResult` from the spec. `outcome` decides the verdict;
@@ -102,7 +102,7 @@ impl TemplatesClient {
         }
     }
 
-    /// `POST /v1/domains/validate-domain-connect-template`. Always `200` for a
+    /// `POST /v2/domains/validate-domain-connect-template`. Always `200` for a
     /// processable template; the verdict is in `outcome`.
     pub(crate) async fn validate(&self, template: &Value) -> cli_engine::Result<ActionResult> {
         let (status, result) = self.post(VALIDATE_PATH, template).await?;
@@ -112,7 +112,7 @@ impl TemplatesClient {
         }
     }
 
-    /// `POST /v1/domains/submit-domain-connect-template`. `200`, `409` and
+    /// `POST /v2/domains/submit-domain-connect-template`. `200`, `409` and
     /// `422` all carry an `ActionResult`; the caller reads `outcome`.
     pub(crate) async fn submit(&self, template: &Value) -> cli_engine::Result<ActionResult> {
         let (status, result) = self.post(SUBMIT_PATH, template).await?;
@@ -231,7 +231,7 @@ mod tests {
         let mock = server
             .mock_async(|when, then| {
                 when.method(POST)
-                    .path("/v1/domains/validate-domain-connect-template")
+                    .path("/v2/domains/validate-domain-connect-template")
                     .header("authorization", "Bearer test-token")
                     .header_exists("x-request-id")
                     .json_body(json!({ "template": template() }));
@@ -260,7 +260,7 @@ mod tests {
             let server_mock = server
                 .mock_async(|when, then| {
                     when.method(POST)
-                        .path("/v1/domains/submit-domain-connect-template");
+                        .path("/v2/domains/submit-domain-connect-template");
                     then.status(status).json_body(json!({
                         "action": "SUBMIT", "outcome": outcome, "operation": "ADD",
                         "issues": [{ "code": code, "level": "ERROR", "message": "m", "field": "providerId" }]
@@ -281,7 +281,7 @@ mod tests {
         server
             .mock_async(|when, then| {
                 when.method(POST)
-                    .path("/v1/domains/submit-domain-connect-template");
+                    .path("/v2/domains/submit-domain-connect-template");
                 then.status(200).json_body(json!({
                     "action": "SUBMIT", "outcome": "SUBMITTED", "operation": "ADD", "issues": [],
                     "pr": { "number": 1234, "url": "https://github.com/Domain-Connect/Templates/pull/1234", "state": "FAST_TRACK" }
@@ -302,7 +302,7 @@ mod tests {
         server
             .mock_async(|when, then| {
                 when.method(POST)
-                    .path("/v1/domains/validate-domain-connect-template");
+                    .path("/v2/domains/validate-domain-connect-template");
                 then.status(403).json_body(json!({
                     "name": "FORBIDDEN",
                     "correlationId": "550e8400-e29b-41d4-a716-446655440000",
@@ -327,7 +327,7 @@ mod tests {
         server
             .mock_async(|when, then| {
                 when.method(POST)
-                    .path("/v1/domains/validate-domain-connect-template");
+                    .path("/v2/domains/validate-domain-connect-template");
                 then.status(409).json_body(json!({
                     "action": "VALIDATE", "outcome": "BLOCKED", "issues": []
                 }));
