@@ -31,6 +31,10 @@ struct Args {
     #[arg(long, value_name = "PURCHASE_OPTION_ID[=QUANTITY]")]
     item: Vec<String>,
 
+    /// Domain name to register, for example example.com. Repeat for multiple domains; append `:<YEARS>yr` to choose a registration term (for example, example.com:2yr). Run `shopping catalog search --domain <name>` first to check availability and price.
+    #[arg(long, value_name = "DOMAIN[:YEARSyr]")]
+    domain: Vec<String>,
+
     #[command(flatten)]
     currency: CurrencyArgs,
 
@@ -92,8 +96,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<Args, _, _, _>(
         CommandSpec::from_args::<Args>("create", "Create a checkout session")
             .with_long(
-                "Add one or more purchase options to a checkout session. Repeat --item for multiple \
-                 purchase options and append =QUANTITY when needed. Creating a checkout session does not \
+                "Add one or more purchase options or domain names to a checkout session. Repeat --item for \
+                 multiple purchase options and append =QUANTITY when needed. Repeat --domain for each domain \
+                 name to register and append :<YEARS>yr to choose a term. Creating a checkout session does not \
                  place an order. Its response shows the currently selected and eligible saved payment methods \
                  (the first five by default; use --show-all-payment-instruments for all), required agreements, \
                  and important links to review before placing an order.",
@@ -109,6 +114,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         |ctx, args: Args| async move {
             let input = CheckoutInput {
                 items: args.item,
+                domains: args.domain,
                 currency: args.currency.resolve(&ctx)?,
                 buyer_first_name: args.buyer_first_name,
                 buyer_last_name: args.buyer_last_name,
