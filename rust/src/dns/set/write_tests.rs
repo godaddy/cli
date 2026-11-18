@@ -277,8 +277,10 @@ async fn write_with_conflict_handling_replace_flag_deletes_then_retries_in_order
     assert_eq!(outcomes[1].detail, "1.2.3.4");
     // The retry hits the same mocked conflict response; unlike the first
     // attempt, a failure here is reported generically (no re-diagnosis).
-    let err = outcomes[1].error.as_deref().expect("retry still failed");
+    let err = outcomes[1].error.as_ref().expect("retry still failed");
     assert!(err.contains("Duplicate data provided"), "{err}");
+    // A retry that is still a duplicate is `RECORD_EXISTS`, like the first try.
+    assert_eq!(err.kind(), FailureKind::RecordExists);
 }
 
 // --- apply_replace -------------------------------------------------------
@@ -626,4 +628,46 @@ async fn an_exact_duplicate_is_a_record_exists_failure() {
     let failure = outcomes[0].error.as_ref().expect("duplicate reported");
     assert_eq!(failure.kind(), FailureKind::RecordExists);
     assert!(failure.contains("exact value already exists"), "{failure}");
+}
+
+/// The conflict lookup only explains a duplicate. When it fails, the write's own
+/// error is what gets reported, still as `RECORD_EXISTS`: the code and the message
+/// describe the same failure.
+#[tokio::test]
+async fn a_failed_conflict_lookup_keeps_the_writes_own_duplicate_error() {
+    use crate::dns::failure::FailureKind;
+
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v3/domains/zones/example.com/dns-records");
+            then.status(422).json_body(
+                serde_json::from_str::<Value>(DUPLICATE_RECORD_BODY).expect("valid json"),
+            );
+        })
+        .await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/v3/domains/zones/example.com/dns-records");
+            then.status(500).json_body(json!({"name": "INTERNAL"}));
+        })
+        .await;
+    let opts = write_opts();
+    let req = WriteRequest {
+        domain: "example.com",
+        name: "www",
+        record_type: "A",
+        value: "1.2.3.4",
+        opts: &opts,
+        replace_conflicting: false,
+        replacing: None,
+        debug: false,
+    };
+    let outcomes = write_with_conflict_handling(&client_for(&server), &req).await;
+    let failure = outcomes[0].error.as_ref().expect("the write failed");
+    assert_eq!(failure.kind(), FailureKind::RecordExists);
+    assert!(failure.contains("Duplicate data provided"), "{failure}");
+    assert!(!failure.contains("INTERNAL"), "{failure}");
 }

@@ -140,17 +140,14 @@ pub(super) async fn write_with_conflict_handling(
     };
     let failure = api_failure(action, req.debug, *err).await;
     if !duplicate_record_issue(&failure.body) {
-        return vec![outcome(Err(DnsFailure::from_api(failure, false)))];
+        return vec![outcome(Err(DnsFailure::from_api(failure)))];
     }
 
     let at_name = match conflicting_records_at(client, req.domain, req.name, req.debug).await {
         Ok(records) => records,
-        Err(e) => {
-            return vec![outcome(Err(DnsFailure::new(
-                FailureKind::RecordExists,
-                e.to_string(),
-            )))];
-        }
+        // The lookup only explains the conflict; if it fails, the write's own
+        // duplicate error is what to report.
+        Err(_) => return vec![outcome(Err(DnsFailure::from_api(failure)))],
     };
     let conflicts: Vec<types::DnsRecord> = conflicting_records(req.record_type, &at_name)
         .into_iter()

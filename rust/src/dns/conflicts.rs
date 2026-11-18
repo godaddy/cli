@@ -172,9 +172,8 @@ pub(super) async fn describe_write_error(
     err: domains_client::Error<()>,
 ) -> DnsFailure {
     let failure = api_failure(ctx.action, ctx.debug, err).await;
-    let duplicate = duplicate_record_issue(&failure.body);
-    if !duplicate {
-        return DnsFailure::from_api(failure, false);
+    if !duplicate_record_issue(&failure.body) {
+        return DnsFailure::from_api(failure);
     }
     match conflicting_records_at(client, ctx.domain, ctx.name, ctx.debug).await {
         Ok(at_name) => DnsFailure::new(
@@ -189,7 +188,7 @@ pub(super) async fn describe_write_error(
                 false,
             ),
         ),
-        Err(_) => DnsFailure::from_api(failure, true),
+        Err(_) => DnsFailure::from_api(failure),
     }
 }
 
