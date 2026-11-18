@@ -871,3 +871,7 @@ pub(super) fn verified_result(
 #[cfg(test)]
 #[path = "records_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "records_per_record_tests.rs"]
+mod per_record_tests;
