@@ -347,6 +347,53 @@ pub(super) fn validate_caa_fields(record_type: &str, opts: &RecordOptions) -> Re
     Ok(())
 }
 
+/// Reject `--priority`, `--port`, `--weight`, `--service` and `--protocol` on a
+/// record type they don't apply to. clap only enforces the other direction (a
+/// type that needs one of them), so without this a flag the type ignores is
+/// accepted and silently dropped from the record. Pure so it is unit-testable and
+/// runs before any network call.
+pub(super) fn validate_applicable_fields(
+    record_type: &str,
+    opts: &RecordOptions,
+) -> Result<(), String> {
+    let applies = |types: &[&str]| types.contains(&record_type);
+    let checks: [(&str, bool, &str, bool); 5] = [
+        (
+            "--priority",
+            opts.priority.is_some(),
+            "MX, SRV, HTTPS, and SVCB",
+            applies(&["MX", "SRV", "HTTPS", "SVCB"]),
+        ),
+        (
+            "--port",
+            opts.port.is_some(),
+            "SRV and TLSA",
+            applies(&["SRV", "TLSA"]),
+        ),
+        (
+            "--protocol",
+            opts.protocol.is_some(),
+            "SRV and TLSA",
+            applies(&["SRV", "TLSA"]),
+        ),
+        ("--weight", opts.weight.is_some(), "SRV", applies(&["SRV"])),
+        (
+            "--service",
+            opts.service.is_some(),
+            "SRV",
+            applies(&["SRV"]),
+        ),
+    ];
+    for (flag, given, valid_for, applicable) in checks {
+        if given && !applicable {
+            return Err(format!(
+                "{flag} is only valid for {valid_for} records, not {record_type}"
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// `dns add` and `dns set` write the record under the `--name` they are given, so
 /// for SRV and TLSA that must be the record's own name, not the full DNS name the
 /// API also understands as a selector (`_sip._tcp.chat`, `_443._tcp.www`). Written
@@ -875,3 +922,7 @@ mod tests;
 #[cfg(test)]
 #[path = "records_per_record_tests.rs"]
 mod per_record_tests;
+
+#[cfg(test)]
+#[path = "records_field_tests.rs"]
+mod field_tests;

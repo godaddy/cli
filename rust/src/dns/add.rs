@@ -11,10 +11,12 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 use super::conflicts::{
     WriteErrorContext, conflicting_records, describe_duplicate_record, describe_write_error,
 };
+use super::failure::{DnsFailure, MutateFailure};
 use super::records::{
     RecordOptions, RecordWriteArgs, ZONE_AND_NAME, as_stored, change_columns, change_entry,
-    composed_owner, fetch_records, same_content, v3_record, v3_records, validate_caa_fields,
-    validate_record_name, validate_svcb_fields, validate_tlsa_fields, verified_result,
+    composed_owner, fetch_records, same_content, v3_record, v3_records, validate_applicable_fields,
+    validate_caa_fields, validate_record_name, validate_svcb_fields, validate_tlsa_fields,
+    verified_result,
 };
 
 // `dns add` creates one v3 record per `--data` value; it reports each outcome
@@ -31,7 +33,7 @@ output_schema!(DnsAddResult {
 
 /// What happened to one `--data` value: the record the API created, or why it
 /// could not be.
-type AddOutcome = (String, Result<types::DnsRecord, String>);
+type AddOutcome = (String, Result<types::DnsRecord, DnsFailure>);
 
 /// The `add` result: the counts and the `records` created (or, with
 /// `--dry-run`, that would be).
@@ -65,7 +67,7 @@ fn summarize_add_outcomes(
     record_type: &str,
     name: &str,
     outcomes: Vec<AddOutcome>,
-) -> Result<Value, String> {
+) -> Result<Value, MutateFailure> {
     let failed = outcomes.iter().filter(|(_, o)| o.is_err()).count();
     let total = outcomes.len();
     let created = total - failed;
@@ -79,11 +81,16 @@ fn summarize_add_outcomes(
             })
             .collect::<Vec<_>>()
             .join("\n");
-        return Err(format!(
-            "added {created} of {total} DNS record(s) for {name} ({record_type}); {failed} \
-             failed:\n{breakdown}\n\nRe-run `gddy dns add {domain} --type {record_type} --name \
-             {name} --data <value>` with just the failed value(s), or `gddy dns list {domain} \
-             --type {record_type} --name {name}` to review the current state."
+        return Err(MutateFailure::new(
+            format!(
+                "added {created} of {total} DNS record(s) for {name} \
+                ({record_type}); {failed} failed:\n{breakdown}\n\nRe-run \
+                `gddy dns add {domain} --type {record_type} --name {name} --data <value>` \
+                with just the failed value(s), or \
+                `gddy dns list {domain} --type {record_type} --name {name}` to \
+                review the current state."
+            ),
+            outcomes.iter().filter_map(|(_, o)| o.as_ref().err()),
         ));
     }
 
@@ -268,6 +275,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let domain_format = args.domain_format.form(&ctx)?;
             validate_record_name(&record_type, &name)
                 .map_err(crate::error::GddyError::validation)?;
+            for record_opts in &opts {
+                validate_applicable_fields(&record_type, record_opts)
+                    .map_err(crate::error::GddyError::validation)?;
+            }
             for record_opts in &opts {
                 validate_caa_fields(&record_type, record_opts)
                     .map_err(crate::error::GddyError::validation)?;
@@ -470,7 +481,10 @@ mod tests {
             "www",
             vec![
                 created("r1", "A", "www", "1.2.3.4", &o),
-                ("5.6.7.8".to_string(), Err("422 invalid data".to_string())),
+                (
+                    "5.6.7.8".to_string(),
+                    Err("422 invalid data".to_string().into()),
+                ),
                 created("r3", "A", "www", "9.9.9.9", &o),
             ],
         )

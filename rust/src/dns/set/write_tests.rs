@@ -538,3 +538,92 @@ async fn apply_replace_uses_an_explicit_ttl_over_the_stored_one() {
     put.assert_async().await;
     assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
 }
+
+/// A failed write's kind comes from what the API said, so the command's error
+/// code reflects it: an exact duplicate is `RECORD_EXISTS`, a missing zone is
+/// `ZONE_NOT_FOUND`, anything else stays `Other`.
+#[tokio::test]
+async fn a_failed_write_is_classified_by_what_the_api_said() {
+    use crate::dns::failure::FailureKind;
+
+    for (status, body, want) in [
+        (
+            404,
+            json!({"name":"ZONE_NOT_FOUND","message":"zone not found"}),
+            FailureKind::ZoneNotFound,
+        ),
+        (
+            422,
+            json!({"name":"VALIDATION_ERROR","message":"Request failed validation"}),
+            FailureKind::Validation,
+        ),
+        (500, json!({"name":"INTERNAL"}), FailureKind::Other),
+    ] {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v3/domains/zones/example.com/dns-records");
+                then.status(status).json_body(body.clone());
+            })
+            .await;
+        let opts = write_opts();
+        let req = WriteRequest {
+            domain: "example.com",
+            name: "www",
+            record_type: "A",
+            value: "1.2.3.4",
+            opts: &opts,
+            replace_conflicting: false,
+            replacing: None,
+            debug: false,
+        };
+        let outcomes = write_with_conflict_handling(&client_for(&server), &req).await;
+        let failure = outcomes[0].error.as_ref().expect("the write failed");
+        assert_eq!(failure.kind(), want, "{status} {body}");
+    }
+}
+
+#[tokio::test]
+async fn an_exact_duplicate_is_a_record_exists_failure() {
+    use crate::dns::failure::FailureKind;
+
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v3/domains/zones/example.com/dns-records");
+            then.status(422).json_body(
+                serde_json::from_str::<Value>(DUPLICATE_RECORD_BODY).expect("valid json"),
+            );
+        })
+        .await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/v3/domains/zones/example.com/dns-records")
+                .query_param("name", "www");
+            then.status(200).json_body(json!({
+                "items": [
+                    { "type": "A", "name": "www", "data": "1.2.3.4", "ttl": 3600, "recordId": "a-1" }
+                ],
+                "totalItems": 1, "totalPages": 1, "links": []
+            }));
+        })
+        .await;
+    let opts = write_opts();
+    let req = WriteRequest {
+        domain: "example.com",
+        name: "www",
+        record_type: "A",
+        value: "1.2.3.4",
+        opts: &opts,
+        replace_conflicting: false,
+        replacing: None,
+        debug: false,
+    };
+    let outcomes = write_with_conflict_handling(&client_for(&server), &req).await;
+    let failure = outcomes[0].error.as_ref().expect("duplicate reported");
+    assert_eq!(failure.kind(), FailureKind::RecordExists);
+    assert!(failure.contains("exact value already exists"), "{failure}");
+}

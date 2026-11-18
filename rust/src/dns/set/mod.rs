@@ -2,14 +2,15 @@
 
 use cli_engine::{Alignment, CommandResult, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
 
-use crate::domain::{api_error, make_client};
+use crate::domain::make_client;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_DNS_UPDATE;
 
+use super::failure::DnsFailure;
 use super::records::{
     RecordOptions, RecordWriteArgs, ZONE_AND_NAME, change_columns, fetch_records, v3_records,
-    validate_caa_fields, validate_record_name, validate_svcb_fields, validate_tlsa_fields,
-    verified_result,
+    validate_applicable_fields, validate_caa_fields, validate_record_name, validate_svcb_fields,
+    validate_tlsa_fields, verified_result,
 };
 
 mod outcome;
@@ -107,6 +108,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let replace_conflicting = args.replace_conflicting_types;
             validate_record_name(&record_type, &name)
                 .map_err(crate::error::GddyError::validation)?;
+            for record_opts in &opts {
+                validate_applicable_fields(&record_type, record_opts)
+                    .map_err(crate::error::GddyError::validation)?;
+            }
             for record_opts in &opts {
                 validate_caa_fields(&record_type, record_opts)
                     .map_err(crate::error::GddyError::validation)?;
@@ -234,7 +239,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         let err = match res {
                             Ok(_) => None,
                             Err(e) => {
-                                Some(api_error("deleting DNS record", debug, e).await.to_string())
+                                Some(DnsFailure::from_error("deleting DNS record", debug, e).await)
                             }
                         };
                         let detail = record_label(&existing, &record_type, &record_id);

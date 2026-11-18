@@ -70,6 +70,19 @@ Deleting something that doesn't match is a no-op success (`deleted: 0`, action `
 
 For `SRV` and `TLSA` records, the name doesn't include the service or port. `--type SRV --name chat` matches every SRV record listed under `chat`, whatever its service, so run `list` or `--dry-run` first to see which will be removed. To target one service, give the full name instead, for example `--name _sip._tcp.chat` (for `TLSA`, `_443._tcp.www`).
 
+## Errors
+
+A failed command returns JSON with a `error.code` property set to one of the following values:
+
+| Code | Meaning |
+|---|---|
+| `RECORD_EXISTS` | `add` or `set` hit a record that is already there, or a name that can't hold both (a CNAME and other types) |
+| `ZONE_NOT_FOUND` | the domain has no DNS zone for your account; check the name with `gddy domain list` |
+| `RECORD_NOT_FOUND` | the record addressed isn't there |
+| `VALIDATION_ERROR` | a flag or value was rejected, such as a flag the record type doesn't use (`--priority` on a `TXT` record) |
+
+`add`, `set` and `delete` attempt every record and list each outcome in the message. When all the failures share one of the codes above, the error carries it; when they differ, it is `UNEXPECTED_ERROR` and the message says which failed and why.
+
 ## International domain names
 
 Domain names and record names can be typed either as Unicode (`münchen.de`) or in their encoded form (`xn--mnchen-3ya.de`); both reach the same domain. Output shows Unicode by default. Add `--punycode` to any DNS command to show the encoded form instead, or make that your default with `gddy config set punycode true` (undo it with `gddy config unset punycode`). Precedence is the `--punycode` flag, then the `GDDY_PUNYCODE` environment variable, then your saved setting, then Unicode, so `--punycode=false` turns the encoded form back off for one command. `gddy config list` shows the current value. Record values (the `--data` of a CNAME, MX or TXT record) are never converted; enter them exactly as they should be stored.
