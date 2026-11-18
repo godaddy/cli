@@ -114,6 +114,19 @@ A real `set` that replaces one record and creates another returns this:
 
 With `--dry-run` the same command returns the same entries, with `action` set to `would set` and `"recordId": null` for creates.
 
+## Errors
+
+A failed command returns JSON with a `error.code` property set to one of the following values:
+
+| Code | Meaning |
+|---|---|
+| `RECORD_EXISTS` | `add` or `set` hit a record that is already there, or a name that can't hold both (a CNAME and other types) |
+| `ZONE_NOT_FOUND` | the domain has no DNS zone for your account; check the name with `gddy domain list` |
+| `RECORD_NOT_FOUND` | the record addressed isn't there |
+| `VALIDATION_ERROR` | a flag or value was rejected, such as a flag the record type doesn't use (`--priority` on a `TXT` record) |
+
+`add`, `set` and `delete` attempt every record and list each outcome in the message. When all the failures share one of the codes above, the error carries it; when they differ, it is `UNEXPECTED_ERROR` and the message says which failed and why.
+
 ## International domain names
 
 Domain names and record names can be typed either as Unicode (`münchen.de`) or in their encoded form (`xn--mnchen-3ya.de`); both reach the same domain. Output shows Unicode by default. Add `--punycode` to any DNS command to show the encoded form instead, or make that your default with `gddy config set punycode true` (undo it with `gddy config unset punycode`). Precedence is the `--punycode` flag, then the `GDDY_PUNYCODE` environment variable, then your saved setting, then Unicode, so `--punycode=false` turns the encoded form back off for one command. `gddy config list` shows the current value. Record values (the `--data` of a CNAME, MX or TXT record) are never converted; enter them exactly as they should be stored.

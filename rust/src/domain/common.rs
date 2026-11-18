@@ -6,6 +6,7 @@ use cli_engine::{CliCoreError, CommandContext, Credential, NextAction, NextActio
 use serde_json::json;
 
 use crate::environments;
+use crate::error::GddyError;
 use crate::next_action::next_action;
 
 use domains_client::types;
@@ -295,15 +296,33 @@ pub(crate) fn comma_joined(values: Vec<String>) -> Vec<String> {
     }
 }
 
-/// Turn a domains-client error into a `CliCoreError`, reading the response body
-/// for unexpected (non-2xx) responses so the API's actual message isn't lost
+/// A failed domains-client call with its response read: the response body (empty
+/// when the API never answered) and the message to show. Lets a caller branch
+/// on what the API said, where [`api_error`] flattens it to text.
+pub(crate) struct ApiFailure {
+    pub(crate) body: String,
+    pub(crate) message: String,
+}
+
+impl ApiFailure {
+    /// The v3 error body's `name` (`ZONE_NOT_FOUND`, `VALIDATION_ERROR`, …).
+    pub(crate) fn api_name(&self) -> Option<String> {
+        #[derive(serde::Deserialize)]
+        struct Named {
+            name: Option<String>,
+        }
+        serde_json::from_str::<Named>(&self.body).ok()?.name
+    }
+}
+
+/// Read a domains-client error's response, so the API's actual message isn't lost
 /// (progenitor's `Display` prints only the status). Async because reading the
 /// body is async.
-pub(crate) async fn api_error(
+pub(crate) async fn api_failure(
     action: &str,
     debug: bool,
     err: domains_client::Error<()>,
-) -> CliCoreError {
+) -> ApiFailure {
     match err {
         domains_client::Error::UnexpectedResponse(resp) => {
             let status = resp.status();
@@ -313,16 +332,35 @@ pub(crate) async fn api_error(
                 .and_then(|v| v.to_str().ok())
                 .map(str::to_owned);
             let body = resp.text().await.unwrap_or_default();
-            CliCoreError::message(format_api_error(
+            let message = format_api_error(
                 action,
                 status.as_u16(),
                 &status.to_string(),
                 &body,
                 request_id.as_deref(),
                 debug,
-            ))
+            );
+            ApiFailure { body, message }
         }
-        other => CliCoreError::message(format!("{action} failed: {other}")),
+        other => ApiFailure {
+            body: String::new(),
+            message: format!("{action} failed: {other}"),
+        },
+    }
+}
+
+/// Turn a domains-client error into a `CliCoreError`. A missing DNS zone or record
+/// gets its own stable code; everything else is a plain message.
+pub(crate) async fn api_error(
+    action: &str,
+    debug: bool,
+    err: domains_client::Error<()>,
+) -> CliCoreError {
+    let failure = api_failure(action, debug, err).await;
+    match failure.api_name().as_deref() {
+        Some("ZONE_NOT_FOUND") => GddyError::zone_not_found(failure.message).into_cli_error(),
+        Some("RECORD_NOT_FOUND") => GddyError::record_not_found(failure.message).into_cli_error(),
+        _ => CliCoreError::message(failure.message),
     }
 }
 
@@ -339,10 +377,12 @@ pub(crate) fn format_api_error(
 ) -> String {
     let body = body.trim();
     let friendly = friendly_field_errors(body);
-    let mut msg = match &friendly {
-        Some(detail) => format!("{action} failed (HTTP {status_display}):\n{detail}"),
-        None if body.is_empty() => format!("{action} failed (HTTP {status_display})"),
-        None => format!("{action} failed (HTTP {status_display}): {body}"),
+    let missing = missing_resource_message(body);
+    let mut msg = match (&friendly, &missing) {
+        (Some(detail), _) => format!("{action} failed (HTTP {status_display}):\n{detail}"),
+        (None, Some(what)) => format!("{action} failed (HTTP {status_display}): {what}"),
+        (None, None) if body.is_empty() => format!("{action} failed (HTTP {status_display})"),
+        (None, None) => format!("{action} failed (HTTP {status_display}): {body}"),
     };
     if status == 402 {
         msg.push_str(
@@ -352,7 +392,7 @@ pub(crate) fn format_api_error(
         );
     }
     if debug {
-        if friendly.is_some() && !body.is_empty() {
+        if (friendly.is_some() || missing.is_some()) && !body.is_empty() {
             msg.push_str(&format!("\n\nResponse body: {body}"));
         }
         if let Some(id) = request_id.map(str::trim).filter(|s| !s.is_empty()) {
@@ -360,6 +400,21 @@ pub(crate) fn format_api_error(
         }
     }
     msg
+}
+
+/// The API's own wording for a missing DNS zone or record, so the message reads
+/// "zone not found" rather than showing the response JSON. `None` for any other
+/// body, which is shown as the API sent it.
+fn missing_resource_message(body: &str) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    struct Missing {
+        name: String,
+        message: String,
+    }
+    let parsed = serde_json::from_str::<Missing>(body).ok()?;
+    matches!(parsed.name.as_str(), "ZONE_NOT_FOUND" | "RECORD_NOT_FOUND")
+        .then_some(parsed.message)
+        .filter(|message| !message.trim().is_empty())
 }
 
 /// A Domains API validation error body. Tolerates the v1 field-level shape
@@ -828,6 +883,39 @@ mod tests {
             false,
         );
         assert!(!msg.contains("some fields are invalid"), "{msg}");
+    }
+
+    #[test]
+    fn a_missing_zone_reads_as_a_sentence_not_json() {
+        let body =
+            r#"{"correlationId":"abc-123","message":"zone not found","name":"ZONE_NOT_FOUND"}"#;
+        let msg = format_api_error(
+            "listing DNS records",
+            404,
+            "404 Not Found",
+            body,
+            None,
+            false,
+        );
+        assert_eq!(
+            msg,
+            "listing DNS records failed (HTTP 404 Not Found): zone not found"
+        );
+        // --debug still shows the full response.
+        let debug = format_api_error(
+            "listing DNS records",
+            404,
+            "404 Not Found",
+            body,
+            None,
+            true,
+        );
+        assert!(debug.contains("Response body:"), "{debug}");
+        assert!(debug.contains("abc-123"), "{debug}");
+        // A not-found the API did not name, or with no message, is shown as sent.
+        let other = r#"{"name":"DOMAIN_NOT_FOUND","message":"gone"}"#;
+        let msg = format_api_error("getting", 404, "404 Not Found", other, None, false);
+        assert!(msg.contains("DOMAIN_NOT_FOUND"), "{msg}");
     }
 
     #[test]

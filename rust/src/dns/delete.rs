@@ -3,13 +3,14 @@
 use cli_engine::{Alignment, CommandResult, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
 use serde_json::{Value, json};
 
-use crate::domain::{api_error, make_client};
+use crate::domain::make_client;
 use crate::idn::DomainFormArgs;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_DNS_UPDATE;
 
 use domains_client::types;
 
+use super::failure::{DnsFailure, MutateFailure};
 use super::records::{
     ZONE_AND_NAME, change_columns, change_entry, fetch_records, parse_write_type_arg,
     record_label_value, verified_result,
@@ -30,7 +31,7 @@ const NOTHING_TO_DELETE: &str = "nothing to delete";
 
 /// One matched record's delete, as reported: the record, and `None` on success or
 /// `Some(error)` if it could not be removed.
-type DeleteOutcome = (types::DnsRecord, Option<String>);
+type DeleteOutcome = (types::DnsRecord, Option<DnsFailure>);
 
 /// Why a matched record that came back without a recordId can't be deleted. The
 /// real run reports it as a failure and the preview as a `fail` entry, in these
@@ -76,7 +77,7 @@ fn summarize_delete_outcomes(
     record_type: &str,
     name: &str,
     outcomes: &[DeleteOutcome],
-) -> Result<Value, String> {
+) -> Result<Value, MutateFailure> {
     let label =
         |rec: &types::DnsRecord| record_label_value(rec).unwrap_or_else(|| "(no data)".to_owned());
     let failed = outcomes.iter().filter(|(_, e)| e.is_some()).count();
@@ -91,12 +92,16 @@ fn summarize_delete_outcomes(
             })
             .collect::<Vec<_>>()
             .join("\n");
-        return Err(format!(
-            "deleted {deleted} of {} record(s) for {name} ({record_type}); {failed} failed:\n\
-             {breakdown}\n\nRe-run `gddy dns delete {domain} --type {record_type} --name \
-             {name}`, or `gddy dns list {domain} --type {record_type} --name {name}` to \
-             review the current state.",
-            outcomes.len(),
+        return Err(MutateFailure::new(
+            format!(
+                "deleted {deleted} of {} record(s) for {name} ({record_type}); \
+                {failed} failed:\n{breakdown}\n\nRe-run \
+                `gddy dns delete {domain} --type {record_type} --name {name}`, \
+                or `gddy dns list {domain} --type {record_type} --name {name}` \
+                to review the current state.",
+                outcomes.len(),
+            ),
+            outcomes.iter().filter_map(|(_, e)| e.as_ref()),
         ));
     }
 
@@ -235,7 +240,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 // A record with no server id can't be targeted — report it as a
                 // failure (non-zero exit) rather than silently leaving it behind.
                 let err = match rec.record_id.as_deref() {
-                    None => Some(missing_record_id_reason(&domain, &record_type, &name)),
+                    None => Some(DnsFailure::from(missing_record_id_reason(
+                        &domain,
+                        &record_type,
+                        &name,
+                    ))),
                     Some(id) => match client
                         .delete_dns_record()
                         .zone(domain.as_str())
@@ -245,7 +254,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     {
                         Ok(_) => None,
                         Err(e) => {
-                            Some(api_error("deleting DNS record", debug, e).await.to_string())
+                            Some(DnsFailure::from_error("deleting DNS record", debug, e).await)
                         }
                     },
                 };
@@ -280,7 +289,10 @@ mod tests {
         // One failed → non-zero error naming the failed value.
         let mixed = vec![
             (test_record("r1", "1.2.3.4"), None),
-            (test_record("r2", "5.6.7.8"), Some("nope".to_string())),
+            (
+                test_record("r2", "5.6.7.8"),
+                Some("nope".to_string().into()),
+            ),
         ];
         let err =
             summarize_delete_outcomes("example.com", "A", "www", &mixed).expect_err("a failure");
