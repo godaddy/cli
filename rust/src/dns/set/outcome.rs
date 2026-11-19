@@ -257,6 +257,48 @@ mod tests {
         }
     }
 
+    /// The result of a `set` lists the records now in place; for SRV they have
+    /// to be told apart by service and port, not just by their identical data.
+    #[test]
+    fn the_set_result_shows_srv_service_and_port_and_nothing_extra_for_a_records() {
+        let columns = super::super::view_columns();
+        let srv = |service: &str, port: u64| {
+            serde_json::json!({
+                "type": "SRV", "name": "chat", "data": "t.example.com.", "ttl": 3600,
+                "recordId": service, "service": service, "protocol": "_tcp",
+                "port": port, "priority": 10, "weight": 5
+            })
+        };
+        let result = |records: Vec<Value>| {
+            serde_json::json!({
+                "domain": "example.com", "type": "SRV", "name": "chat",
+                "replaced": 0, "unchanged": 2, "created": 0, "deleted": 0,
+                "action": "set", "records": records
+            })
+        };
+
+        let rendered = cli_engine::preview_human_view(
+            result(vec![srv("_sip", 5060), srv("_xmpp", 5222)]),
+            &columns,
+        );
+        assert!(
+            rendered.contains("SERVICE") && rendered.contains("PORT"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("_sip") && rendered.contains("_xmpp"),
+            "{rendered}"
+        );
+
+        let plain = serde_json::json!({
+            "type": "A", "name": "www", "data": "1.2.3.4", "ttl": 3600, "recordId": "r1"
+        });
+        let rendered = cli_engine::preview_human_view(result(vec![plain]), &columns);
+        for sparse in ["SERVICE", "PORT", "PRIORITY", "PROTOCOL"] {
+            assert!(!rendered.contains(sparse), "{sparse} shown: {rendered}");
+        }
+    }
+
     /// Proves `view_columns()`'s field names actually match what
     /// `dry_run_set_preview` emits — a mismatch here would silently drop the
     /// reconcile plan from human output.
