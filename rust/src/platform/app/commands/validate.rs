@@ -113,6 +113,7 @@ mod tests {
             name: "my-app".to_owned(),
             description: None,
             status,
+            distribution_type: platform_app_client::application::DistributionType::PUBLIC,
             url: Some(url.to_owned()),
             proxy_url: proxy_url.map(str::to_owned),
         }

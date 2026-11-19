@@ -104,6 +104,7 @@ mod tests {
             native_extensions: None,
             settings: None,
             subscriptions: None,
+            scopes: None,
             ui_extensions: None,
         }
     }
