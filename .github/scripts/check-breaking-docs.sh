@@ -3,14 +3,16 @@
 # upgrade guide (`gddy guide upgrades`, rust/src/update/guides/upgrades.md).
 #
 # A pull request is breaking when its title has a `!` before the colon
-# (`fix(dns)!: ...`), or when any of its commits has a `BREAKING CHANGE:` footer or a
-# subject with that `!`. Those are the markers release-please turns into a breaking
-# release. A breaking pull request has to change the guide, and the guide has to hold
+# (`fix(dns)!: ...`), or when any of its commits has a subject with that `!` or a
+# `BREAKING CHANGE:` footer. Those are the markers release-please turns into a breaking
+# release. Only a commit's first line is a subject: a body that quotes `fix!: ...` as an
+# example doesn't count. A breaking pull request has to change the guide, and the guide has to hold
 # the section for the upgrade the change belongs to: `## 0.2 to 0.3` while the version
 # in rust/Cargo.toml is 0.2.x, `## 1 to 2` while it is 1.x.y.
 #
 # Inputs, all from the environment:
 #   PR_TITLE            the pull request title
+#   SUBJECTS_FILE       the subject (first line) of every commit in the pull request
 #   COMMITS_FILE        the full message of every commit in the pull request
 #   CHANGED_FILES_FILE  the path of every file the pull request changes, one per line
 #   CARGO_TOML          the crate manifest holding the current version (default rust/Cargo.toml)
@@ -20,6 +22,7 @@
 set -euo pipefail
 
 title=${PR_TITLE:?PR_TITLE is required}
+subjects_file=${SUBJECTS_FILE:?SUBJECTS_FILE is required}
 commits_file=${COMMITS_FILE:?COMMITS_FILE is required}
 changed_files_file=${CHANGED_FILES_FILE:?CHANGED_FILES_FILE is required}
 cargo_toml=${CARGO_TOML:-rust/Cargo.toml}
@@ -32,7 +35,7 @@ reasons=()
 if [[ $title =~ $bang_header ]]; then
   reasons+=("the title has a \`!\` before the colon")
 fi
-if grep -Eq "$bang_header" "$commits_file"; then
+if grep -Eq "$bang_header" "$subjects_file"; then
   reasons+=("a commit subject has a \`!\` before the colon")
 fi
 if grep -Eq '^BREAKING[ -]CHANGE:' "$commits_file"; then

@@ -7,19 +7,26 @@ script="$(cd "$(dirname "$0")" && pwd)/check-breaking-docs.sh"
 guide_path=rust/src/update/guides/upgrades.md
 failures=0
 
-# check NAME WANT_EXIT TITLE COMMITS FILES VERSION GUIDE_TEXT [WANT_OUTPUT]
-# Runs the script in a scratch repository laid out like this one.
+# check NAME WANT_EXIT TITLE COMMITS FILES VERSION GUIDE_TEXT [WANT_OUTPUT [SUBJECTS]]
+# Runs the script in a scratch repository laid out like this one. COMMITS is the full
+# text of the commit messages. SUBJECTS is the subject of each commit, one per line;
+# it defaults to the first line of COMMITS, which is right for a single commit.
 check() {
   local name=$1 want=$2 title=$3 commits=$4 files=$5 version=$6 guide_text=$7 want_output=${8:-}
+  local subjects=${9-}
   local dir got output
+  if [[ $# -lt 9 ]]; then
+    subjects=$(printf '%s' "$commits" | head -n 1)
+  fi
   dir=$(mktemp -d)
   mkdir -p "$dir/rust/src/update/guides"
+  printf '%s\n' "$subjects" >"$dir/subjects"
   printf '%s' "$commits" >"$dir/commits"
   printf '%s' "$files" >"$dir/files"
   printf '[package]\nname = "x"\nversion = "%s"\n' "$version" >"$dir/rust/Cargo.toml"
   printf '%s' "$guide_text" >"$dir/$guide_path"
   set +e
-  output=$(cd "$dir" && PR_TITLE=$title COMMITS_FILE=$dir/commits CHANGED_FILES_FILE=$dir/files bash "$script" 2>&1)
+  output=$(cd "$dir" && PR_TITLE=$title SUBJECTS_FILE=$dir/subjects COMMITS_FILE=$dir/commits CHANGED_FILES_FILE=$dir/files bash "$script" 2>&1)
   got=$?
   set -e
   rm -rf "$dir"
@@ -77,13 +84,23 @@ check "a BREAKING-CHANGE footer is breaking too" 1 \
 check "a BREAKING CHANGE footer is satisfied by the guide" 0 \
   "fix(dns): report the same records" $'fix(dns): x\n\nBREAKING CHANGE: add no longer returns results.\n' "$touched" 0.2.39 "$guide_02_to_03"
 check "a footer in a later commit still counts" 1 \
-  "fix(dns): report the same records" $'fix: first\n\nfix: second\n\nBREAKING CHANGE: y\n' "$untouched" 0.2.39 "$guide_02_to_03"
+  "fix(dns): report the same records" $'fix: first\n\nfix: second\n\nBREAKING CHANGE: y\n' "$untouched" 0.2.39 "$guide_02_to_03" \
+  "" $'fix: first\nfix: second'
+check "a ! in a later commit's subject counts" 1 \
+  "fix(dns): report the same records" $'fix: first\n\nfeat(dns)!: second\n' "$untouched" 0.2.39 "$guide_02_to_03" \
+  "a commit subject has" $'fix: first\nfeat(dns)!: second'
+check "a ! example in a commit body is not a marker" 0 \
+  "docs: explain conventional commits" $'docs: explain conventional commits\n\nA breaking change looks like:\n\nfix!: remove the old flag\nfeat(dns)!: rename it\n' "$untouched" 0.2.39 "$guide_old_only" \
+  "Not a breaking change"
+check "a BREAKING CHANGE footer after a body example still counts" 1 \
+  "docs: explain conventional commits" $'docs: explain\n\nfix!: example\n\nBREAKING CHANGE: y\n' "$untouched" 0.2.39 "$guide_02_to_03" \
+  "a commit has a"
 check "several markers are listed with separators" 1 \
   "fix(dns)!: x" $'fix(dns)!: x\n\nBREAKING CHANGE: y\n' "$untouched" 0.2.39 "$guide_02_to_03" \
   "before the colon; a commit subject"
 check "a commit subject with a ! counts when the title has none" 1 \
   "fix(dns): report the same records" $'fix(dns): first\nfeat(dns)!: second\n' "$untouched" 0.2.39 "$guide_02_to_03" \
-  "a commit subject has"
+  "a commit subject has" $'fix(dns): first\nfeat(dns)!: second\n'
 check "a lower-case footer is not a marker" 0 \
   "fix(dns): x" $'fix: x\n\nbreaking change: no\n' "$untouched" 0.2.39 "$guide_old_only"
 
