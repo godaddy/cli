@@ -6,7 +6,7 @@ summary: Quote, review, and purchase a domain with gddy
 
 Registering a domain is a quote-then-purchase flow.
 
-A purchase is paid and not reversible, so `purchase` has two gates (`--agree`, `--confirm`) on top of the quote token. The quote token locks the registration price and settings you reviewed.
+A purchase isn't reversible, so `purchase` has two gates (`--agree`, `--confirm`) on top of the quote token. The quote token locks the registration price and settings you reviewed.
 
 The quoted price doesn't include taxes and fees. The ICANN fee and any applicable taxes are added when you register, so the total charged is higher than the price shown by `suggest`, `available` and `quote`. Whether tax applies depends on the billing address of your payment method. The `Premium Fees` column is something else: it lists the extra cost of a premium domain and is empty for a non-premium domain. Once the registration completes, `purchase` gives you the order ID, and `gddy shopping order get <order-id>` shows the total charged.
 
