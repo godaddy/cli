@@ -45,6 +45,14 @@ To create a mailbox, run three commands in order:
 
 Before you create a mailbox, check that the email address is eligible and find which email plan to use. The domain must be owned by the authenticated GoDaddy shopper.
 
+The result lists each eligible account with these fields:
+
+| Field                             | Description                                                                                    |
+| --------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `eligibleAccounts[].accountId`    | Pass to `--account-id` on `email create`.                                                      |
+| `eligibleAccounts[].default`      | `true` on the recommended account. Use this one when no specific preference.                   |
+| `eligibleAccounts[].requirements` | Legal agreements you must accept. Each `type` must be passed as `--consent` on `email create`. |
+
 1. Run the eligibility check:
 
    ```
@@ -74,16 +82,6 @@ Before you create a mailbox, check that the email address is eligible and find w
    }
    ```
 
-   Key fields:
-
-
-   | Field                             | Description                                                                                    |
-   | --------------------------------- | ---------------------------------------------------------------------------------------------- |
-   | `eligibleAccounts[].accountId`    | Pass to `--account-id` on `email create`.                                                      |
-   | `eligibleAccounts[].default`      | `true` on the recommended account. Use this one when no specific preference.                   |
-   | `eligibleAccounts[].requirements` | Legal agreements you must accept. Each `type` must be passed as `--consent` on `email create`. |
-
-
    When the account has **no free-trial** plan, `requirements` is an empty array and you don't need a `--consent` flag:
 
    ```json
@@ -105,7 +103,11 @@ Before you create a mailbox, check that the email address is eligible and find w
 
 ### Create the mailbox
 
-After you've checked eligibility, create the mailbox with the account and consents you chose.
+After you've checked eligibility, create the mailbox with the account and consents you chose. Three of the options need a note:
+
+- `--consent` is repeatable. Pass one per required requirement type. `FREETRIAL_AUTORENEW` is the only requirement type the API issues. When `requirements` is empty, omit `--consent` entirely.
+- `--account-id` is optional when there is exactly one eligible account with `default: true`; the CLI will use it automatically.
+- `--first-name` and `--last-name` are optional; they set the display name on the mailbox.
 
 1. Run the create command with the chosen `accountId` and one `--consent` for each `requirements[].type`:
 
@@ -115,15 +117,7 @@ After you've checked eligibility, create the mailbox with the account and consen
      --consent FREETRIAL_AUTORENEW
    ```
 
-   `--consent` is repeatable. Pass one per required requirement type. `FREETRIAL_AUTORENEW` is the only requirement type the API issues. When `requirements` is empty, omit `--consent` entirely.
-
-   `--account-id` is optional when there is exactly one eligible account with `default: true`; the CLI will use it automatically.
-
-   `--first-name` and `--last-name` are optional; they set the display name on the mailbox.
-
 2. Read the `202 Accepted` response, which returns immediately with the mailbox ID and `status: EXECUTING`:
-
-   The mailbox **isn't ready to use yet**. Provisioning continues in the background; poll with `gddy email get` until `status` reaches `COMPLETED` (success) or `FAILED` (terminal error). Recommended poll interval is 2–4 seconds; don't poll faster than once per second.
 
    **Example response (with consents):**
 
@@ -174,6 +168,8 @@ After you've checked eligibility, create the mailbox with the account and consen
      ]
    }
    ```
+
+The mailbox **isn't ready to use yet**. Provisioning continues in the background; poll with `gddy email get` until `status` reaches `COMPLETED` (success) or `FAILED` (terminal error). Recommended poll interval is 2–4 seconds; don't poll faster than once per second.
 
 ### Poll until ready
 
