@@ -24,6 +24,9 @@ rust/src/db/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-
 # dns — gddy dns commands
 rust/src/dns/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @jmunson-godaddy @bdittmer-godaddy
 
+# domain-connect — gddy domain-connect commands
+rust/src/domain_connect/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @cderangula-godaddy @cpavurala-godaddy @nbabu-godaddy
+
 # domains — gddy domain commands
 rust/domains-client/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @jmunson-godaddy @bdittmer-godaddy
 rust/src/domain/** @axburgess-godaddy @jpage-godaddy @jpearlman-godaddy @mguerrero3-godaddy @qcai-godaddy @rts1-godaddy @runruh-godaddy @jmunson-godaddy @bdittmer-godaddy
