@@ -19,6 +19,10 @@ struct Args {
     #[arg(long, value_name = "PURCHASE_OPTION_ID[=QUANTITY]")]
     item: Vec<String>,
 
+    /// Domain name to register, for example example.com. Repeat for multiple domains; append `:<YEARS>yr` to choose a registration term (for example, example.com:2yr). Run `shopping catalog search --domain <name>` first to check availability and price.
+    #[arg(long, value_name = "DOMAIN[:YEARSyr]")]
+    domain: Vec<String>,
+
     /// Preferred ISO 4217 currency for checkout prices (for example, USD or GBP).
     #[arg(long, value_name = "CODE", value_parser = currency_code)]
     currency: Option<String>,
@@ -121,7 +125,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::from_args::<Args>("update", "Optionally update a checkout session")
             .with_long(
                 "Update an open checkout session before placing an order. The CLI retrieves its current \
-                 state and preserves unchanged writable fields while applying your item, buyer, currency, \
+                 state and preserves unchanged writable fields while applying your item, domain, buyer, currency, \
                  or payment-method changes. The response shows the currently selected and eligible saved payment \
                  methods (the first five by default; use --show-all-payment-instruments for all). If a requested \
                  payment method is not selected, the command reports it as ineligible and shows how to choose another.",
@@ -136,6 +140,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
         |ctx, args: Args| async move {
             let input = CheckoutInput {
                 items: args.item,
+                domains: args.domain,
                 currency: args.currency,
                 buyer_first_name: args.buyer_first_name,
                 buyer_last_name: args.buyer_last_name,

@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.39](https://github.com/godaddy/cli/compare/v0.2.38...v0.2.39) (2026-11-18)
+
+
+### Features
+
+* **shopping:** buy domain names through shopping checkout ([#387](https://github.com/godaddy/cli/issues/387)) ([046162f](https://github.com/godaddy/cli/commit/046162f0c40a26e7e7a1d226e63b783dc7444afc))
+
+
+### Bug Fixes
+
+* **hosting:** reuse the create request when hosting app create runs again ([#382](https://github.com/godaddy/cli/issues/382)) ([23f4057](https://github.com/godaddy/cli/commit/23f4057e4edf52e87a1f466b008ddc069377a764))
+
+
+### Documentation
+
+* **dns:** fix style findings in the DNS guide ([#377](https://github.com/godaddy/cli/issues/377)) ([2b7fa4e](https://github.com/godaddy/cli/commit/2b7fa4e2502cc64c89e30d5d42f24c75a780a72d))
+* **pat:** fix style findings in the authentication guide ([#380](https://github.com/godaddy/cli/issues/380)) ([577805a](https://github.com/godaddy/cli/commit/577805adbe0df50600e6df339477db0d158b823a))
+
 ## [0.2.38](https://github.com/godaddy/cli/compare/v0.2.37...v0.2.38) (2026-11-16)
 
 

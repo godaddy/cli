@@ -12,7 +12,7 @@ use crate::scopes::DOMAINS_READ;
 
 use domains_client::types;
 
-use super::records::{fetch_records, merged_tlsa_data, parse_list_type_arg};
+use super::records::{detail_columns, fetch_records, merged_tlsa_data, parse_list_type_arg};
 
 #[derive(Debug, Clone, clap::Args)]
 struct ListArgs {
@@ -33,29 +33,36 @@ struct ListArgs {
     domain_format: DomainFormArgs,
 }
 
+/// The columns `dns list` shows when `--fields` is not given, in display order.
+/// Everything after `ttl` is specific to some record types and only appears when
+/// a listed record has it (see `view_columns`). The TLSA fields are left out
+/// because `data` already carries them as `usage selector matching-type cert`.
+const DEFAULT_FIELDS: &str =
+    "type,name,data,ttl,priority,weight,port,service,protocol,flag,tag,parameters";
+
 /// A record is unreadable without its type/name/data, so those three are
 /// `essential` — never hidden or shrunk for width, even on a narrow terminal
 /// — while the rest are nice-to-haves that still yield to width pressure.
 fn view_columns() -> Vec<TableColumn> {
-    vec![
+    // The record-specific columns are only worth a column when some record uses
+    // them, so a listing of A and TXT records looks as it always did while SRV,
+    // MX, CAA and TLSA records bring the fields that tell them apart.
+    let sparse = |column: TableColumn| column.hide_when_empty(true);
+    let mut columns = vec![
         TableColumn::new("type", "Type").essential(true),
         TableColumn::new("name", "Name").essential(true),
         TableColumn::new("data", "Data").essential(true),
         TableColumn::new("ttl", "TTL").align(Alignment::Right),
-        TableColumn::new("priority", "Priority").align(Alignment::Right),
+    ];
+    columns.extend(detail_columns());
+    columns.extend([
         TableColumn::new("recordId", "Record ID"),
-        TableColumn::new("service", "Service"),
-        TableColumn::new("protocol", "Protocol"),
-        TableColumn::new("port", "Port").align(Alignment::Right),
-        TableColumn::new("weight", "Weight").align(Alignment::Right),
-        TableColumn::new("tag", "Tag"),
-        TableColumn::new("flag", "Flag").align(Alignment::Right),
-        TableColumn::new("usage", "Usage"),
-        TableColumn::new("selector", "Selector"),
-        TableColumn::new("matchingType", "Matching Type"),
-        TableColumn::new("certificateData", "Certificate Data").no_truncate(true),
-        TableColumn::new("parameters", "Parameters"),
-    ]
+        sparse(TableColumn::new("usage", "Usage")),
+        sparse(TableColumn::new("selector", "Selector")),
+        sparse(TableColumn::new("matchingType", "Matching Type")),
+        sparse(TableColumn::new("certificateData", "Certificate Data").no_truncate(true)),
+    ]);
+    columns
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -68,7 +75,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .with_system("domain")
             .with_tier(Tier::Read)
-            .with_default_fields("type,name,data,ttl")
+            .with_default_fields(DEFAULT_FIELDS)
             .with_json_schema::<types::DnsRecord>()
             .with_view(view_columns())
             .with_scopes(&[DOMAINS_READ])
@@ -137,6 +144,31 @@ mod tests {
         );
     }
 
+    fn srv_record(id: &str, service: &str, port: u16) -> types::DnsRecord {
+        types::DnsRecord {
+            data: Some("chat-server.example.com.".to_string()),
+            name: "chat".to_string(),
+            port: Some(port),
+            priority: Some(10),
+            weight: Some(5),
+            protocol: Some("_tcp".to_string()),
+            service: Some(service.to_string()),
+            record_id: Some(id.to_string()),
+            type_: types::DnsRecordType("SRV".to_string()),
+            ..a_record()
+        }
+    }
+
+    /// The default fields as the engine applies them: the view's columns
+    /// narrowed to `DEFAULT_FIELDS`, in that order.
+    fn default_columns() -> Vec<TableColumn> {
+        let all = view_columns();
+        DEFAULT_FIELDS
+            .split(',')
+            .filter_map(|field| all.iter().find(|c| c.field == field).cloned())
+            .collect()
+    }
+
     /// `view_columns()` declares 17 columns — far more than fit an
     /// 80-column terminal (the fixed width non-TTY test runs get) once
     /// their headers are laid out side by side. Type/name/data must survive
@@ -144,7 +176,9 @@ mod tests {
     /// everything else is free to be hidden.
     #[test]
     fn essential_fields_survive_width_based_hiding() {
-        let out = build_list_output(&[a_record()]).expect("serializes");
+        // Records that use every optional column, so the table is wider than
+        // 80 characters and the engine has to decide what to hide.
+        let out = build_list_output(&[srv_record("r1", "_xmpp", 5222)]).expect("serializes");
 
         let rendered = cli_engine::preview_human_view(out, &view_columns());
 
@@ -156,6 +190,86 @@ mod tests {
             rendered.contains("hidden to fit the display width"),
             "fixture must actually overflow 80 columns to exercise hiding: {rendered}"
         );
+    }
+
+    #[test]
+    fn a_listing_without_srv_or_tlsa_records_has_no_extra_columns() {
+        let out = build_list_output(&[a_record()]).expect("serializes");
+
+        let rendered = cli_engine::preview_human_view(out, &default_columns());
+
+        let header_line = rendered.lines().next().expect("header line");
+        for shown in ["TYPE", "NAME", "DATA", "TTL"] {
+            assert!(header_line.contains(shown), "{rendered}");
+        }
+        for sparse in [
+            "PORT", "SERVICE", "PROTOCOL", "PRIORITY", "WEIGHT", "TAG", "FLAG",
+        ] {
+            assert!(!header_line.contains(sparse), "{sparse} shown: {rendered}");
+        }
+    }
+
+    #[test]
+    fn srv_records_under_one_name_are_told_apart_by_service_and_port() {
+        let out = build_list_output(&[
+            srv_record("r1", "_sip", 5060),
+            srv_record("r2", "_xmpp", 5222),
+        ])
+        .expect("serializes");
+
+        let rendered = cli_engine::preview_human_view(out, &default_columns());
+
+        // At 80 columns the trailing protocol column is the one hidden for
+        // width; the rest are what tells the two rows apart.
+        for shown in ["PORT", "SERVICE", "PRIORITY", "WEIGHT"] {
+            assert!(rendered.contains(shown), "{shown} missing: {rendered}");
+        }
+        assert!(
+            rendered.contains("_sip") && rendered.contains("5060"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("_xmpp") && rendered.contains("5222"),
+            "{rendered}"
+        );
+    }
+
+    #[test]
+    fn a_mixed_listing_shows_the_extra_columns_with_blanks_on_other_rows() {
+        let out =
+            build_list_output(&[a_record(), srv_record("r2", "_xmpp", 5222)]).expect("serializes");
+
+        let rendered = cli_engine::preview_human_view(out, &default_columns());
+
+        assert!(
+            rendered.contains("SERVICE") && rendered.contains("_xmpp"),
+            "{rendered}"
+        );
+        let a_row = rendered
+            .lines()
+            .find(|l| l.contains("1.2.3.4"))
+            .expect("A row");
+        assert!(
+            !a_row.contains("_xmpp") && !a_row.contains("5222"),
+            "{a_row}"
+        );
+    }
+
+    #[test]
+    fn the_default_fields_are_the_core_columns_then_the_shared_detail_fields() {
+        let expected = format!(
+            "type,name,data,ttl,{}",
+            super::super::records::DETAIL_FIELDS.join(",")
+        );
+        assert_eq!(DEFAULT_FIELDS, expected);
+    }
+
+    #[test]
+    fn every_default_field_is_a_declared_column() {
+        let declared: Vec<String> = view_columns().into_iter().map(|c| c.field).collect();
+        for field in DEFAULT_FIELDS.split(',') {
+            assert!(declared.iter().any(|d| d == field), "{field} has no column");
+        }
     }
 
     fn a_record() -> types::DnsRecord {
