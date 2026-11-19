@@ -4,25 +4,19 @@ summary: Quote, review, and purchase a domain with gddy
 
 # Buy a domain with `gddy`
 
-Registering a domain is a two-step, quote-then-purchase flow:
+Registering a domain is a quote-then-purchase flow.
 
-1. `gddy domain quote <domain>` locks a price and returns the legal agreements
-   and a single-use **quote token** (valid ~10 minutes).
-2. `gddy domain purchase --quote-token <token> --agree --confirm` accepts that
-   quote and registers the domain.
-
-A purchase is paid and not reversible, so `purchase` has two gates (`--agree`, `--confirm`) on top of the token. The quote token locks the registration price and settings you reviewed.
+A purchase is paid and not reversible, so `purchase` has two gates (`--agree`, `--confirm`) on top of the quote token. The quote token locks the registration price and settings you reviewed.
 
 The quoted price doesn't include taxes and fees. The ICANN fee and any applicable taxes are added when you register, so the total charged is higher than the price shown by `suggest`, `available` and `quote`. Whether tax applies depends on the billing address of your payment method. The `Premium Fees` column is something else: it lists the extra cost of a premium domain and is empty for a non-premium domain. Once the registration completes, `purchase` gives you the order ID, and `gddy shopping order get <order-id>` shows the total charged.
 
-Registration completes asynchronously. `purchase` submits the registration and waits briefly for the registry, reporting the operation's `status` (`COMPLETED` when done). Then the domain displays in `gddy domain list`. If `purchase` gives up waiting before reaching a terminal status, it will give you an operation ID which you can use to check its progress with:
-`gddy domain operation status <operation-id>`.
+Registration completes asynchronously. `purchase` submits the registration and waits briefly for the registry, reporting the operation's `status` (`COMPLETED` when done). Then the domain displays in `gddy domain list`. If `purchase` gives up waiting before reaching a terminal status, it will give you an operation ID which you can use to check its progress with `gddy domain operation status <operation-id>`.
 
 ## Quote and purchase a domain
 
-To buy a domain, run up to four commands in order. The first two are optional. Quoting a domain gives you a quote token, which locks in the price and the registration settings you review.
+To buy a domain, run up to four commands in order. The first two are optional. Quoting a domain gives you a single-use quote token, which locks in the price and the registration settings you review.
 
-1. (_Optional_) Get name suggestions, from a seed word or phrase or with no phrase (go to [Find a name](#find-a-name) for the options):
+1. (_Optional_) Get name suggestions, from a seed word or phrase or with no phrase (go to *Find a name* for the options):
 
    ```
    gddy domain suggest "avocado jewelry"
@@ -35,7 +29,7 @@ To buy a domain, run up to four commands in order. The first two are optional. Q
    gddy domain available example.com
    ```
 
-3. Quote the domain to review the terms and price and lock in your registration settings (go to [Quote options](#quote-options) for the settings):
+3. Quote the domain to review the terms and price and lock in your registration settings (go to *Quote options* for the settings):
 
    ```
    gddy domain quote example.com
@@ -43,7 +37,7 @@ To buy a domain, run up to four commands in order. The first two are optional. Q
 
 4. Read the quote, which shows the price, the required legal agreements, the resolved contact and preference settings, and the `quoteToken` (with its `expiresAt`).
 
-5. Purchase the domain, accepting the agreements and confirming the charge (go to [Quote lifetime](#quote-lifetime) for how long the quote lasts):
+5. Purchase the domain, accepting the agreements and confirming the charge (go to *Quote lifetime* for how long the quote lasts):
 
    ```
    gddy domain purchase --quote-token <token> --agree --confirm
@@ -74,12 +68,11 @@ The quote is cached locally (next to your `contacts.toml`), so **run `quote` and
 
 ### The three decisions
 
-- **The quote token** selects *which* quote you're buying: the exact domain,
-  settings, and registration price you reviewed.
-- `--agree` is your **consent** to the quote's legal agreements. Run `purchase`
-  without it and it lists the agreements you must accept.
-- `--confirm` acknowledges that the purchase **charges your account**. Without
-  it, the command stops before buying.
+Three things decide what you buy and what you agree to:
+
+- **The quote token** selects *which* quote you're buying: the exact domain, settings, and registration price you reviewed.
+- `--agree` is your **consent** to the quote's legal agreements. Run `purchase` without it and it lists the agreements you must accept.
+- `--confirm` acknowledges that the purchase **charges your account**. Without it, the command stops before buying.
 
 AI assistants: Before using `--agree` or `--confirm`, show the end user the quoted price from `domain quote` (including any premium fees), tell them that taxes and fees such as the ICANN fee are added on top so the total charged will be higher, and show each required legal agreement's title and URL (from `quote`'s `requiredAgreements`), and obtain their explicit confirmation to proceed. The user must be able to click through and read the agreements. Do not infer confirmation from a general request to buy or register a domain.
 
@@ -138,5 +131,5 @@ country     = "US"
 # default for it.
 ```
 
-Required fields per role: `name_first`, `name_last`, `email`, `phone`, `address1`, `city`, `state`, `postal_code`, `country`.
-Optional fields: `organization`, `address2`.
+- Required fields per role: `name_first`, `name_last`, `email`, `phone`, `address1`, `city`, `state`, `postal_code`, `country`.
+- Optional fields: `organization`, `address2`.
