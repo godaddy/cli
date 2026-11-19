@@ -32,6 +32,17 @@ const NOTHING_TO_DELETE: &str = "nothing to delete";
 /// `Some(error)` if it could not be removed.
 type DeleteOutcome = (types::DnsRecord, Option<String>);
 
+/// Why a matched record that came back without a recordId can't be deleted. The
+/// real run reports it as a failure and the preview as a `fail` entry, in these
+/// same words.
+fn missing_record_id_reason(domain: &str, record_type: &str, name: &str) -> String {
+    format!(
+        "the API returned this record without a recordId, so it can't be deleted; re-run \
+         `gddy dns list {domain} --type {record_type} --name {name}` and remove it in the \
+         control panel if it persists"
+    )
+}
+
 /// The `delete` result for the matched records — the same builder for the
 /// preview and the real run, so the two cannot drift. `records` lists each record
 /// with its id and value; `deleted`/`failed` count them; a record without a
@@ -119,13 +130,13 @@ fn dry_run_delete_preview(
     let would_delete = existing.iter().filter(|r| r.record_id.is_some()).count();
     let records = existing
         .iter()
-        .map(|rec| {
-            let action = if rec.record_id.is_some() {
-                "delete"
-            } else {
-                "fail (missing recordId)"
-            };
-            change_entry(action, rec.record_id.as_deref(), Some(rec), None)
+        .map(|rec| match rec.record_id.as_deref() {
+            Some(id) => change_entry("delete", Some(id), Some(rec), None),
+            None => {
+                let mut entry = change_entry("fail", None, Some(rec), None);
+                entry["error"] = json!(missing_record_id_reason(domain, record_type, name));
+                entry
+            }
         })
         .collect();
     delete_result(
@@ -224,11 +235,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 // A record with no server id can't be targeted — report it as a
                 // failure (non-zero exit) rather than silently leaving it behind.
                 let err = match rec.record_id.as_deref() {
-                    None => Some(format!(
-                        "the API returned this record without a recordId, so it can't be \
-                         deleted; re-run `gddy dns list {domain} --type {record_type} --name \
-                         {name}` and remove it in the control panel if it persists"
-                    )),
+                    None => Some(missing_record_id_reason(&domain, &record_type, &name)),
                     Some(id) => match client
                         .delete_dns_record()
                         .zone(domain.as_str())
@@ -432,7 +439,13 @@ mod tests {
         assert_eq!(preview["deleted"], 1);
         assert_eq!(preview["failed"], 1);
         let records = preview["records"].as_array().expect("records array");
-        assert_eq!(records[1]["action"], "fail (missing recordId)");
+        assert_eq!(records[0]["action"], "delete");
+        assert_eq!(records[1]["action"], "fail");
+        assert_eq!(records[1]["recordId"], Value::Null);
+        assert_eq!(
+            records[1]["error"],
+            missing_record_id_reason("example.com", "A", "www")
+        );
     }
 
     /// Nothing matched — "would delete" would misleadingly imply a delete
