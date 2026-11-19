@@ -1,326 +1,243 @@
-use crate::domain_connect::template::parsers::*;
-use crate::domain_connect::template::types::Template;
-use std::collections::HashMap;
+use clap::Parser;
+use serde_json::Value;
 
-#[test]
-fn parse_record_attrs_valid_single_pair() {
-    let result = parse_record_attrs("host=www").expect("parse failed");
-    assert_eq!(result.get("host"), Some(&"www".to_string()));
-    assert_eq!(result.len(), 1);
+use super::*;
+
+#[derive(Parser)]
+struct Harness {
+    #[command(flatten)]
+    args: InitArgs,
 }
 
-#[test]
-fn parse_record_attrs_valid_multiple_pairs() {
-    let result = parse_record_attrs("host=@,value=mail.com,priority=10").expect("parse failed");
-    assert_eq!(result.get("host"), Some(&"@".to_string()));
-    assert_eq!(result.get("value"), Some(&"mail.com".to_string()));
-    assert_eq!(result.get("priority"), Some(&"10".to_string()));
-    assert_eq!(result.len(), 3);
-}
-
-#[test]
-fn parse_record_attrs_with_spaces() {
-    let result = parse_record_attrs("host = www , value = 192.0.2.1").expect("parse failed");
-    assert_eq!(result.get("host"), Some(&"www".to_string()));
-    assert_eq!(result.get("value"), Some(&"192.0.2.1".to_string()));
-}
-
-#[test]
-fn parse_record_attrs_empty_value() {
-    let result = parse_record_attrs("host=,value=test").expect("parse failed");
-    assert_eq!(result.get("host"), Some(&"".to_string()));
-    assert_eq!(result.get("value"), Some(&"test".to_string()));
-}
-
-#[test]
-fn parse_record_attrs_value_with_equals() {
-    let result = parse_record_attrs("data=v=spf1 ~all").expect("parse failed");
-    assert_eq!(result.get("data"), Some(&"v=spf1 ~all".to_string()));
-}
-
-#[test]
-fn parse_record_attrs_invalid_no_equals() {
-    let result = parse_record_attrs("host");
-    assert!(result.is_err());
-    let err = result.expect_err("expected an error");
-    assert!(err.to_string().contains("Invalid format"));
-}
-
-#[test]
-fn parse_record_attrs_invalid_multiple_no_equals() {
-    let result = parse_record_attrs("host=www,invalid,value=test");
-    assert!(result.is_err());
-}
-
-#[test]
-fn get_optional_attr_returns_value() {
-    let mut attrs = HashMap::new();
-    attrs.insert("host".to_string(), "www".to_string());
-    let result = get_optional_attr(&attrs, "host", "@");
-    assert_eq!(result, "www");
-}
-
-#[test]
-fn get_optional_attr_returns_default() {
-    let attrs = HashMap::new();
-    let result = get_optional_attr(&attrs, "host", "@");
-    assert_eq!(result, "@");
-}
-
-#[test]
-fn get_required_attr_returns_value() {
-    let mut attrs = HashMap::new();
-    attrs.insert("value".to_string(), "192.0.2.1".to_string());
-    let result = get_required_attr(&attrs, "value", "A").expect("should succeed");
-    assert_eq!(result, "192.0.2.1");
-}
-
-#[test]
-fn get_required_attr_errors_when_missing() {
-    let attrs = HashMap::new();
-    let result = get_required_attr(&attrs, "value", "A");
-    assert!(result.is_err());
-    let err = result.expect_err("expected an error");
-    assert!(
-        err.to_string()
-            .contains("A record requires 'value' attribute")
-    );
-}
-
-#[test]
-fn get_optional_i32_parses_valid_number() {
-    let mut attrs = HashMap::new();
-    attrs.insert("ttl".to_string(), "7200".to_string());
-    let result = get_optional_i32(&attrs, "ttl", 3600).expect("should succeed");
-    assert_eq!(result, 7200);
-}
-
-#[test]
-fn get_optional_i32_returns_default() {
-    let attrs = HashMap::new();
-    let result = get_optional_i32(&attrs, "ttl", 3600).expect("should succeed");
-    assert_eq!(result, 3600);
-}
-
-#[test]
-fn get_optional_i32_errors_on_invalid_number() {
-    let mut attrs = HashMap::new();
-    attrs.insert("ttl".to_string(), "not-a-number".to_string());
-    let result = get_optional_i32(&attrs, "ttl", 3600);
-    assert!(result.is_err());
-    let err = result.expect_err("expected an error");
-    assert!(err.to_string().contains("Invalid number"));
-}
-
-#[test]
-fn add_mx_records_with_all_fields() {
-    let mut template = Template::from_basic_inputs(
-        "test.com".to_string(),
-        "Test".to_string(),
-        "email".to_string(),
-        "Email".to_string(),
-        None,
-    );
-
-    let records =
-        vec!["value=mail1.test.com,priority=10,ttl=7200,group=mail1,essential=OnApply".to_string()];
-
-    add_mx_records(&mut template, &records, &None, &None).expect("should succeed");
-
-    assert_eq!(template.records.len(), 1);
-    let record = &template.records[0];
-    assert_eq!(record.record_type, "MX");
-    assert_eq!(record.points_to, Some("mail1.test.com".to_string()));
-    assert_eq!(record.priority, Some(10));
-    assert_eq!(record.ttl, Some(7200));
-    assert_eq!(record.group_id, Some("mail1".to_string()));
-    assert_eq!(record.essential, Some("OnApply".to_string()));
-}
-
-#[test]
-fn add_mx_records_with_defaults() {
-    let mut template = Template::from_basic_inputs(
-        "test.com".to_string(),
-        "Test".to_string(),
-        "email".to_string(),
-        "Email".to_string(),
-        None,
-    );
-
-    let records = vec!["value=mail.test.com".to_string()];
-    add_mx_records(&mut template, &records, &None, &None).expect("should succeed");
-
-    let record = &template.records[0];
-    assert_eq!(record.host, Some("@".to_string()));
-    assert_eq!(record.priority, Some(10));
-    assert_eq!(record.ttl, Some(3600));
-}
-
-#[test]
-fn add_srv_records_with_all_fields() {
-    let mut template = Template::from_basic_inputs(
-        "test.com".to_string(),
-        "Test".to_string(),
-        "voip".to_string(),
-        "VoIP".to_string(),
-        None,
-    );
-
-    let records = vec![
-        "service=_sip,protocol=_tcp,target=sip.test.com,priority=10,weight=5,port=5060,ttl=7200"
-            .to_string(),
+fn parse(extra: &[&str]) -> InitArgs {
+    let base = [
+        "init",
+        "--no-interactive",
+        "--provider-id",
+        "acme.com",
+        "--provider-name",
+        "Acme Corp",
+        "--service-id",
+        "email",
+        "--service-name",
+        "Acme Email",
     ];
+    Harness::try_parse_from(base.iter().chain(extra))
+        .expect("arguments parse")
+        .args
+}
 
-    add_srv_records(&mut template, &records, &None, &None).expect("should succeed");
+fn fix_of(err: &cli_engine::CliCoreError) -> String {
+    cli_engine::build_error_envelope(err, SYSTEM)
+        .fix
+        .unwrap_or_default()
+}
 
-    assert_eq!(template.records.len(), 1);
-    let record = &template.records[0];
-    assert_eq!(record.record_type, "SRV");
-    assert_eq!(record.service, Some("_sip".to_string()));
-    assert_eq!(record.protocol, Some("_tcp".to_string()));
-    assert_eq!(record.target, Some("sip.test.com".to_string()));
-    assert_eq!(record.priority, Some(10));
-    assert_eq!(record.weight, Some(5));
-    assert_eq!(record.port, Some(5060));
-    assert_eq!(record.ttl, Some(7200));
+fn written(dir: &Path, name: &str) -> Value {
+    let text = std::fs::read_to_string(dir.join(name)).expect("template file exists");
+    serde_json::from_str(&text).expect("template file is JSON")
 }
 
 #[test]
-fn add_srv_records_missing_required_fields() {
-    let mut template = Template::from_basic_inputs(
-        "test.com".to_string(),
-        "Test".to_string(),
-        "voip".to_string(),
-        "VoIP".to_string(),
-        None,
-    );
+fn flags_build_a_template_and_write_it_to_the_named_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let args = parse(&[
+        "--description",
+        "Mail setup",
+        "--add-mx",
+        "value=mail.acme.com,priority=10",
+        "--add-a",
+        "host=www,value=192.0.2.1",
+        "--add-txt",
+        "data=v=spf1 include:_spf.acme.com ~all",
+        "--group-id",
+        "mail",
+        "--essential",
+        "onapply",
+    ]);
 
-    let records = vec!["service=_sip".to_string()];
-    let result = add_srv_records(&mut template, &records, &None, &None);
-    assert!(result.is_err());
-}
+    let template = from_flags(&args).expect("template");
+    let result = write_template(&template, dir.path(), false, false).expect("written");
 
-#[test]
-fn add_txt_records_with_conflict_fields() {
-    let mut template = Template::from_basic_inputs(
-        "test.com".to_string(),
-        "Test".to_string(),
-        "verify".to_string(),
-        "Verify".to_string(),
-        None,
-    );
-
-    let records = vec!["data=v=spf1 ~all,mode=Append,prefix=v=spf1".to_string()];
-
-    add_txt_records(&mut template, &records, &None, &None).expect("should succeed");
-
-    let record = &template.records[0];
-    assert_eq!(record.record_type, "TXT");
-    assert_eq!(record.data, Some("v=spf1 ~all".to_string()));
+    assert_eq!(result.data["action"], "created");
+    assert_eq!(result.data["recordCount"], 3);
+    assert!(!result.metadata.dry_run);
+    let file = written(dir.path(), "acme.com.email.json");
+    assert_eq!(file["providerId"], "acme.com");
+    assert_eq!(file["description"], "Mail setup");
+    assert_eq!(file["version"], 1);
+    // Records keep the order of the record-type flags, A before MX before TXT.
+    assert_eq!(file["records"][0]["type"], "A");
+    assert_eq!(file["records"][0]["pointsTo"], "192.0.2.1");
+    assert_eq!(file["records"][1]["type"], "MX");
+    assert_eq!(file["records"][1]["groupId"], "mail");
+    assert_eq!(file["records"][1]["essential"], "OnApply");
     assert_eq!(
-        record.txt_conflict_matching_mode,
-        Some("Append".to_string())
+        file["records"][2]["data"],
+        "v=spf1 include:_spf.acme.com ~all"
+    );
+    assert_eq!(result.data["template"], file);
+}
+
+#[test]
+fn the_next_action_validates_the_written_file_and_never_submits() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let template = from_flags(&parse(&[])).expect("template");
+
+    let result = write_template(&template, dir.path(), false, false).expect("written");
+
+    let actions = &result.metadata.next_actions;
+    assert_eq!(actions.len(), 1);
+    assert_eq!(
+        actions[0].command,
+        "gddy domain-connect template validate <file>"
     );
     assert_eq!(
-        record.txt_conflict_matching_prefix,
-        Some("v=spf1".to_string())
+        actions[0].params["file"].value.as_deref(),
+        result.data["file"].as_str()
     );
 }
 
 #[test]
-fn add_spfm_records_with_rules() {
-    let mut template = Template::from_basic_inputs(
-        "test.com".to_string(),
-        "Test".to_string(),
-        "email".to_string(),
-        "Email".to_string(),
-        None,
+fn an_existing_file_is_kept_unless_force_is_given() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("acme.com.email.json");
+    std::fs::write(&path, "mine").expect("seed file");
+    let template = from_flags(&parse(&[])).expect("template");
+
+    let err = write_template(&template, dir.path(), false, false).expect_err("refused");
+    assert!(err.to_string().contains("already exists"), "{err}");
+    assert!(fix_of(&err).contains("--force"), "{}", fix_of(&err));
+    assert_eq!(std::fs::read_to_string(&path).expect("read"), "mine");
+
+    let result = write_template(&template, dir.path(), true, false).expect("overwritten");
+    assert_eq!(result.data["action"], "overwritten");
+    assert_eq!(
+        written(dir.path(), "acme.com.email.json")["serviceId"],
+        "email"
     );
-
-    let records = vec!["rules=include:_spf.test.com".to_string()];
-    add_spfm_records(&mut template, &records, &None, &None).expect("should succeed");
-
-    let record = &template.records[0];
-    assert_eq!(record.record_type, "SPFM");
-    assert_eq!(record.spf_rules, Some("include:_spf.test.com".to_string()));
 }
 
 #[test]
-fn add_multiple_records_same_type() {
-    let mut template = Template::from_basic_inputs(
-        "test.com".to_string(),
-        "Test".to_string(),
-        "email".to_string(),
-        "Email".to_string(),
-        None,
-    );
+fn a_dry_run_reports_what_it_would_do_and_writes_nothing() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let template = from_flags(&parse(&[])).expect("template");
 
-    let records = vec![
-        "value=mail1.test.com,priority=10".to_string(),
-        "value=mail2.test.com,priority=20".to_string(),
-        "value=mail3.test.com,priority=30".to_string(),
-    ];
+    let result = write_template(&template, dir.path(), false, true).expect("preview");
 
-    add_mx_records(&mut template, &records, &None, &None).expect("should succeed");
-    assert_eq!(template.records.len(), 3);
-
-    let priorities: Vec<i32> = template.records.iter().filter_map(|r| r.priority).collect();
-    assert_eq!(priorities, vec![10, 20, 30]);
+    assert!(result.metadata.dry_run);
+    assert_eq!(result.data["action"], "would create");
+    assert_eq!(result.data["providerId"], "acme.com");
+    assert!(!dir.path().join("acme.com.email.json").exists());
 }
 
 #[test]
-fn global_group_id_applied_when_not_overridden() {
-    let mut template = Template::from_basic_inputs(
-        "test.com".to_string(),
-        "Test".to_string(),
-        "web".to_string(),
-        "Web".to_string(),
-        None,
-    );
+fn a_dry_run_fails_where_the_real_run_would() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(dir.path().join("acme.com.email.json"), "mine").expect("seed file");
+    let template = from_flags(&parse(&[])).expect("template");
 
-    let global_group = Some("global-group".to_string());
-    let records = vec!["value=192.0.2.1".to_string()];
+    let err = write_template(&template, dir.path(), false, true).expect_err("refused");
+    assert!(err.to_string().contains("already exists"), "{err}");
 
-    add_a_records(&mut template, &records, &global_group, &None).expect("should succeed");
-
-    let record = &template.records[0];
-    assert_eq!(record.group_id, Some("global-group".to_string()));
+    let preview = write_template(&template, dir.path(), true, true).expect("preview");
+    assert_eq!(preview.data["action"], "would overwrite");
 }
 
 #[test]
-fn local_group_id_overrides_global() {
-    let mut template = Template::from_basic_inputs(
-        "test.com".to_string(),
-        "Test".to_string(),
-        "web".to_string(),
-        "Web".to_string(),
-        None,
-    );
-
-    let global_group = Some("global-group".to_string());
-    let records = vec!["value=192.0.2.1,group=local-group".to_string()];
-
-    add_a_records(&mut template, &records, &global_group, &None).expect("should succeed");
-
-    let record = &template.records[0];
-    assert_eq!(record.group_id, Some("local-group".to_string()));
+fn a_provider_id_cannot_point_outside_the_current_directory() {
+    for bad in ["../x.com", "a/b.com", "acme", "ACME.com", "acme.com/"] {
+        let mut args = parse(&[]);
+        args.provider_id = Some(bad.to_owned());
+        let err = from_flags(&args).expect_err(bad);
+        assert!(err.to_string().contains("domain name"), "{bad}: {err}");
+    }
 }
 
 #[test]
-fn global_essential_applied_when_not_overridden() {
-    let mut template = Template::from_basic_inputs(
-        "test.com".to_string(),
-        "Test".to_string(),
-        "web".to_string(),
-        "Web".to_string(),
-        None,
+fn write_template_rechecks_ids_from_any_source() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut template = from_flags(&parse(&[])).expect("template");
+    template.provider_id = "../x.com".to_owned();
+
+    write_template(&template, dir.path(), true, false).expect_err("escape refused");
+    assert_eq!(
+        std::fs::read_dir(dir.path()).expect("list").count(),
+        0,
+        "nothing may be written"
     );
+}
 
-    let global_essential = Some("Always".to_string());
-    let records = vec!["value=192.0.2.1".to_string()];
+#[test]
+fn a_service_id_is_limited_to_lowercase_letters_digits_hyphens_and_underscores() {
+    for good in ["email", "managed-wordpress", "hosting_and_email", "v2"] {
+        assert!(
+            check_service_id(good).is_ok(),
+            "{good:?} should be accepted"
+        );
+    }
+    for bad in ["", "sérvice", "Email", "a.b", "a/b", "a b"] {
+        assert!(check_service_id(bad).is_err(), "{bad:?} should be refused");
+    }
+}
 
-    add_a_records(&mut template, &records, &None, &global_essential).expect("should succeed");
+#[test]
+fn a_logo_url_must_be_a_web_link_to_an_image() {
+    for good in ["https://acme.com/logo.svg", "http://acme.com/a/logo.PNG"] {
+        assert!(check_logo_url(good).is_ok(), "{good:?} should be accepted");
+    }
+    for bad in [
+        "ftp://acme.com/logo.png",
+        "https://acme.com/logo.gif",
+        "logo.png",
+    ] {
+        assert!(check_logo_url(bad).is_err(), "{bad:?} should be refused");
+    }
 
-    let record = &template.records[0];
-    assert_eq!(record.essential, Some("Always".to_string()));
+    let err = from_flags(&parse(&["--logo-url", "https://acme.com/logo.gif"])).expect_err("gif");
+    assert!(fix_of(&err).contains("--logo-url"), "{}", fix_of(&err));
+}
+
+#[test]
+fn essential_is_restricted_when_arguments_are_parsed() {
+    let err = Harness::try_parse_from(["init", "--essential", "No"])
+        .err()
+        .expect("rejected by clap");
+    let message = err.to_string();
+    assert!(message.contains("Always"), "{message}");
+    assert!(message.contains("OnApply"), "{message}");
+}
+
+#[test]
+fn no_interactive_requires_the_four_identity_flags() {
+    let args = Harness::try_parse_from(["init", "--no-interactive", "--provider-id", "acme.com"])
+        .expect("arguments parse")
+        .args;
+
+    let err = from_flags(&args).expect_err("missing names");
+    assert!(err.to_string().contains("--provider-name"), "{err}");
+    assert!(fix_of(&err).contains("--service-name"), "{}", fix_of(&err));
+}
+
+#[test]
+fn the_command_needs_no_sign_in_and_handles_dry_run_itself() {
+    let spec = command().spec;
+    let meta = spec.metadata();
+    assert!(spec.auth.is_none(), "init only writes a local file");
+    assert!(meta.scopes.is_empty(), "{:?}", meta.scopes);
+    assert!(meta.dry_run_prompt);
+    assert!(meta.handles_dry_run);
+}
+
+#[test]
+fn the_result_renders_through_the_view() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let template = from_flags(&parse(&["--add-a", "value=ip"])).expect("template");
+    let result = write_template(&template, dir.path(), false, false).expect("written");
+
+    let rendered = cli_engine::preview_human_view(&result.data, &view_columns());
+
+    assert!(rendered.contains("acme.com.email.json"), "{rendered}");
+    assert!(rendered.contains("Action: created"), "{rendered}");
+    assert!(rendered.contains("Records: 1"), "{rendered}");
 }

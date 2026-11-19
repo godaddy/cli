@@ -1,245 +1,276 @@
 //! Shared pieces of `template validate` and `template submit`: reading the
-//! template file as opaque JSON, building the client, and rendering an
-//! `ActionResult` for human output.
+//! template file as written, calling the API, and shaping the result.
 
 use std::path::{Path, PathBuf};
 
-use cli_engine::CommandContext;
-use serde_json::{Value, json};
+use cli_engine::TableColumn;
+use domains_client::types::{
+    TemplateActionOutcome, TemplateActionResult, TemplateSubmissionInput,
+    TemplateValidationCriteria,
+};
+use serde_json::{Map, Value, json};
 
-use super::client::{ActionResult, TemplatesClient, outcome};
 use crate::error::GddyError;
 
-/// Reads the template file as JSON without decoding it into a typed struct, so
-/// every field the user wrote reaches the API as written.
-pub(super) fn read_template(file: &str) -> cli_engine::Result<(PathBuf, Value)> {
+pub(super) const SYSTEM: &str = "domain-connect";
+
+/// What the two checking commands tell an AI assistant about submitting.
+pub(super) const SUBMIT_CONFIRMATION_NOTE: &str = "AI assistants: submitting publishes the template in a public pull request \
+     and claims the provider ID for the signed-in account. Show the user the \
+     file and the provider and service IDs, and get their explicit \
+     confirmation before running `template submit`. Do not infer it from a \
+     request to create or check a template.";
+
+type Template = Map<String, Value>;
+
+/// Reads the template file as a JSON object without decoding it into a typed
+/// struct, so every field the user wrote reaches the API as written.
+pub(super) fn read_template(file: &str) -> cli_engine::Result<(PathBuf, Template)> {
     let path = Path::new(file);
-    let absolute = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(path)
+    let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    let shown = absolute.display();
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(
+                GddyError::not_found(format!("Template file not found: {shown}"))
+                    .with_fix(
+                        "Run this command from the directory that holds the template, pass its \
+                     full path, or create one with `gddy domain-connect template init`.",
+                    )
+                    .with_system(SYSTEM)
+                    .into_cli_error(),
+            );
+        }
+        Err(error) => {
+            return Err(
+                GddyError::validation(format!("Could not read {shown}: {error}"))
+                    .with_fix("Check that the path is a file you can read.")
+                    .with_system(SYSTEM)
+                    .into_cli_error(),
+            );
+        }
     };
-    if !path.exists() {
-        return Err(GddyError::not_found(format!(
-            "Template file not found: {}",
-            absolute.display()
-        ))
-        .with_fix(
-            "Run this command from the directory containing the template, or pass its full path.",
-        )
-        .into_cli_error());
-    }
-    let content = std::fs::read_to_string(path).map_err(|e| {
-        GddyError::unexpected(format!("Failed to read {}: {e}", absolute.display()))
+    let invalid = |message: String| {
+        GddyError::validation(message)
+            .with_fix("Fix the file, or write a new one with `gddy domain-connect template init`.")
+            .with_system(SYSTEM)
             .into_cli_error()
-    })?;
-    let template: Value = serde_json::from_str(&content).map_err(|e| {
-        GddyError::validation(format!("{} is not valid JSON: {e}", absolute.display()))
-            .with_fix("Fix the JSON syntax, or regenerate the file with `gddy domain-connect template init`.")
-            .into_cli_error()
-    })?;
-    if !template.is_object() {
-        return Err(GddyError::validation(format!(
-            "{} must contain a JSON object (a Domain Connect template)",
-            absolute.display()
-        ))
-        .into_cli_error());
+    };
+    match serde_json::from_str::<Value>(&content) {
+        Ok(Value::Object(template)) => Ok((absolute, template)),
+        Ok(_) => Err(invalid(format!(
+            "{shown} must contain a JSON object (a Domain Connect template)."
+        ))),
+        Err(error) => Err(invalid(format!("{shown} is not valid JSON: {error}"))),
     }
-    Ok((absolute, template))
 }
 
-pub(super) async fn make_client(ctx: &CommandContext) -> cli_engine::Result<TemplatesClient> {
-    let token = ctx.credential().await?.token;
-    let base_url = crate::http::api_url_for_env(&ctx.middleware.env)?;
-    Ok(TemplatesClient::new(base_url, token))
+/// `POST /v2/domains/validate-domain-connect-template`. Always `200` for a
+/// template that can be processed; the verdict is in `outcome`.
+pub(super) async fn validate(
+    client: &domains_client::Client,
+    template: &Template,
+) -> cli_engine::Result<TemplateActionResult> {
+    let body = TemplateValidationCriteria {
+        template: template.clone(),
+    };
+    match client
+        .validate_domain_connect_template()
+        .body(body)
+        .send()
+        .await
+    {
+        Ok(response) => Ok(response.into_inner()),
+        Err(error) => Err(api_error(error, false).await),
+    }
 }
 
-/// The JSON the command returns: the API result plus the file it came from.
-pub(super) fn result_json(file: &Path, template: &Value, result: &ActionResult) -> Value {
+/// `POST /v2/domains/submit-domain-connect-template`. `200` carries a
+/// submitted result; `409` and `422` carry the same shape with the reasons.
+pub(super) async fn submit(
+    client: &domains_client::Client,
+    template: &Template,
+) -> cli_engine::Result<TemplateActionResult> {
+    let body = TemplateSubmissionInput {
+        template: template.clone(),
+    };
+    match client
+        .submit_domain_connect_template()
+        .body(body)
+        .send()
+        .await
+    {
+        Ok(response) => Ok(response.into_inner()),
+        Err(domains_client::Error::UnexpectedResponse(response))
+            if matches!(response.status().as_u16(), 409 | 422) =>
+        {
+            let status = response.status().as_u16();
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|error| network(error.to_string()))?;
+            match serde_json::from_slice::<TemplateActionResult>(&bytes) {
+                // A refusal has to say it is one: a body that claims success
+                // on a 409 or 422 is not a result the caller can act on.
+                Ok(result)
+                    if matches!(
+                        result.outcome,
+                        TemplateActionOutcome::Blocked | TemplateActionOutcome::Invalid
+                    ) =>
+                {
+                    Ok(result)
+                }
+                _ => Err(http_error(status, &String::from_utf8_lossy(&bytes), true)),
+            }
+        }
+        Err(error) => Err(api_error(error, true).await),
+    }
+}
+
+async fn api_error(error: domains_client::Error<()>, submitting: bool) -> cli_engine::CliCoreError {
+    match error {
+        domains_client::Error::UnexpectedResponse(response) => {
+            let status = response.status().as_u16();
+            let body = response.text().await.unwrap_or_default();
+            http_error(status, &body, submitting)
+        }
+        domains_client::Error::CommunicationError(error) => network(error.to_string()),
+        other => GddyError::unexpected(format!(
+            "The template service returned a response this version of gddy cannot read: {other}"
+        ))
+        .with_fix("Update gddy with `gddy update apply`, then try again.")
+        .with_system(SYSTEM)
+        .into_cli_error(),
+    }
+}
+
+fn network(message: String) -> cli_engine::CliCoreError {
+    GddyError::network(message)
+        .with_system(SYSTEM)
+        .into_cli_error()
+}
+
+fn http_error(status: u16, body: &str, submitting: bool) -> cli_engine::CliCoreError {
+    let error = GddyError::from_http(status, describe_error_body(body), SYSTEM);
+    let error = match status {
+        400 | 422 => error.with_fix(
+            "Check that the file is a Domain Connect template: a JSON object with providerId, \
+             providerName, serviceId, serviceName and a records list.",
+        ),
+        403 if submitting => error.with_fix(
+            "Your account is not allowed to submit Domain Connect templates. Run `gddy auth \
+             login` to sign in again, then retry.",
+        ),
+        403 => error.with_fix(
+            "Your account is not allowed to check Domain Connect templates. Run `gddy auth \
+             login` to sign in again, then retry.",
+        ),
+        429 => error.with_fix("Too many requests. Wait a minute, then try again."),
+        _ => error,
+    };
+    error.into_cli_error()
+}
+
+/// The service's error body is `{name, message, details: [{field, issue,
+/// description}]}`; anything else is passed through as text.
+fn describe_error_body(body: &str) -> String {
+    let Ok(Value::Object(error)) = serde_json::from_str::<Value>(body) else {
+        return body.trim().to_owned();
+    };
+    fn text(value: Option<&Value>) -> Option<&str> {
+        value.and_then(Value::as_str).filter(|s| !s.is_empty())
+    }
+    let mut lines = Vec::new();
+    match (text(error.get("name")), text(error.get("message"))) {
+        (Some(name), Some(message)) => lines.push(format!("{name}: {message}")),
+        (Some(only), None) | (None, Some(only)) => lines.push(only.to_owned()),
+        (None, None) => return body.trim().to_owned(),
+    }
+    for detail in error
+        .get("details")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let parts: Vec<&str> = ["field", "issue", "description"]
+            .iter()
+            .filter_map(|key| text(detail.get(*key)))
+            .collect();
+        if !parts.is_empty() {
+            lines.push(format!("  {}", parts.join(" ")));
+        }
+    }
+    lines.join("\n")
+}
+
+/// The JSON a command returns: the API result plus the file it came from.
+pub(super) fn result_json(
+    file: &Path,
+    template: &Template,
+    result: &TemplateActionResult,
+) -> Value {
     let mut out = json!({
         "file": file.display().to_string(),
         "providerId": template.get("providerId").cloned().unwrap_or(Value::Null),
         "serviceId": template.get("serviceId").cloned().unwrap_or(Value::Null),
-        "action": result.action,
-        "outcome": result.outcome,
-        "operation": result.operation,
-        "issues": result.issues.iter().map(|i| json!({
-            "code": i.code,
-            "level": i.level,
-            "message": i.message,
-            "field": i.field,
-            "fix": i.fix,
+        "action": result.action.to_string(),
+        "outcome": result.outcome.to_string(),
+        "operation": result.operation.map(|operation| operation.to_string()),
+        "issues": result.issues.iter().map(|issue| json!({
+            "level": issue.level.to_string(),
+            "code": issue.code,
+            "field": issue.field,
+            "message": issue.message,
+            "fix": issue.fix,
         })).collect::<Vec<_>>(),
     });
     if let Some(pr) = &result.pr {
-        out["pr"] = json!({ "number": pr.number, "url": pr.url, "state": pr.state });
+        out["pullRequest"] = json!({
+            "number": pr.number,
+            "url": pr.url,
+            "state": pr.state.map(|state| state.to_string()),
+        });
     }
     out
 }
 
-/// Lines for the human renderer: one per issue, `level code: message`, with
-/// `field` and `fix` indented beneath when present.
-pub(super) fn issue_lines(result: &ActionResult) -> Vec<String> {
-    let mut lines = Vec::new();
-    for issue in &result.issues {
-        lines.push(format!("{} {}: {}", issue.level, issue.code, issue.message));
-        if let Some(field) = &issue.field {
-            lines.push(format!("    field: {field}"));
-        }
-        if let Some(fix) = &issue.fix {
-            lines.push(format!("    fix:   {fix}"));
-        }
-    }
-    lines
+/// What is wrong and how to fix it are never hidden or cut short, even on a
+/// narrow terminal; the field and the code give way first.
+fn issue_columns() -> Vec<TableColumn> {
+    vec![
+        TableColumn::new("level", "Level").essential(true),
+        TableColumn::new("message", "Message").essential(true),
+        TableColumn::new("fix", "Fix").essential(true),
+        TableColumn::new("field", "Field"),
+        TableColumn::new("code", "Code"),
+    ]
 }
 
-/// Human output for validate: the JSON result plus a `summary` the renderer
-/// prints first. Issues are already structured in `issues`; the summary gives
-/// the one-line verdict and the next step.
-pub(super) fn human_validate(file: &Path, result: &ActionResult, mut data: Value) -> Value {
-    let mut lines = vec![format!("{}: {}", file.display(), result.outcome)];
-    match result.outcome.as_str() {
-        outcome::READY => {
-            lines.push("Ready to submit with `gddy domain-connect template submit`.".to_owned());
-        }
-        outcome::INVALID | outcome::BLOCKED => lines.extend(issue_lines(result)),
-        _ => {}
-    }
-    data["summary"] = Value::String(lines.join("\n"));
-    data
+fn result_columns() -> Vec<TableColumn> {
+    vec![
+        TableColumn::new("file", "File").no_truncate(true),
+        TableColumn::new("outcome", "Outcome").essential(true),
+        TableColumn::new("operation", "Operation"),
+    ]
 }
 
-/// Human output for a successful submit: verdict, pull request URL and state.
-pub(super) fn human_submit(file: &Path, result: &ActionResult, mut data: Value) -> Value {
-    let mut lines = vec![format!("{}: {}", file.display(), result.outcome)];
-    if let Some(pr) = &result.pr {
-        if let Some(url) = &pr.url {
-            lines.push(format!("Pull request: {url}"));
-        }
-        if let Some(state) = &pr.state {
-            lines.push(format!("State:        {state}"));
-        }
-    }
-    lines.push("Track review progress on the pull request.".to_owned());
-    data["summary"] = Value::String(lines.join("\n"));
-    data
+pub(super) fn validate_columns() -> Vec<TableColumn> {
+    let mut columns = result_columns();
+    columns.push(TableColumn::new("issues", "Issues").nested(issue_columns()));
+    columns
+}
+
+pub(super) fn submit_columns() -> Vec<TableColumn> {
+    let mut columns = result_columns();
+    columns.push(TableColumn::new("pullRequest", "Pull request").nested(vec![
+        TableColumn::new("url", "URL").no_truncate(true),
+        TableColumn::new("state", "State"),
+    ]));
+    columns.push(TableColumn::new("issues", "Issues").nested(issue_columns()));
+    columns
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn read_template_keeps_unmodeled_fields_and_string_numbers() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("acme.com.svc.json");
-        std::fs::write(
-            &path,
-            r#"{"providerId":"acme.com","warnPhishing":true,"futureField":{"a":1},"records":[{"type":"A","ttl":"%ttl%"}]}"#,
-        )
-        .expect("write");
-
-        let (_, template) = read_template(path.to_str().expect("utf8")).expect("reads");
-
-        assert_eq!(template["warnPhishing"], true);
-        assert_eq!(template["futureField"]["a"], 1);
-        assert_eq!(template["records"][0]["ttl"], "%ttl%");
-    }
-
-    #[test]
-    fn read_template_rejects_a_non_object() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("list.json");
-        std::fs::write(&path, "[1,2,3]").expect("write");
-        let err = read_template(path.to_str().expect("utf8")).expect_err("not an object");
-        assert!(err.to_string().contains("JSON object"), "{err}");
-    }
-
-    #[test]
-    fn read_template_reports_missing_file() {
-        let err = read_template("/definitely/not/here.json").expect_err("missing");
-        assert!(err.to_string().contains("not found"), "{err}");
-    }
-}
-
-#[cfg(test)]
-mod render_tests {
-    use std::path::Path;
-
-    use serde_json::json;
-
-    use super::super::client::{ActionResult, Issue, PullRequest};
-    use super::*;
-
-    fn invalid_result() -> ActionResult {
-        ActionResult {
-            action: "VALIDATE".to_owned(),
-            outcome: "INVALID".to_owned(),
-            operation: Some("ADD".to_owned()),
-            issues: vec![Issue {
-                code: "DCTL1012".to_owned(),
-                level: "ERROR".to_owned(),
-                message: "syncPubKeyDomain is required".to_owned(),
-                field: Some("syncPubKeyDomain".to_owned()),
-                fix: Some("Add syncPubKeyDomain".to_owned()),
-            }],
-            pr: None,
-        }
-    }
-
-    #[test]
-    fn human_validate_renders_verdict_and_issues() {
-        let template = json!({"providerId": "acme.com", "serviceId": "svc"});
-        let result = invalid_result();
-        let data = result_json(Path::new("acme.com.svc.json"), &template, &result);
-        let out = human_validate(Path::new("acme.com.svc.json"), &result, data);
-        let rendered =
-            cli_engine::render_human(&cli_engine::Envelope::success(out, "domain-connect"));
-        assert!(
-            rendered.contains("acme.com.svc.json: INVALID"),
-            "{rendered}"
-        );
-        assert!(
-            rendered.contains("ERROR DCTL1012: syncPubKeyDomain is required"),
-            "{rendered}"
-        );
-        assert!(
-            rendered.contains("fix:   Add syncPubKeyDomain"),
-            "{rendered}"
-        );
-    }
-
-    #[test]
-    fn human_submit_renders_pull_request() {
-        let template = json!({"providerId": "acme.com", "serviceId": "svc"});
-        let result = ActionResult {
-            action: "SUBMIT".to_owned(),
-            outcome: "SUBMITTED".to_owned(),
-            operation: Some("ADD".to_owned()),
-            issues: vec![],
-            pr: Some(PullRequest {
-                number: Some(1234),
-                url: Some("https://github.com/Domain-Connect/Templates/pull/1234".to_owned()),
-                state: Some("FAST_TRACK".to_owned()),
-            }),
-        };
-        let data = result_json(Path::new("acme.com.svc.json"), &template, &result);
-        let out = human_submit(Path::new("acme.com.svc.json"), &result, data);
-        let rendered =
-            cli_engine::render_human(&cli_engine::Envelope::success(out, "domain-connect"));
-        assert!(rendered.contains("SUBMITTED"), "{rendered}");
-        assert!(rendered.contains("pull/1234"), "{rendered}");
-        assert!(rendered.contains("FAST_TRACK"), "{rendered}");
-    }
-
-    #[test]
-    fn result_json_carries_pr_only_when_present() {
-        let template = json!({"providerId": "acme.com", "serviceId": "svc"});
-        let no_pr = result_json(Path::new("f.json"), &template, &invalid_result());
-        assert!(no_pr.get("pr").is_none());
-        assert_eq!(no_pr["issues"][0]["code"], "DCTL1012");
-        assert_eq!(no_pr["providerId"], "acme.com");
-    }
-}
+#[path = "common_tests.rs"]
+mod tests;

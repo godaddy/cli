@@ -2,7 +2,6 @@
 
 use cli_engine::{GroupSpec, RuntimeGroupSpec};
 
-mod client;
 mod common;
 mod init;
 mod interactive;
@@ -11,12 +10,10 @@ mod submit;
 mod types;
 mod validate;
 
-pub(crate) use types::*;
-
-pub fn group() -> RuntimeGroupSpec {
+pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(GroupSpec::new(
         "template",
-        "Domain Connect template commands",
+        "Create, check and submit Domain Connect templates",
     ))
     .with_command(init::command())
     .with_command(validate::command())

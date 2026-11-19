@@ -1,595 +1,369 @@
-//! Record parser functions for Domain Connect templates
+//! Turns record attributes into template records. Attributes arrive either as
+//! an `--add-<type>` flag value (`host=www,value=ip`) or one at a time as
+//! prompt answers; both share the per-type field lists and value checks here.
 
-use super::types::{Record, Template};
-use crate::error::GddyError;
-use cli_engine::CliCoreError;
 use std::collections::HashMap;
 
-pub(crate) fn parse_record_attrs(input: &str) -> Result<HashMap<String, String>, CliCoreError> {
-    let mut attrs = HashMap::new();
+use clap::ValueEnum;
 
-    for pair in input.split(',') {
-        let parts: Vec<&str> = pair.splitn(2, '=').collect();
-        if parts.len() == 2 {
-            attrs.insert(parts[0].trim().to_string(), parts[1].trim().to_string());
-        } else {
-            return Err(GddyError::validation(format!(
-                "Invalid format '{}'. Expected key=value pairs separated by commas",
-                pair
-            ))
-            .with_fix("Use format: key1=value1,key2=value2")
-            .with_system("domain-connect")
-            .into_cli_error());
-        }
-    }
+use super::types::{Essential, Record, RecordKind};
+use crate::error::GddyError;
 
-    Ok(attrs)
+const SYSTEM: &str = "domain-connect";
+
+/// An attribute a record can be given, written `key=value` in a flag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) enum Attr {
+    Host,
+    Value,
+    Data,
+    Rules,
+    Target,
+    Service,
+    Protocol,
+    Name,
+    Priority,
+    Weight,
+    Port,
+    Ttl,
+    Mode,
+    Prefix,
+    Group,
+    Essential,
 }
 
-/// Get a required attribute or return an error
-pub(crate) fn get_required_attr(
-    attrs: &HashMap<String, String>,
-    key: &str,
-    record_type: &str,
-) -> Result<String, CliCoreError> {
-    attrs.get(key).cloned().ok_or_else(|| {
+impl Attr {
+    pub(super) const fn key(self) -> &'static str {
+        match self {
+            Self::Host => "host",
+            Self::Value => "value",
+            Self::Data => "data",
+            Self::Rules => "rules",
+            Self::Target => "target",
+            Self::Service => "service",
+            Self::Protocol => "protocol",
+            Self::Name => "name",
+            Self::Priority => "priority",
+            Self::Weight => "weight",
+            Self::Port => "port",
+            Self::Ttl => "ttl",
+            Self::Mode => "mode",
+            Self::Prefix => "prefix",
+            Self::Group => "group",
+            Self::Essential => "essential",
+        }
+    }
+}
+
+/// Whether a field can be left out, and what it then becomes.
+pub(super) enum Need {
+    Required,
+    Optional,
+    Default(&'static str),
+}
+
+/// One attribute of a record type, in the order it is asked for.
+pub(super) struct Field {
+    pub(super) attr: Attr,
+    pub(super) label: &'static str,
+    pub(super) need: Need,
+}
+
+const fn required(attr: Attr, label: &'static str) -> Field {
+    Field {
+        attr,
+        label,
+        need: Need::Required,
+    }
+}
+
+const fn optional(attr: Attr, label: &'static str) -> Field {
+    Field {
+        attr,
+        label,
+        need: Need::Optional,
+    }
+}
+
+const fn defaulted(attr: Attr, label: &'static str, default: &'static str) -> Field {
+    Field {
+        attr,
+        label,
+        need: Need::Default(default),
+    }
+}
+
+const HOST: Field = defaulted(Attr::Host, "Host (@ is the root of the domain)", "@");
+const TTL: Field = defaulted(Attr::Ttl, "TTL in seconds", "3600");
+const GROUP: Field = optional(Attr::Group, "Group ID, to group related records");
+const ESSENTIAL: Field = optional(Attr::Essential, "Essential (Always or OnApply)");
+
+const A_FIELDS: &[Field] = &[
+    HOST,
+    required(Attr::Value, "IPv4 address, or a variable name such as ip"),
+    TTL,
+    GROUP,
+    ESSENTIAL,
+];
+const AAAA_FIELDS: &[Field] = &[
+    HOST,
+    required(Attr::Value, "IPv6 address, or a variable name such as ip6"),
+    TTL,
+    GROUP,
+    ESSENTIAL,
+];
+const ALIAS_FIELDS: &[Field] = &[
+    HOST,
+    required(Attr::Value, "Host name it points to"),
+    TTL,
+    GROUP,
+    ESSENTIAL,
+];
+const NS_FIELDS: &[Field] = &[
+    HOST,
+    required(Attr::Value, "Name server host name"),
+    TTL,
+    GROUP,
+    ESSENTIAL,
+];
+const MX_FIELDS: &[Field] = &[
+    HOST,
+    required(Attr::Value, "Mail server host name"),
+    defaulted(Attr::Priority, "Priority", "10"),
+    TTL,
+    GROUP,
+    ESSENTIAL,
+];
+const TXT_FIELDS: &[Field] = &[
+    HOST,
+    required(Attr::Data, "Text"),
+    TTL,
+    optional(Attr::Mode, "Conflict matching mode (None, All or Prefix)"),
+    optional(Attr::Prefix, "Conflict matching prefix"),
+    GROUP,
+    ESSENTIAL,
+];
+const CAA_FIELDS: &[Field] = &[
+    HOST,
+    required(Attr::Data, "Value, such as 0 issue \"letsencrypt.org\""),
+    TTL,
+    GROUP,
+    ESSENTIAL,
+];
+const SPFM_FIELDS: &[Field] = &[
+    HOST,
+    required(Attr::Rules, "SPF rules, such as include:_spf.example.com"),
+    TTL,
+    GROUP,
+    ESSENTIAL,
+];
+const SRV_FIELDS: &[Field] = &[
+    required(Attr::Service, "Service, such as _sip"),
+    required(Attr::Protocol, "Protocol, such as _tcp"),
+    defaulted(Attr::Name, "Name (@ is the root of the domain)", "@"),
+    required(Attr::Target, "Target host name"),
+    defaulted(Attr::Priority, "Priority", "10"),
+    defaulted(Attr::Weight, "Weight", "1"),
+    defaulted(Attr::Port, "Port", "80"),
+    TTL,
+    GROUP,
+    ESSENTIAL,
+];
+const REDIRECT_FIELDS: &[Field] = &[
+    HOST,
+    required(Attr::Target, "URL to redirect to"),
+    GROUP,
+    ESSENTIAL,
+];
+
+pub(super) const fn fields(kind: RecordKind) -> &'static [Field] {
+    match kind {
+        RecordKind::A => A_FIELDS,
+        RecordKind::Aaaa => AAAA_FIELDS,
+        RecordKind::Cname | RecordKind::Apexcname => ALIAS_FIELDS,
+        RecordKind::Ns => NS_FIELDS,
+        RecordKind::Mx => MX_FIELDS,
+        RecordKind::Txt => TXT_FIELDS,
+        RecordKind::Caa => CAA_FIELDS,
+        RecordKind::Spfm => SPFM_FIELDS,
+        RecordKind::Srv => SRV_FIELDS,
+        RecordKind::Redir301 | RecordKind::Redir302 => REDIRECT_FIELDS,
+    }
+}
+
+/// Stores one attribute on `record`, checking numbers and fixed choices.
+pub(super) fn set(
+    record: &mut Record,
+    kind: RecordKind,
+    attr: Attr,
+    value: String,
+) -> Result<(), GddyError> {
+    match attr {
+        Attr::Host => record.host = Some(value),
+        Attr::Name => record.name = Some(value),
+        Attr::Value => {
+            record.points_to = Some(match kind {
+                RecordKind::A | RecordKind::Aaaa => address(value),
+                _ => value,
+            });
+        }
+        Attr::Target => record.target = Some(value),
+        Attr::Data => record.data = Some(value),
+        Attr::Rules => record.spf_rules = Some(value),
+        Attr::Service => record.service = Some(value),
+        Attr::Protocol => record.protocol = Some(value),
+        Attr::Prefix => record.txt_conflict_matching_prefix = Some(value),
+        Attr::Group => record.group_id = Some(value),
+        Attr::Ttl => record.ttl = Some(number(attr, &value)?),
+        Attr::Priority => record.priority = Some(number(attr, &value)?),
+        Attr::Weight => record.weight = Some(number(attr, &value)?),
+        Attr::Port => record.port = Some(number(attr, &value)?),
+        Attr::Essential => record.essential = Some(choice(attr, &value)?),
+        Attr::Mode => record.txt_conflict_matching_mode = Some(choice(attr, &value)?),
+    }
+    Ok(())
+}
+
+/// An IP address, or anything already written with `%variables%`, is kept as
+/// given. A bare word is a variable name.
+fn address(value: String) -> String {
+    if value.contains('%') || value.parse::<std::net::IpAddr>().is_ok() {
+        value
+    } else {
+        format!("%{value}%")
+    }
+}
+
+fn number(attr: Attr, value: &str) -> Result<i32, GddyError> {
+    value.parse().map_err(|_| {
         GddyError::validation(format!(
-            "{} record requires '{}' attribute",
-            record_type, key
+            "{} must be a whole number, got '{value}'",
+            attr.key()
         ))
-        .with_fix(format!("Add {}=<value> to the record definition", key))
-        .with_system("domain-connect")
-        .into_cli_error()
+        .with_fix(format!("Give {} as digits only.", attr.key()))
+        .with_system(SYSTEM)
     })
 }
 
-/// Get an optional attribute with a default value
-pub(crate) fn get_optional_attr(
-    attrs: &HashMap<String, String>,
-    key: &str,
-    default: &str,
-) -> String {
-    attrs
-        .get(key)
-        .cloned()
-        .unwrap_or_else(|| default.to_string())
+fn choice<T: ValueEnum>(attr: Attr, value: &str) -> Result<T, GddyError> {
+    T::from_str(value, true).map_err(|_| {
+        let allowed: Vec<String> = T::value_variants()
+            .iter()
+            .filter_map(T::to_possible_value)
+            .map(|possible| possible.get_name().to_owned())
+            .collect();
+        GddyError::validation(format!("'{value}' is not a valid {} value", attr.key()))
+            .with_fix(format!(
+                "Set {} to one of: {}.",
+                attr.key(),
+                allowed.join(", ")
+            ))
+            .with_system(SYSTEM)
+    })
 }
 
-/// Get an optional i32 attribute with a default value
-pub(crate) fn get_optional_i32(
-    attrs: &HashMap<String, String>,
-    key: &str,
-    default: i32,
-) -> Result<i32, CliCoreError> {
-    if let Some(val) = attrs.get(key) {
-        val.parse().map_err(|_| {
-            GddyError::validation(format!("Invalid number for '{}': {}", key, val))
-                .with_fix(format!("Use an integer value for {}", key))
-                .with_system("domain-connect")
-                .into_cli_error()
+/// Parses every value of one `--add-<type>` flag. `group` and `essential`
+/// apply to records that do not set their own.
+pub(super) fn parse_records(
+    kind: RecordKind,
+    inputs: &[String],
+    group: Option<&str>,
+    essential: Option<Essential>,
+) -> cli_engine::Result<Vec<Record>> {
+    inputs
+        .iter()
+        .map(|input| {
+            let mut record = parse_record(kind, input)?;
+            if record.group_id.is_none() {
+                record.group_id = group.map(str::to_owned);
+            }
+            record.essential = record.essential.or(essential);
+            Ok(record)
         })
-    } else {
-        Ok(default)
-    }
+        .collect()
 }
 
-/// Parse and add A records
-pub(crate) fn add_a_records(
-    template: &mut Template,
-    records: &[String],
-    global_group: &Option<String>,
-    global_essential: &Option<String>,
-) -> Result<(), CliCoreError> {
-    for record_str in records {
-        let attrs = parse_record_attrs(record_str)?;
-
-        let host = get_optional_attr(&attrs, "host", "@");
-        let value = get_required_attr(&attrs, "value", "A")?;
-        let ttl = get_optional_i32(&attrs, "ttl", 3600)?;
-        let group_id = attrs.get("group").cloned().or_else(|| global_group.clone());
-        let essential = attrs
-            .get("essential")
-            .cloned()
-            .or_else(|| global_essential.clone());
-
-        // Ensure value is wrapped in %% if it's a variable name
-        let points_to = if value.starts_with('%') && value.ends_with('%') {
-            value
-        } else {
-            format!("%{}%", value)
+pub(super) fn parse_record(kind: RecordKind, input: &str) -> cli_engine::Result<Record> {
+    let mut given = split(kind, input)?;
+    let mut record = Record::new(kind);
+    for field in fields(kind) {
+        // An empty value counts as left out, except where it replaces a default.
+        let given = given
+            .remove(&field.attr)
+            .filter(|value| !value.is_empty() || matches!(field.need, Need::Default(_)));
+        let value = match (given, &field.need) {
+            (Some(value), _) => value,
+            (None, Need::Default(default)) => (*default).to_owned(),
+            (None, Need::Optional) => continue,
+            (None, Need::Required) => {
+                return Err(invalid(
+                    kind,
+                    format!("{} record requires '{}'", kind.name(), field.attr.key()),
+                ));
+            }
         };
-
-        template.records.push(Record {
-            record_type: "A".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: Some(points_to),
-            target: None,
-            service: None,
-            protocol: None,
-            ttl: Some(ttl),
-            priority: None,
-            weight: None,
-            port: None,
-            data: None,
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
+        set(&mut record, kind, field.attr, value).map_err(GddyError::into_cli_error)?;
     }
-    Ok(())
+    Ok(record)
 }
 
-/// Parse and add AAAA records
-pub(crate) fn add_aaaa_records(
-    template: &mut Template,
-    records: &[String],
-    global_group: &Option<String>,
-    global_essential: &Option<String>,
-) -> Result<(), CliCoreError> {
-    for record_str in records {
-        let attrs = parse_record_attrs(record_str)?;
-
-        let host = get_optional_attr(&attrs, "host", "@");
-        let value = get_required_attr(&attrs, "value", "AAAA")?;
-        let ttl = get_optional_i32(&attrs, "ttl", 3600)?;
-        let group_id = attrs.get("group").cloned().or_else(|| global_group.clone());
-        let essential = attrs
-            .get("essential")
-            .cloned()
-            .or_else(|| global_essential.clone());
-
-        let points_to = if value.starts_with('%') && value.ends_with('%') {
-            value
-        } else {
-            format!("%{}%", value)
-        };
-
-        template.records.push(Record {
-            record_type: "AAAA".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: Some(points_to),
-            target: None,
-            service: None,
-            protocol: None,
-            ttl: Some(ttl),
-            priority: None,
-            weight: None,
-            port: None,
-            data: None,
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
+fn split(kind: RecordKind, input: &str) -> cli_engine::Result<HashMap<Attr, String>> {
+    let mut given: HashMap<Attr, String> = HashMap::new();
+    let mut last: Option<Attr> = None;
+    for part in input.split(',') {
+        let named = part.split_once('=').and_then(|(key, value)| {
+            fields(kind)
+                .iter()
+                .find(|field| field.attr.key() == key.trim())
+                .map(|field| (field.attr, value))
         });
+        match (named, last) {
+            (Some((attr, value)), _) => {
+                if given.insert(attr, value.to_owned()).is_some() {
+                    return Err(invalid(
+                        kind,
+                        format!("'{}' is given more than once", attr.key()),
+                    ));
+                }
+                last = Some(attr);
+            }
+            // `data` is free text, so a part that names no attribute is the
+            // rest of a value that contains a comma.
+            (None, Some(Attr::Data)) => {
+                let text = given.entry(Attr::Data).or_default();
+                text.push(',');
+                text.push_str(part);
+            }
+            (None, _) => {
+                return Err(invalid(
+                    kind,
+                    format!(
+                        "'{}' is not an attribute of {} records",
+                        part.trim(),
+                        kind.name()
+                    ),
+                ));
+            }
+        }
     }
-    Ok(())
+    for value in given.values_mut() {
+        *value = value.trim().to_owned();
+    }
+    Ok(given)
 }
 
-/// Parse and add CNAME records
-pub(crate) fn add_cname_records(
-    template: &mut Template,
-    records: &[String],
-    global_group: &Option<String>,
-    global_essential: &Option<String>,
-) -> Result<(), CliCoreError> {
-    for record_str in records {
-        let attrs = parse_record_attrs(record_str)?;
-
-        let host = get_optional_attr(&attrs, "host", "@");
-        let value = get_required_attr(&attrs, "value", "CNAME")?;
-        let ttl = get_optional_i32(&attrs, "ttl", 3600)?;
-        let group_id = attrs.get("group").cloned().or_else(|| global_group.clone());
-        let essential = attrs
-            .get("essential")
-            .cloned()
-            .or_else(|| global_essential.clone());
-
-        template.records.push(Record {
-            record_type: "CNAME".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: Some(value),
-            target: None,
-            service: None,
-            protocol: None,
-            ttl: Some(ttl),
-            priority: None,
-            weight: None,
-            port: None,
-            data: None,
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-    Ok(())
+fn invalid(kind: RecordKind, message: String) -> cli_engine::CliCoreError {
+    let accepted: Vec<&str> = fields(kind).iter().map(|field| field.attr.key()).collect();
+    GddyError::validation(message)
+        .with_fix(format!(
+            "Write --add-{} as key=value pairs separated by commas, using: {}.",
+            kind.name().to_ascii_lowercase(),
+            accepted.join(", ")
+        ))
+        .with_system(SYSTEM)
+        .into_cli_error()
 }
 
-/// Parse and add MX records
-pub(crate) fn add_mx_records(
-    template: &mut Template,
-    records: &[String],
-    global_group: &Option<String>,
-    global_essential: &Option<String>,
-) -> Result<(), CliCoreError> {
-    for record_str in records {
-        let attrs = parse_record_attrs(record_str)?;
-
-        let host = get_optional_attr(&attrs, "host", "@");
-        let value = get_required_attr(&attrs, "value", "MX")?;
-        let priority = get_optional_i32(&attrs, "priority", 10)?;
-        let ttl = get_optional_i32(&attrs, "ttl", 3600)?;
-        let group_id = attrs.get("group").cloned().or_else(|| global_group.clone());
-        let essential = attrs
-            .get("essential")
-            .cloned()
-            .or_else(|| global_essential.clone());
-
-        template.records.push(Record {
-            record_type: "MX".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: Some(value),
-            target: None,
-            service: None,
-            protocol: None,
-            ttl: Some(ttl),
-            priority: Some(priority),
-            weight: None,
-            port: None,
-            data: None,
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-    Ok(())
-}
-
-/// Parse and add TXT records
-pub(crate) fn add_txt_records(
-    template: &mut Template,
-    records: &[String],
-    global_group: &Option<String>,
-    global_essential: &Option<String>,
-) -> Result<(), CliCoreError> {
-    for record_str in records {
-        let attrs = parse_record_attrs(record_str)?;
-
-        let host = get_optional_attr(&attrs, "host", "@");
-        let data = get_required_attr(&attrs, "data", "TXT")?;
-        let ttl = get_optional_i32(&attrs, "ttl", 3600)?;
-        let group_id = attrs.get("group").cloned().or_else(|| global_group.clone());
-        let essential = attrs
-            .get("essential")
-            .cloned()
-            .or_else(|| global_essential.clone());
-        let txt_conflict_matching_mode = attrs.get("mode").cloned();
-        let txt_conflict_matching_prefix = attrs.get("prefix").cloned();
-
-        template.records.push(Record {
-            record_type: "TXT".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: None,
-            target: None,
-            service: None,
-            protocol: None,
-            ttl: Some(ttl),
-            priority: None,
-            weight: None,
-            port: None,
-            data: Some(data),
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode,
-            txt_conflict_matching_prefix,
-        });
-    }
-    Ok(())
-}
-
-/// Parse and add SRV records
-pub(crate) fn add_srv_records(
-    template: &mut Template,
-    records: &[String],
-    global_group: &Option<String>,
-    global_essential: &Option<String>,
-) -> Result<(), CliCoreError> {
-    for record_str in records {
-        let attrs = parse_record_attrs(record_str)?;
-
-        let service = get_required_attr(&attrs, "service", "SRV")?;
-        let protocol = get_required_attr(&attrs, "protocol", "SRV")?;
-        let name = get_optional_attr(&attrs, "name", "@");
-        let target = get_required_attr(&attrs, "target", "SRV")?;
-        let priority = get_optional_i32(&attrs, "priority", 10)?;
-        let weight = get_optional_i32(&attrs, "weight", 1)?;
-        let port = get_optional_i32(&attrs, "port", 80)?;
-        let ttl = get_optional_i32(&attrs, "ttl", 3600)?;
-        let group_id = attrs.get("group").cloned().or_else(|| global_group.clone());
-        let essential = attrs
-            .get("essential")
-            .cloned()
-            .or_else(|| global_essential.clone());
-
-        template.records.push(Record {
-            record_type: "SRV".to_string(),
-            group_id,
-            host: None,
-            name: Some(name),
-            points_to: None,
-            target: Some(target),
-            service: Some(service),
-            protocol: Some(protocol),
-            ttl: Some(ttl),
-            priority: Some(priority),
-            weight: Some(weight),
-            port: Some(port),
-            data: None,
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-    Ok(())
-}
-
-/// Parse and add NS records
-pub(crate) fn add_ns_records(
-    template: &mut Template,
-    records: &[String],
-    global_group: &Option<String>,
-    global_essential: &Option<String>,
-) -> Result<(), CliCoreError> {
-    for record_str in records {
-        let attrs = parse_record_attrs(record_str)?;
-
-        let host = get_optional_attr(&attrs, "host", "@");
-        let value = get_required_attr(&attrs, "value", "NS")?;
-        let ttl = get_optional_i32(&attrs, "ttl", 3600)?;
-        let group_id = attrs.get("group").cloned().or_else(|| global_group.clone());
-        let essential = attrs
-            .get("essential")
-            .cloned()
-            .or_else(|| global_essential.clone());
-
-        template.records.push(Record {
-            record_type: "NS".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: Some(value),
-            target: None,
-            service: None,
-            protocol: None,
-            ttl: Some(ttl),
-            priority: None,
-            weight: None,
-            port: None,
-            data: None,
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-    Ok(())
-}
-
-/// Parse and add SPFM records
-pub(crate) fn add_spfm_records(
-    template: &mut Template,
-    records: &[String],
-    global_group: &Option<String>,
-    global_essential: &Option<String>,
-) -> Result<(), CliCoreError> {
-    for record_str in records {
-        let attrs = parse_record_attrs(record_str)?;
-
-        let host = get_optional_attr(&attrs, "host", "@");
-        let rules = get_required_attr(&attrs, "rules", "SPFM")?;
-        let ttl = get_optional_i32(&attrs, "ttl", 3600)?;
-        let group_id = attrs.get("group").cloned().or_else(|| global_group.clone());
-        let essential = attrs
-            .get("essential")
-            .cloned()
-            .or_else(|| global_essential.clone());
-
-        template.records.push(Record {
-            record_type: "SPFM".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: None,
-            target: None,
-            service: None,
-            protocol: None,
-            ttl: Some(ttl),
-            priority: None,
-            weight: None,
-            port: None,
-            data: None,
-            essential,
-            spf_rules: Some(rules),
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-    Ok(())
-}
-
-/// Parse and add REDIR301 records
-pub(crate) fn add_redir301_records(
-    template: &mut Template,
-    records: &[String],
-    global_group: &Option<String>,
-    global_essential: &Option<String>,
-) -> Result<(), CliCoreError> {
-    for record_str in records {
-        let attrs = parse_record_attrs(record_str)?;
-
-        let host = get_optional_attr(&attrs, "host", "@");
-        let target = get_required_attr(&attrs, "target", "REDIR301")?;
-        let group_id = attrs.get("group").cloned().or_else(|| global_group.clone());
-        let essential = attrs
-            .get("essential")
-            .cloned()
-            .or_else(|| global_essential.clone());
-
-        template.records.push(Record {
-            record_type: "REDIR301".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: None,
-            target: Some(target),
-            service: None,
-            protocol: None,
-            ttl: None,
-            priority: None,
-            weight: None,
-            port: None,
-            data: None,
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-    Ok(())
-}
-
-/// Parse and add REDIR302 records
-pub(crate) fn add_redir302_records(
-    template: &mut Template,
-    records: &[String],
-    global_group: &Option<String>,
-    global_essential: &Option<String>,
-) -> Result<(), CliCoreError> {
-    for record_str in records {
-        let attrs = parse_record_attrs(record_str)?;
-
-        let host = get_optional_attr(&attrs, "host", "@");
-        let target = get_required_attr(&attrs, "target", "REDIR302")?;
-        let group_id = attrs.get("group").cloned().or_else(|| global_group.clone());
-        let essential = attrs
-            .get("essential")
-            .cloned()
-            .or_else(|| global_essential.clone());
-
-        template.records.push(Record {
-            record_type: "REDIR302".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: None,
-            target: Some(target),
-            service: None,
-            protocol: None,
-            ttl: None,
-            priority: None,
-            weight: None,
-            port: None,
-            data: None,
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-    Ok(())
-}
-
-/// Parse and add APEXCNAME records
-pub(crate) fn add_apexcname_records(
-    template: &mut Template,
-    records: &[String],
-    global_group: &Option<String>,
-    global_essential: &Option<String>,
-) -> Result<(), CliCoreError> {
-    for record_str in records {
-        let attrs = parse_record_attrs(record_str)?;
-
-        let value = get_required_attr(&attrs, "value", "APEXCNAME")?;
-        let group_id = attrs.get("group").cloned().or_else(|| global_group.clone());
-        let essential = attrs
-            .get("essential")
-            .cloned()
-            .or_else(|| global_essential.clone());
-
-        template.records.push(Record {
-            record_type: "APEXCNAME".to_string(),
-            group_id,
-            host: Some("@".to_string()),
-            name: None,
-            points_to: Some(value),
-            target: None,
-            service: None,
-            protocol: None,
-            ttl: None,
-            priority: None,
-            weight: None,
-            port: None,
-            data: None,
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-    Ok(())
-}
-
-/// Parse and add CAA records
-pub(crate) fn add_caa_records(
-    template: &mut Template,
-    records: &[String],
-    global_group: &Option<String>,
-    global_essential: &Option<String>,
-) -> Result<(), CliCoreError> {
-    for record_str in records {
-        let attrs = parse_record_attrs(record_str)?;
-
-        let host = get_optional_attr(&attrs, "host", "@");
-        let data = get_required_attr(&attrs, "data", "CAA")?;
-        let ttl = get_optional_i32(&attrs, "ttl", 3600)?;
-        let group_id = attrs.get("group").cloned().or_else(|| global_group.clone());
-        let essential = attrs
-            .get("essential")
-            .cloned()
-            .or_else(|| global_essential.clone());
-
-        template.records.push(Record {
-            record_type: "CAA".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: None,
-            target: None,
-            service: None,
-            protocol: None,
-            ttl: Some(ttl),
-            priority: None,
-            weight: None,
-            port: None,
-            data: Some(data),
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-    Ok(())
-}
+#[cfg(test)]
+#[path = "parsers_tests.rs"]
+mod tests;

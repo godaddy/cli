@@ -33,7 +33,7 @@ declare_scopes! {
             DOMAINS_DNS_UPDATE => "domains.dns:update",
             /// Validate a Domain Connect template without side effects
             DOMAIN_CONNECT_TEMPLATE_READ => "domains.domain-connect-template:read",
-            /// Submit a Domain Connect template: store it with GoDaddy DNS and open a pull request
+            /// Submit a Domain Connect template for publication
             DOMAIN_CONNECT_TEMPLATE_WRITE => "domains.domain-connect-template:write",
 
             /// Read hosting applications

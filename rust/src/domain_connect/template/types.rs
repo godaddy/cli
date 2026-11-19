@@ -1,11 +1,11 @@
-//! Domain Connect template types (ported from dc-template-cli)
+//! Domain Connect template types.
 
 use serde::{Deserialize, Serialize};
 
-/// Domain Connect template structure
+/// A Domain Connect template, written to `<providerId>.<serviceId>.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Template {
+pub(super) struct Template {
     pub provider_id: String,
     pub provider_name: String,
     pub service_id: String,
@@ -39,49 +39,8 @@ pub struct Template {
     pub records: Vec<Record>,
 }
 
-/// A single DNS record in the template
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Record {
-    #[serde(rename = "type")]
-    pub record_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub group_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub host: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub points_to: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub service: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub protocol: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ttl: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub priority: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub weight: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub port: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub essential: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub spf_rules: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub txt_conflict_matching_mode: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub txt_conflict_matching_prefix: Option<String>,
-}
-
 impl Template {
-    /// Create a basic template from minimal inputs
-    pub fn from_basic_inputs(
+    pub(super) fn from_basic_inputs(
         provider_id: String,
         provider_name: String,
         service_id: String,
@@ -110,654 +69,223 @@ impl Template {
         }
     }
 
-    /// Add a simple A record
-    #[allow(dead_code)]
-    pub fn add_a_record(&mut self, host: String, ip_variable: String) {
-        self.add_a_record_with_options(host, ip_variable, None, None);
-    }
-
-    /// Add a simple A record with groupId and essential options
-    pub fn add_a_record_with_options(
-        &mut self,
-        host: String,
-        ip_variable: String,
-        group_id: Option<String>,
-        essential: Option<String>,
-    ) {
-        self.records.push(Record {
-            record_type: "A".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: Some(format!("%{}%", ip_variable)),
-            target: None,
-            service: None,
-            protocol: None,
-            ttl: Some(3600),
-            priority: None,
-            weight: None,
-            port: None,
-            data: None,
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-
-    /// Add a CNAME record
-    #[allow(dead_code)]
-    pub fn add_cname_record(&mut self, host: String, target: String) {
-        self.add_cname_record_with_options(host, target, None, None);
-    }
-
-    /// Add a CNAME record with groupId and essential options
-    pub fn add_cname_record_with_options(
-        &mut self,
-        host: String,
-        target: String,
-        group_id: Option<String>,
-        essential: Option<String>,
-    ) {
-        self.records.push(Record {
-            record_type: "CNAME".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: Some(target),
-            target: None,
-            service: None,
-            protocol: None,
-            ttl: Some(3600),
-            priority: None,
-            weight: None,
-            port: None,
-            data: None,
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-
-    /// Add an AAAA record (IPv6)
-    #[allow(dead_code)]
-    pub fn add_aaaa_record(&mut self, host: String, ipv6_variable: String) {
-        self.add_aaaa_record_with_options(host, ipv6_variable, None, None);
-    }
-
-    /// Add an AAAA record with groupId and essential options
-    pub fn add_aaaa_record_with_options(
-        &mut self,
-        host: String,
-        ipv6_variable: String,
-        group_id: Option<String>,
-        essential: Option<String>,
-    ) {
-        self.records.push(Record {
-            record_type: "AAAA".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: Some(format!("%{}%", ipv6_variable)),
-            target: None,
-            service: None,
-            protocol: None,
-            ttl: Some(3600),
-            priority: None,
-            weight: None,
-            port: None,
-            data: None,
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-
-    /// Add an MX record (mail exchanger)
-    #[allow(dead_code)]
-    pub fn add_mx_record(&mut self, host: String, mail_server: String, priority: i32) {
-        self.add_mx_record_with_options(host, mail_server, priority, None, None);
-    }
-
-    /// Add an MX record with groupId and essential options
-    pub fn add_mx_record_with_options(
-        &mut self,
-        host: String,
-        mail_server: String,
-        priority: i32,
-        group_id: Option<String>,
-        essential: Option<String>,
-    ) {
-        self.records.push(Record {
-            record_type: "MX".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: Some(mail_server),
-            target: None,
-            service: None,
-            protocol: None,
-            ttl: Some(3600),
-            priority: Some(priority),
-            weight: None,
-            port: None,
-            data: None,
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-
-    /// Add a TXT record
-    #[allow(dead_code)]
-    pub fn add_txt_record(&mut self, host: String, data: String) {
-        self.add_txt_record_with_options(host, data, None, None);
-    }
-
-    /// Add a TXT record with groupId and essential options
-    pub fn add_txt_record_with_options(
-        &mut self,
-        host: String,
-        data: String,
-        group_id: Option<String>,
-        essential: Option<String>,
-    ) {
-        self.records.push(Record {
-            record_type: "TXT".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: None,
-            target: None,
-            service: None,
-            protocol: None,
-            ttl: Some(3600),
-            priority: None,
-            weight: None,
-            port: None,
-            data: Some(data),
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-
-    /// Add an SRV record (service)
-    #[allow(dead_code)]
-    #[allow(clippy::too_many_arguments)]
-    pub fn add_srv_record(
-        &mut self,
-        service: String,
-        protocol: String,
-        name: String,
-        target: String,
-        priority: i32,
-        weight: i32,
-        port: i32,
-    ) {
-        self.add_srv_record_with_options(
-            service, protocol, name, target, priority, weight, port, None, None,
-        );
-    }
-
-    /// Add an SRV record with groupId and essential options
-    #[allow(clippy::too_many_arguments)]
-    pub fn add_srv_record_with_options(
-        &mut self,
-        service: String,
-        protocol: String,
-        name: String,
-        target: String,
-        priority: i32,
-        weight: i32,
-        port: i32,
-        group_id: Option<String>,
-        essential: Option<String>,
-    ) {
-        self.records.push(Record {
-            record_type: "SRV".to_string(),
-            group_id,
-            host: None,
-            name: Some(name),
-            points_to: None,
-            target: Some(target),
-            service: Some(service),
-            protocol: Some(protocol),
-            ttl: Some(3600),
-            priority: Some(priority),
-            weight: Some(weight),
-            port: Some(port),
-            data: None,
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-
-    /// Add an SPFM record (SPF Macro - Domain Connect specific)
-    #[allow(dead_code)]
-    pub fn add_spfm_record(&mut self, host: String, spf_rules: String) {
-        self.add_spfm_record_with_options(host, spf_rules, None, None);
-    }
-
-    /// Add an SPFM record with groupId and essential options
-    pub fn add_spfm_record_with_options(
-        &mut self,
-        host: String,
-        spf_rules: String,
-        group_id: Option<String>,
-        essential: Option<String>,
-    ) {
-        self.records.push(Record {
-            record_type: "SPFM".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: None,
-            target: None,
-            service: None,
-            protocol: None,
-            ttl: Some(3600),
-            priority: None,
-            weight: None,
-            port: None,
-            data: None,
-            essential,
-            spf_rules: Some(spf_rules),
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-
-    /// Add a REDIR301 record (301 redirect - Domain Connect specific)
-    #[allow(dead_code)]
-    pub fn add_redir301_record(&mut self, host: String, target: String) {
-        self.add_redir301_record_with_options(host, target, None, None);
-    }
-
-    /// Add a REDIR301 record with groupId and essential options
-    pub fn add_redir301_record_with_options(
-        &mut self,
-        host: String,
-        target: String,
-        group_id: Option<String>,
-        essential: Option<String>,
-    ) {
-        self.records.push(Record {
-            record_type: "REDIR301".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: None,
-            target: Some(target),
-            service: None,
-            protocol: None,
-            ttl: None,
-            priority: None,
-            weight: None,
-            port: None,
-            data: None,
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-
-    /// Add an APEXCNAME record (CNAME at apex - Domain Connect specific)
-    #[allow(dead_code)]
-    pub fn add_apexcname_record(&mut self, host: String, points_to: String) {
-        self.add_apexcname_record_with_options(host, points_to, None, None);
-    }
-
-    /// Add an APEXCNAME record with groupId and essential options
-    pub fn add_apexcname_record_with_options(
-        &mut self,
-        host: String,
-        points_to: String,
-        group_id: Option<String>,
-        essential: Option<String>,
-    ) {
-        self.records.push(Record {
-            record_type: "APEXCNAME".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: Some(points_to),
-            target: None,
-            service: None,
-            protocol: None,
-            ttl: Some(3600),
-            priority: None,
-            weight: None,
-            port: None,
-            data: None,
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-
-    /// Add a CAA record (Certificate Authority Authorization)
-    #[allow(dead_code)]
-    pub fn add_caa_record(&mut self, host: String, data: String) {
-        self.add_caa_record_with_options(host, data, None, None);
-    }
-
-    /// Add a CAA record with groupId and essential options
-    pub fn add_caa_record_with_options(
-        &mut self,
-        host: String,
-        data: String,
-        group_id: Option<String>,
-        essential: Option<String>,
-    ) {
-        self.records.push(Record {
-            record_type: "CAA".to_string(),
-            group_id,
-            host: Some(host),
-            name: None,
-            points_to: None,
-            target: None,
-            service: None,
-            protocol: None,
-            ttl: Some(3600),
-            priority: None,
-            weight: None,
-            port: None,
-            data: Some(data),
-            essential,
-            spf_rules: None,
-            txt_conflict_matching_mode: None,
-            txt_conflict_matching_prefix: None,
-        });
-    }
-
-    /// Convert to pretty-printed JSON
-    pub fn to_json_pretty(&self) -> Result<String, serde_json::Error> {
+    pub(super) fn to_json_pretty(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
+    }
+}
+
+/// The record types a template can hold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RecordKind {
+    A,
+    Aaaa,
+    Cname,
+    Mx,
+    Txt,
+    Srv,
+    Ns,
+    Spfm,
+    Redir301,
+    Redir302,
+    Apexcname,
+    Caa,
+}
+
+impl RecordKind {
+    pub(super) const ALL: [Self; 12] = [
+        Self::A,
+        Self::Aaaa,
+        Self::Cname,
+        Self::Mx,
+        Self::Txt,
+        Self::Srv,
+        Self::Ns,
+        Self::Spfm,
+        Self::Redir301,
+        Self::Redir302,
+        Self::Apexcname,
+        Self::Caa,
+    ];
+
+    /// The record's `type` value in the template.
+    pub(super) const fn name(self) -> &'static str {
+        match self {
+            Self::A => "A",
+            Self::Aaaa => "AAAA",
+            Self::Cname => "CNAME",
+            Self::Mx => "MX",
+            Self::Txt => "TXT",
+            Self::Srv => "SRV",
+            Self::Ns => "NS",
+            Self::Spfm => "SPFM",
+            Self::Redir301 => "REDIR301",
+            Self::Redir302 => "REDIR302",
+            Self::Apexcname => "APEXCNAME",
+            Self::Caa => "CAA",
+        }
+    }
+
+    pub(super) const fn description(self) -> &'static str {
+        match self {
+            Self::A => "IPv4 address",
+            Self::Aaaa => "IPv6 address",
+            Self::Cname => "alias for another name",
+            Self::Mx => "mail server",
+            Self::Txt => "text",
+            Self::Srv => "service location",
+            Self::Ns => "name server",
+            Self::Spfm => "SPF rules merged into the domain's SPF record",
+            Self::Redir301 => "permanent redirect",
+            Self::Redir302 => "temporary redirect",
+            Self::Apexcname => "alias at the root of the domain",
+            Self::Caa => "certificate authority authorization",
+        }
+    }
+}
+
+/// How a record is treated when a later change conflicts with the template.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+pub(super) enum Essential {
+    #[value(name = "Always")]
+    Always,
+    #[value(name = "OnApply")]
+    OnApply,
+}
+
+/// How conflicts with existing TXT records are detected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+pub(super) enum TxtConflictMode {
+    #[serde(rename = "None")]
+    #[value(name = "None")]
+    Off,
+    #[value(name = "All")]
+    All,
+    #[value(name = "Prefix")]
+    Prefix,
+}
+
+/// A single DNS record in the template.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct Record {
+    #[serde(rename = "type")]
+    pub record_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub points_to: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protocol: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttl: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub weight: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub essential: Option<Essential>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spf_rules: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub txt_conflict_matching_mode: Option<TxtConflictMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub txt_conflict_matching_prefix: Option<String>,
+}
+
+impl Record {
+    pub(super) fn new(kind: RecordKind) -> Self {
+        Self {
+            record_type: kind.name().to_owned(),
+            ..Self::default()
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
-    #[test]
-    fn from_basic_inputs_creates_valid_template() {
-        let template = Template::from_basic_inputs(
-            "acme.com".to_string(),
-            "Acme Corp".to_string(),
-            "email".to_string(),
-            "Email Service".to_string(),
-            Some("Email configuration".to_string()),
-        );
+    fn template() -> Template {
+        Template::from_basic_inputs(
+            "acme.com".to_owned(),
+            "Acme Corp".to_owned(),
+            "email".to_owned(),
+            "Email Service".to_owned(),
+            None,
+        )
+    }
 
-        assert_eq!(template.provider_id, "acme.com");
-        assert_eq!(template.provider_name, "Acme Corp");
-        assert_eq!(template.service_id, "email");
-        assert_eq!(template.service_name, "Email Service");
+    #[test]
+    fn from_basic_inputs_starts_at_version_one_with_no_records() {
+        let template = template();
         assert_eq!(template.version, Some(1));
-        assert_eq!(
-            template.description,
-            Some("Email configuration".to_string())
-        );
         assert!(template.records.is_empty());
     }
 
     #[test]
-    fn add_a_record_with_options_creates_correct_record() {
-        let mut template = Template::from_basic_inputs(
-            "test.com".to_string(),
-            "Test".to_string(),
-            "web".to_string(),
-            "Web".to_string(),
-            None,
-        );
-
-        template.add_a_record_with_options(
-            "@".to_string(),
-            "ip".to_string(),
-            Some("web".to_string()),
-            Some("OnApply".to_string()),
-        );
-
-        assert_eq!(template.records.len(), 1);
-        let record = &template.records[0];
-        assert_eq!(record.record_type, "A");
-        assert_eq!(record.host, Some("@".to_string()));
-        assert_eq!(record.points_to, Some("%ip%".to_string()));
-        assert_eq!(record.ttl, Some(3600));
-        assert_eq!(record.group_id, Some("web".to_string()));
-        assert_eq!(record.essential, Some("OnApply".to_string()));
-    }
-
-    #[test]
-    fn add_mx_record_with_priority() {
-        let mut template = Template::from_basic_inputs(
-            "test.com".to_string(),
-            "Test".to_string(),
-            "email".to_string(),
-            "Email".to_string(),
-            None,
-        );
-
-        template.add_mx_record_with_options(
-            "@".to_string(),
-            "mail.test.com".to_string(),
-            20,
-            Some("mail".to_string()),
-            None,
-        );
-
-        assert_eq!(template.records.len(), 1);
-        let record = &template.records[0];
-        assert_eq!(record.record_type, "MX");
-        assert_eq!(record.points_to, Some("mail.test.com".to_string()));
-        assert_eq!(record.priority, Some(20));
-        assert_eq!(record.group_id, Some("mail".to_string()));
-    }
-
-    #[test]
-    fn add_srv_record_with_all_fields() {
-        let mut template = Template::from_basic_inputs(
-            "test.com".to_string(),
-            "Test".to_string(),
-            "voip".to_string(),
-            "VoIP".to_string(),
-            None,
-        );
-
-        template.add_srv_record_with_options(
-            "_sip".to_string(),
-            "_tcp".to_string(),
-            "@".to_string(),
-            "sip.test.com".to_string(),
-            10,
-            5,
-            5060,
-            Some("voip".to_string()),
-            None,
-        );
-
-        assert_eq!(template.records.len(), 1);
-        let record = &template.records[0];
-        assert_eq!(record.record_type, "SRV");
-        assert_eq!(record.service, Some("_sip".to_string()));
-        assert_eq!(record.protocol, Some("_tcp".to_string()));
-        assert_eq!(record.name, Some("@".to_string()));
-        assert_eq!(record.target, Some("sip.test.com".to_string()));
-        assert_eq!(record.priority, Some(10));
-        assert_eq!(record.weight, Some(5));
-        assert_eq!(record.port, Some(5060));
-    }
-
-    #[test]
-    fn add_txt_record_with_data() {
-        let mut template = Template::from_basic_inputs(
-            "test.com".to_string(),
-            "Test".to_string(),
-            "verify".to_string(),
-            "Verify".to_string(),
-            None,
-        );
-
-        template.add_txt_record_with_options(
-            "@".to_string(),
-            "v=spf1 ~all".to_string(),
-            None,
-            Some("Always".to_string()),
-        );
-
-        assert_eq!(template.records.len(), 1);
-        let record = &template.records[0];
-        assert_eq!(record.record_type, "TXT");
-        assert_eq!(record.data, Some("v=spf1 ~all".to_string()));
-        assert_eq!(record.essential, Some("Always".to_string()));
-    }
-
-    #[test]
-    fn add_spfm_record() {
-        let mut template = Template::from_basic_inputs(
-            "test.com".to_string(),
-            "Test".to_string(),
-            "email".to_string(),
-            "Email".to_string(),
-            None,
-        );
-
-        template.add_spfm_record_with_options(
-            "@".to_string(),
-            "include:_spf.test.com".to_string(),
-            None,
-            None,
-        );
-
-        assert_eq!(template.records.len(), 1);
-        let record = &template.records[0];
-        assert_eq!(record.record_type, "SPFM");
-        assert_eq!(record.spf_rules, Some("include:_spf.test.com".to_string()));
-    }
-
-    #[test]
-    fn add_redir301_record() {
-        let mut template = Template::from_basic_inputs(
-            "test.com".to_string(),
-            "Test".to_string(),
-            "redirect".to_string(),
-            "Redirect".to_string(),
-            None,
-        );
-
-        template.add_redir301_record_with_options(
-            "old".to_string(),
-            "https://new.test.com".to_string(),
-            None,
-            None,
-        );
-
-        assert_eq!(template.records.len(), 1);
-        let record = &template.records[0];
-        assert_eq!(record.record_type, "REDIR301");
-        assert_eq!(record.target, Some("https://new.test.com".to_string()));
-    }
-
-    #[test]
-    fn json_serialization_uses_camel_case() {
-        let mut template = Template::from_basic_inputs(
-            "test.com".to_string(),
-            "Test Company".to_string(),
-            "service".to_string(),
-            "Service Name".to_string(),
-            None,
-        );
-
+    fn template_serializes_camel_case_and_omits_unset_fields() {
+        let mut template = template();
         template.multi_instance = Some(true);
-        template.host_required = Some(true);
 
-        let json = template.to_json_pretty().expect("serialization failed");
+        let value = serde_json::to_value(&template).expect("serialize");
 
-        assert!(json.contains("\"providerId\""));
-        assert!(json.contains("\"providerName\""));
-        assert!(json.contains("\"serviceId\""));
-        assert!(json.contains("\"serviceName\""));
-        assert!(json.contains("\"multiInstance\""));
-        assert!(json.contains("\"hostRequired\""));
-        assert!(!json.contains("provider_id"));
-        assert!(!json.contains("multi_instance"));
-    }
-
-    #[test]
-    fn json_serialization_omits_none_fields() {
-        let template = Template::from_basic_inputs(
-            "test.com".to_string(),
-            "Test".to_string(),
-            "service".to_string(),
-            "Service".to_string(),
-            None,
-        );
-
-        let json = template.to_json_pretty().expect("serialization failed");
-
-        assert!(!json.contains("\"logoUrl\""));
-        assert!(!json.contains("\"syncBlock\""));
-        assert!(!json.contains("\"shared\""));
-        assert!(!json.contains("\"description\""));
-    }
-
-    #[test]
-    fn multiple_records_of_same_type() {
-        let mut template = Template::from_basic_inputs(
-            "test.com".to_string(),
-            "Test".to_string(),
-            "email".to_string(),
-            "Email".to_string(),
-            None,
-        );
-
-        template.add_mx_record("@".to_string(), "mail1.test.com".to_string(), 10);
-        template.add_mx_record("@".to_string(), "mail2.test.com".to_string(), 20);
-        template.add_txt_record("@".to_string(), "v=spf1 ~all".to_string());
-        template.add_txt_record("_dmarc".to_string(), "v=DMARC1; p=quarantine".to_string());
-
-        assert_eq!(template.records.len(), 4);
         assert_eq!(
-            template
-                .records
-                .iter()
-                .filter(|r| r.record_type == "MX")
-                .count(),
-            2
-        );
-        assert_eq!(
-            template
-                .records
-                .iter()
-                .filter(|r| r.record_type == "TXT")
-                .count(),
-            2
+            value,
+            json!({
+                "providerId": "acme.com",
+                "providerName": "Acme Corp",
+                "serviceId": "email",
+                "serviceName": "Email Service",
+                "version": 1,
+                "multiInstance": true,
+                "records": [],
+            })
         );
     }
 
     #[test]
-    fn ipv6_variable_wrapping() {
-        let mut template = Template::from_basic_inputs(
-            "test.com".to_string(),
-            "Test".to_string(),
-            "web".to_string(),
-            "Web".to_string(),
-            None,
+    fn record_serializes_only_the_fields_that_are_set() {
+        let record = Record {
+            host: Some("@".to_owned()),
+            data: Some("v=spf1 ~all".to_owned()),
+            ttl: Some(3600),
+            essential: Some(Essential::OnApply),
+            txt_conflict_matching_mode: Some(TxtConflictMode::Off),
+            ..Record::new(RecordKind::Txt)
+        };
+
+        assert_eq!(
+            serde_json::to_value(&record).expect("serialize"),
+            json!({
+                "type": "TXT",
+                "host": "@",
+                "data": "v=spf1 ~all",
+                "ttl": 3600,
+                "essential": "OnApply",
+                "txtConflictMatchingMode": "None",
+            })
         );
+    }
 
-        template.add_aaaa_record("@".to_string(), "IP6".to_string());
-
-        let record = &template.records[0];
-        assert_eq!(record.points_to, Some("%IP6%".to_string()));
+    #[test]
+    fn every_record_kind_has_a_distinct_type_name() {
+        let mut names: Vec<&str> = RecordKind::ALL.iter().map(|kind| kind.name()).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), RecordKind::ALL.len());
     }
 }

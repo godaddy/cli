@@ -1,477 +1,430 @@
-//! `gddy domain-connect template init` — Create a template interactively
+//! `gddy domain-connect template init` — write a template file.
 
-use std::io::{BufRead, Write};
+use std::io::IsTerminal;
+use std::path::Path;
 
 use cli_engine::{
-    CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
+    CommandContext, CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec,
+    TableColumn, Tier,
 };
-use serde_json::{Value, json};
+use serde_json::json;
 
-use super::Template;
-use super::interactive::{
-    RecordType, prompt_a_record, prompt_aaaa_record, prompt_apexcname_record, prompt_caa_record,
-    prompt_cname_record, prompt_mx_record, prompt_ns_record, prompt_optional_string,
-    prompt_record_type, prompt_redir301_record, prompt_redir302_record, prompt_spfm_record,
-    prompt_srv_record, prompt_string, prompt_txt_record,
-};
-use super::parsers::*;
+use super::interactive::prompt_template;
+use super::parsers::parse_records;
+use super::types::{Essential, RecordKind, Template};
 use crate::error::GddyError;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
-use crate::scopes::{DOMAIN_CONNECT_TEMPLATE_READ, DOMAIN_CONNECT_TEMPLATE_WRITE};
+
+const SYSTEM: &str = "domain-connect";
 
 output_schema!(InitOutput {
+    "file": "string";
+    "action": "string";
     "providerId": "string";
     "serviceId": "string";
-    "fileName": "string";
     "recordCount": "number";
     "template": "object";
 });
 
 #[derive(Debug, Clone, clap::Args)]
 struct InitArgs {
-    /// Disable interactive prompts (requires all fields as flags)
-    #[arg(long = "no-interactive", default_value_t = false)]
+    /// Build the template from flags instead of asking questions
+    #[arg(long = "no-interactive")]
     no_interactive: bool,
 
-    /// Provider domain (required in non-interactive mode, e.g., acme.com)
-    #[arg(long = "provider-id", required_if_eq("no_interactive", "true"))]
+    /// Your domain name, which identifies you as the provider, e.g. acme.com
+    #[arg(long = "provider-id", value_name = "DOMAIN")]
     provider_id: Option<String>,
 
-    /// Provider display name (required in non-interactive mode, e.g., "Acme Corp")
-    #[arg(long = "provider-name", required_if_eq("no_interactive", "true"))]
+    /// Your name as customers see it, e.g. "Acme Corp"
+    #[arg(long = "provider-name", value_name = "NAME")]
     provider_name: Option<String>,
 
-    /// Service identifier (required in non-interactive mode, e.g., "managed-wordpress")
-    #[arg(long = "service-id", required_if_eq("no_interactive", "true"))]
+    /// Short identifier for the service, e.g. managed-wordpress
+    #[arg(long = "service-id", value_name = "ID")]
     service_id: Option<String>,
 
-    /// Service display name (required in non-interactive mode, e.g., "Acme Managed WordPress")
-    #[arg(long = "service-name", required_if_eq("no_interactive", "true"))]
+    /// The service's name as customers see it, e.g. "Acme Managed WordPress"
+    #[arg(long = "service-name", value_name = "NAME")]
     service_name: Option<String>,
 
-    /// Template description
-    #[arg(long = "description")]
+    /// What the template sets up, e.g. "Points your domain at Acme hosting"
+    #[arg(long = "description", value_name = "TEXT")]
     description: Option<String>,
 
-    /// Block synchronous setup until complete
-    #[arg(long = "sync-block")]
-    sync_block: Option<bool>,
+    /// Replace the template file if it already exists
+    #[arg(long = "force")]
+    force: bool,
 
-    /// Template can be shared across providers
-    #[arg(long = "shared")]
-    shared: Option<bool>,
-
-    /// Provider name is shared
-    #[arg(long = "shared-provider-name")]
-    shared_provider_name: Option<bool>,
-
-    /// Service name is shared
-    #[arg(long = "shared-service-name")]
-    shared_service_name: Option<bool>,
-
-    /// Allow multiple instances of this template
-    #[arg(long = "multi-instance")]
-    multi_instance: Option<bool>,
-
-    /// Display phishing warning to user
-    #[arg(long = "warn-phishing")]
-    warn_phishing: Option<bool>,
-
-    /// Host parameter is required from user
-    #[arg(long = "host-required")]
-    host_required: Option<bool>,
-
-    /// Logo URL (must be http/https with jpg/png/svg extension)
-    #[arg(long = "logo-url")]
+    /// Link to your logo; an http or https URL ending in .jpg, .png or .svg
+    #[arg(long = "logo-url", value_name = "URL")]
     logo_url: Option<String>,
 
-    /// Variable description for template parameters
-    #[arg(long = "variable-description")]
+    /// Describes the template's variables, e.g. "ip: your server's IPv4 address"
+    #[arg(long = "variable-description", value_name = "TEXT")]
     variable_description: Option<String>,
 
-    /// Sync public key domain for verification
-    #[arg(long = "sync-pub-key-domain")]
+    /// Domain that publishes your signing key, e.g. keys.acme.com
+    #[arg(long = "sync-pub-key-domain", value_name = "DOMAIN")]
     sync_pub_key_domain: Option<String>,
 
-    /// Sync redirect domain after setup
-    #[arg(long = "sync-redirect-domain")]
+    /// Domains customers may be sent back to after setup, e.g. acme.com
+    #[arg(long = "sync-redirect-domain", value_name = "DOMAINS")]
     sync_redirect_domain: Option<String>,
 
-    /// Add A record (repeatable). Format: "host=@,value=ip" or "host=www,value=%IP4%,ttl=3600,group=web"
-    #[arg(long = "add-a")]
+    /// Turn off the one-step setup flow for this template (true or false)
+    #[arg(long = "sync-block", value_name = "BOOL")]
+    sync_block: Option<bool>,
+
+    /// Deprecated alias of --shared-provider-name (true or false)
+    #[arg(long = "shared", value_name = "BOOL")]
+    shared: Option<bool>,
+
+    /// Let the provider name be supplied when the template is applied (true or false)
+    #[arg(long = "shared-provider-name", value_name = "BOOL")]
+    shared_provider_name: Option<bool>,
+
+    /// Let the service name be supplied when the template is applied (true or false)
+    #[arg(long = "shared-service-name", value_name = "BOOL")]
+    shared_service_name: Option<bool>,
+
+    /// Allow the template to be applied more than once to a domain (true or false)
+    #[arg(long = "multi-instance", value_name = "BOOL")]
+    multi_instance: Option<bool>,
+
+    /// Warn customers about phishing when the template cannot be signed (true or false)
+    #[arg(long = "warn-phishing", value_name = "BOOL")]
+    warn_phishing: Option<bool>,
+
+    /// Require a host name when the template is applied (true or false)
+    #[arg(long = "host-required", value_name = "BOOL")]
+    host_required: Option<bool>,
+
+    /// Add an A record (repeatable), e.g. "host=@,value=192.0.2.1" or "host=www,value=ip,ttl=600"
+    #[arg(long = "add-a", value_name = "RECORD")]
     add_a: Vec<String>,
 
-    /// Add AAAA record (repeatable). Format: "host=@,value=IP6" or "host=www,value=%ipv6%,ttl=3600"
-    #[arg(long = "add-aaaa")]
+    /// Add an AAAA record (repeatable), e.g. "host=@,value=2001:db8::1" or "value=ip6"
+    #[arg(long = "add-aaaa", value_name = "RECORD")]
     add_aaaa: Vec<String>,
 
-    /// Add CNAME record (repeatable). Format: "host=www,value=@" or "host=blog,value=host.provider.com,ttl=3600"
-    #[arg(long = "add-cname")]
+    /// Add a CNAME record (repeatable), e.g. "host=www,value=sites.acme.com"
+    #[arg(long = "add-cname", value_name = "RECORD")]
     add_cname: Vec<String>,
 
-    /// Add MX record (repeatable). Format: "value=mail.example.com,priority=10" or "host=@,value=mail.com,priority=10,ttl=3600"
-    #[arg(long = "add-mx")]
+    /// Add an MX record (repeatable), e.g. "value=mail.acme.com,priority=10"
+    #[arg(long = "add-mx", value_name = "RECORD")]
     add_mx: Vec<String>,
 
-    /// Add TXT record (repeatable). Format: "host=@,data=v=spf1 ~all" or "host=_dmarc,data=v=DMARC1...,ttl=3600"
-    #[arg(long = "add-txt")]
+    /// Add a TXT record (repeatable), e.g. "host=@,data=v=spf1 include:acme.com ~all"
+    #[arg(long = "add-txt", value_name = "RECORD")]
     add_txt: Vec<String>,
 
-    /// Add SRV record (repeatable). Format: "service=_sip,protocol=_tcp,target=sip.example.com,port=5060,priority=100,weight=1"
-    #[arg(long = "add-srv")]
+    /// Add an SRV record (repeatable), e.g. "service=_sip,protocol=_tcp,target=sip.acme.com,port=5060"
+    #[arg(long = "add-srv", value_name = "RECORD")]
     add_srv: Vec<String>,
 
-    /// Add NS record (repeatable). Format: "host=@,value=ns1.example.com" or "host=subdomain,value=ns.provider.com,ttl=3600"
-    #[arg(long = "add-ns")]
+    /// Add an NS record (repeatable), e.g. "host=shop,value=ns1.acme.com"
+    #[arg(long = "add-ns", value_name = "RECORD")]
     add_ns: Vec<String>,
 
-    /// Add SPFM record (repeatable). Format: "host=@,rules=include:_spf.example.com" or "rules=include:provider.com,ttl=3600"
-    #[arg(long = "add-spfm")]
+    /// Add SPF rules merged into the domain's SPF record (repeatable), e.g. "rules=include:_spf.acme.com"
+    #[arg(long = "add-spfm", value_name = "RECORD")]
     add_spfm: Vec<String>,
 
-    /// Add REDIR301 record (repeatable). Format: "host=@,target=https://www.%fqdn%" or "host=old,target=https://new.site.com"
-    #[arg(long = "add-redir301")]
+    /// Add a permanent redirect (repeatable), e.g. "host=@,target=https://www.acme.com"
+    #[arg(long = "add-redir301", value_name = "RECORD")]
     add_redir301: Vec<String>,
 
-    /// Add REDIR302 record (repeatable). Format: "host=@,target=https://www.%fqdn%" or "host=old,target=https://new.site.com"
-    #[arg(long = "add-redir302")]
+    /// Add a temporary redirect (repeatable), e.g. "host=@,target=https://www.acme.com"
+    #[arg(long = "add-redir302", value_name = "RECORD")]
     add_redir302: Vec<String>,
 
-    /// Add APEXCNAME record (repeatable). Format: "host=@,value=target.example.com" or "value=provider.com,ttl=3600"
-    #[arg(long = "add-apexcname")]
+    /// Add an alias at the root of the domain (repeatable), e.g. "value=sites.acme.com"
+    #[arg(long = "add-apexcname", value_name = "RECORD")]
     add_apexcname: Vec<String>,
 
-    /// Add CAA record (repeatable). Format: "host=@,data=0 issue \"letsencrypt.org\"" or "data=0 issuewild \";\",ttl=3600"
-    #[arg(long = "add-caa")]
+    /// Add a CAA record (repeatable), e.g. "data=0 issue \"letsencrypt.org\""
+    #[arg(long = "add-caa", value_name = "RECORD")]
     add_caa: Vec<String>,
 
-    /// Global group ID for all records (can be overridden per-record with group=value)
-    #[arg(long = "group-id")]
+    /// Group ID for every record that does not set its own with group=, e.g. web
+    #[arg(long = "group-id", value_name = "ID")]
     group_id: Option<String>,
 
-    /// Global essential value for all records (can be overridden per-record with essential=value)
-    #[arg(long = "essential")]
-    essential: Option<String>,
+    /// Whether records must stay in place (Always) or may be removed after setup (OnApply)
+    #[arg(long = "essential", value_enum, ignore_case = true)]
+    essential: Option<Essential>,
 }
 
-fn run_interactive() -> cli_engine::Result<Template> {
-    let stdin = std::io::stdin();
-    let mut reader = stdin.lock();
-    let mut writer = std::io::stderr();
+pub(super) fn check_provider_id(provider_id: &str) -> Result<(), GddyError> {
+    match crate::domain::common::validate_domain_name(provider_id) {
+        Ok(normalized) if normalized == provider_id => Ok(()),
+        _ => Err(GddyError::validation(format!(
+            "Provider ID '{provider_id}' must be a lowercase domain name, such as acme.com."
+        ))
+        .with_fix("Use the domain name you own, in lowercase, for example acme.com.")
+        .with_system(SYSTEM)),
+    }
+}
 
-    writeln!(writer, "\n📝 Create Domain Connect Template\n")
-        .map_err(|e| GddyError::unexpected(format!("Output error: {}", e)).into_cli_error())?;
+pub(super) fn check_service_id(service_id: &str) -> Result<(), GddyError> {
+    let allowed = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_';
+    if !service_id.is_empty() && service_id.chars().all(allowed) {
+        return Ok(());
+    }
+    Err(GddyError::validation(format!(
+        "Service ID '{service_id}' may contain only lowercase letters, digits, hyphens and underscores."
+    ))
+    .with_fix("Use a short identifier such as managed-wordpress.")
+    .with_system(SYSTEM))
+}
 
-    // Step 1: Basic template info
-    let provider_id = loop {
-        let input = prompt_string(&mut reader, &mut writer, "Provider ID (e.g., acme.com)")?;
-        if input.contains('.') {
-            break input;
-        }
-        writeln!(
-            writer,
-            "   ⚠ Provider ID must be a domain (e.g., acme.com)\n"
+fn check_logo_url(logo_url: &str) -> Result<(), GddyError> {
+    let path_ok = url::Url::parse(logo_url).ok().is_some_and(|parsed| {
+        let path = parsed.path().to_ascii_lowercase();
+        matches!(parsed.scheme(), "http" | "https")
+            && [".jpg", ".png", ".svg"]
+                .iter()
+                .any(|extension| path.ends_with(extension))
+    });
+    if path_ok {
+        return Ok(());
+    }
+    Err(GddyError::validation(format!(
+        "Logo URL '{logo_url}' must be an http or https link to a .jpg, .png or .svg file."
+    ))
+    .with_fix("Pass a link such as https://acme.com/logo.svg to --logo-url.")
+    .with_system(SYSTEM))
+}
+
+fn missing_identity(flag: &str) -> cli_engine::CliCoreError {
+    GddyError::validation(format!("--{flag} is required with --no-interactive."))
+        .with_fix(
+            "Pass --provider-id, --provider-name, --service-id and --service-name, or run \
+             without --no-interactive in a terminal to answer prompts.",
         )
-        .map_err(|e| GddyError::unexpected(format!("Output error: {}", e)).into_cli_error())?;
+        .with_system(SYSTEM)
+        .into_cli_error()
+}
+
+fn from_flags(args: &InitArgs) -> cli_engine::Result<Template> {
+    let field = |value: &Option<String>, flag: &str| {
+        value
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+            .ok_or_else(|| missing_identity(flag))
     };
-
-    let provider_name = prompt_string(&mut reader, &mut writer, "Provider Name")?;
-
-    let service_id = loop {
-        let input = prompt_string(&mut reader, &mut writer, "Service ID (e.g., email)")?;
-        if input.chars().all(|c| c.is_alphanumeric() || c == '-') {
-            break input;
-        }
-        writeln!(
-            writer,
-            "   ⚠ Service ID must be alphanumeric with hyphens only\n"
-        )
-        .map_err(|e| GddyError::unexpected(format!("Output error: {}", e)).into_cli_error())?;
-    };
-
-    let service_name = prompt_string(&mut reader, &mut writer, "Service Name")?;
-
-    let description = prompt_optional_string(&mut reader, &mut writer, "Description (optional)")
-        .map_err(|e| GddyError::unexpected(format!("Input error: {}", e)).into_cli_error())?;
+    let provider_id = field(&args.provider_id, "provider-id")?;
+    let provider_name = field(&args.provider_name, "provider-name")?;
+    let service_id = field(&args.service_id, "service-id")?;
+    let service_name = field(&args.service_name, "service-name")?;
+    check_provider_id(&provider_id).map_err(GddyError::into_cli_error)?;
+    check_service_id(&service_id).map_err(GddyError::into_cli_error)?;
+    if let Some(logo_url) = &args.logo_url {
+        check_logo_url(logo_url).map_err(GddyError::into_cli_error)?;
+    }
 
     let mut template = Template::from_basic_inputs(
         provider_id,
         provider_name,
         service_id,
         service_name,
-        description,
+        args.description.clone(),
     );
+    template.logo_url = args.logo_url.clone();
+    template.variable_description = args.variable_description.clone();
+    template.sync_pub_key_domain = args.sync_pub_key_domain.clone();
+    template.sync_redirect_domain = args.sync_redirect_domain.clone();
+    template.sync_block = args.sync_block;
+    template.shared = args.shared;
+    template.shared_provider_name = args.shared_provider_name;
+    template.shared_service_name = args.shared_service_name;
+    template.multi_instance = args.multi_instance;
+    template.warn_phishing = args.warn_phishing;
+    template.host_required = args.host_required;
 
-    // Step 2: Add records
-    writeln!(writer, "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        .map_err(|e| GddyError::unexpected(format!("Output error: {}", e)).into_cli_error())?;
-    writeln!(writer, "📋 Add DNS Records\n")
-        .map_err(|e| GddyError::unexpected(format!("Output error: {}", e)).into_cli_error())?;
-
-    loop {
-        write!(writer, "Add a record? (y/N): ")
-            .map_err(|e| GddyError::unexpected(format!("Output error: {}", e)).into_cli_error())?;
-        writer
-            .flush()
-            .map_err(|e| GddyError::unexpected(format!("Output error: {}", e)).into_cli_error())?;
-
-        let mut line = String::new();
-        reader
-            .read_line(&mut line)
-            .map_err(|e| GddyError::unexpected(format!("Input error: {}", e)).into_cli_error())?;
-
-        let trimmed = line.trim().to_lowercase();
-        if trimmed != "y" && trimmed != "yes" {
-            break;
-        }
-
-        let record_type = prompt_record_type(&mut reader, &mut writer)?;
-
-        let record = match record_type {
-            RecordType::A => prompt_a_record(&mut reader, &mut writer)?,
-            RecordType::AAAA => prompt_aaaa_record(&mut reader, &mut writer)?,
-            RecordType::CNAME => prompt_cname_record(&mut reader, &mut writer)?,
-            RecordType::MX => prompt_mx_record(&mut reader, &mut writer)?,
-            RecordType::TXT => prompt_txt_record(&mut reader, &mut writer)?,
-            RecordType::SRV => prompt_srv_record(&mut reader, &mut writer)?,
-            RecordType::NS => prompt_ns_record(&mut reader, &mut writer)?,
-            RecordType::SPFM => prompt_spfm_record(&mut reader, &mut writer)?,
-            RecordType::REDIR301 => prompt_redir301_record(&mut reader, &mut writer)?,
-            RecordType::REDIR302 => prompt_redir302_record(&mut reader, &mut writer)?,
-            RecordType::APEXCNAME => prompt_apexcname_record(&mut reader, &mut writer)?,
-            RecordType::CAA => prompt_caa_record(&mut reader, &mut writer)?,
-        };
-
-        template.records.push(record);
-        writeln!(writer, "\n✅ Added {} record\n", record_type.as_str())
-            .map_err(|e| GddyError::unexpected(format!("Output error: {}", e)).into_cli_error())?;
+    let by_kind = [
+        (RecordKind::A, &args.add_a),
+        (RecordKind::Aaaa, &args.add_aaaa),
+        (RecordKind::Cname, &args.add_cname),
+        (RecordKind::Mx, &args.add_mx),
+        (RecordKind::Txt, &args.add_txt),
+        (RecordKind::Srv, &args.add_srv),
+        (RecordKind::Ns, &args.add_ns),
+        (RecordKind::Spfm, &args.add_spfm),
+        (RecordKind::Redir301, &args.add_redir301),
+        (RecordKind::Redir302, &args.add_redir302),
+        (RecordKind::Apexcname, &args.add_apexcname),
+        (RecordKind::Caa, &args.add_caa),
+    ];
+    for (kind, inputs) in by_kind {
+        template.records.extend(parse_records(
+            kind,
+            inputs,
+            args.group_id.as_deref(),
+            args.essential,
+        )?);
     }
-
     Ok(template)
 }
 
-fn init_next_actions(filename: &str) -> Vec<NextAction> {
+fn needs_terminal() -> cli_engine::CliCoreError {
+    GddyError::validation(
+        "This command asks questions, and there is no terminal to answer them in.",
+    )
+    .with_fix(
+        "Pass --no-interactive with --provider-id, --provider-name, --service-id and \
+         --service-name, plus an --add-<type> flag for each DNS record.",
+    )
+    .with_system(SYSTEM)
+    .into_cli_error()
+}
+
+fn file_name(template: &Template) -> String {
+    format!("{}.{}.json", template.provider_id, template.service_id)
+}
+
+/// What a run reports, or the error it stops with, given whether the file
+/// exists. Shared by the real and dry-run paths so they agree.
+fn write_action(path: &Path, existed: bool, force: bool) -> cli_engine::Result<&'static str> {
+    if existed && !force {
+        return Err(
+            GddyError::validation(format!("{} already exists.", path.display()))
+                .with_fix("Pass --force to replace it, or move the existing file first.")
+                .with_system(SYSTEM)
+                .into_cli_error(),
+        );
+    }
+    Ok(if existed { "overwritten" } else { "created" })
+}
+
+fn view_columns() -> Vec<TableColumn> {
     vec![
-        next_action(
-            "domain-connect template validate <file>",
-            "Validate the generated template",
-        )
-        .with_param("file", NextActionParam::value(filename)),
-        next_action(
-            "domain-connect template submit <file>",
-            "Submit the template to GoDaddy",
-        )
-        .with_param("file", NextActionParam::value(filename)),
+        TableColumn::new("file", "File").no_truncate(true),
+        TableColumn::new("action", "Action"),
+        TableColumn::new("providerId", "Provider"),
+        TableColumn::new("serviceId", "Service"),
+        TableColumn::new("recordCount", "Records"),
     ]
 }
 
-fn human_init(_filename: &str, full_path: &str, record_count: usize, mut data: Value) -> Value {
-    let summary_lines = [
-        format!("Template saved: {}", full_path),
-        format!(
-            "Records: {}",
-            if record_count == 1 {
-                "1 record".to_string()
-            } else {
-                format!("{} records", record_count)
-            }
-        ),
-    ];
-    data["summary"] = Value::String(summary_lines.join("\n"));
-    data
+fn next_actions(file: &str) -> Vec<NextAction> {
+    vec![
+        next_action(
+            "domain-connect template validate <file>",
+            "Check the template for problems before submitting it",
+        )
+        .with_param("file", NextActionParam::value(file)),
+    ]
 }
 
-pub fn command() -> RuntimeCommandSpec {
+/// Writes the template into `dir` and builds the command result.
+fn write_template(
+    template: &Template,
+    dir: &Path,
+    force: bool,
+    dry_run: bool,
+) -> cli_engine::Result<CommandResult> {
+    check_provider_id(&template.provider_id).map_err(GddyError::into_cli_error)?;
+    check_service_id(&template.service_id).map_err(GddyError::into_cli_error)?;
+    let path = dir.join(file_name(template));
+    let existed = path.exists();
+    let action = write_action(&path, existed, force)?;
+    let contents = template.to_json_pretty().map_err(|error| {
+        GddyError::unexpected(format!("could not encode the template: {error}"))
+            .with_system(SYSTEM)
+            .into_cli_error()
+    })?;
+    let file = path.display().to_string();
+    let data = |action: &str| {
+        json!({
+            "file": file,
+            "action": action,
+            "providerId": template.provider_id,
+            "serviceId": template.service_id,
+            "recordCount": template.records.len(),
+            "template": template,
+        })
+    };
+    if dry_run {
+        let preview = if existed {
+            "would overwrite"
+        } else {
+            "would create"
+        };
+        return Ok(CommandResult::new(data(preview)).with_dry_run());
+    }
+    std::fs::write(&path, format!("{contents}\n")).map_err(|error| {
+        GddyError::unexpected(format!("could not write {file}: {error}"))
+            .with_fix("Check that you can write to this directory, then run the command again.")
+            .with_system(SYSTEM)
+            .into_cli_error()
+    })?;
+    Ok(CommandResult::new(data(action)).with_next_actions(next_actions(&file)))
+}
+
+async fn run(ctx: CommandContext, args: InitArgs) -> cli_engine::Result<CommandResult> {
+    let template = if args.no_interactive {
+        from_flags(&args)?
+    } else {
+        let stdin = std::io::stdin();
+        if !stdin.is_terminal() {
+            return Err(needs_terminal());
+        }
+        prompt_template(&mut stdin.lock(), &mut std::io::stderr())?
+    };
+    let dir = std::env::current_dir().map_err(|error| {
+        GddyError::unexpected(format!("could not find the current directory: {error}"))
+            .with_system(SYSTEM)
+            .into_cli_error()
+    })?;
+    write_template(&template, &dir, args.force, ctx.dry_run())
+}
+
+pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<InitArgs, _, _, _>(
-        CommandSpec::from_args::<InitArgs>("init", "Create a new Domain Connect template")
+        CommandSpec::from_args::<InitArgs>("init", "Create a Domain Connect template file")
             .with_long(
-                "Create a Domain Connect template.\n\
+                "Write a Domain Connect template to <provider-id>.<service-id>.json in the \
+                 current directory. A template lists the DNS records your service needs, so \
+                 customers can connect their domain to it in one step.\n\
                  \n\
-                 By default, runs in interactive mode with prompts.\n\
-                 Use --no-interactive with flags for scripting.\n\
+                 In a terminal, the command asks for each value. With --no-interactive it \
+                 builds the template from flags instead. An existing file is left alone \
+                 unless you pass --force.\n\
                  \n\
-                 Interactive example:\n\
-                   gddy domain-connect template init\n\
+                 Each --add-<type> flag takes key=value pairs separated by commas. An \
+                 unknown key is rejected and the error lists the keys that record type \
+                 accepts. In an A or AAAA record, value is either a literal address or a \
+                 variable name: \"value=ip\" is filled in when the template is applied.\n\
                  \n\
-                 Non-interactive example (multiple records with key=value format):\n\
+                 Example:\n\
                    gddy domain-connect template init \\\n\
                      --no-interactive \\\n\
                      --provider-id acme.com \\\n\
                      --provider-name \"Acme Corp\" \\\n\
                      --service-id email \\\n\
-                     --service-name \"Email Service\" \\\n\
-                     --description \"Email configuration\" \\\n\
+                     --service-name \"Acme Email\" \\\n\
                      --add-mx \"value=mail.acme.com,priority=10\" \\\n\
-                     --add-mx \"value=mail2.acme.com,priority=20\" \\\n\
-                     --add-txt \"data=v=spf1 include:_spf.acme.com ~all\" \\\n\
-                     --add-cname \"host=dkim._domainkey,value=dkim.acme.com\"\n\
+                     --add-txt \"data=v=spf1 include:_spf.acme.com ~all\"\n\
                  \n\
-                 Record format: key=value pairs separated by commas.\n\
-                 Common keys: host, value, data, priority, ttl, group, essential\n\
-                 Example: --add-mx \"host=@,value=mail.com,priority=10,ttl=3600\"",
+                 Next, check the file with `gddy domain-connect template validate`.\n\
+                 \n\
+                 AI assistants: use --no-interactive; the prompts need a terminal. Ask the \
+                 user for the provider and service details instead of inventing them.",
             )
-            .with_system("domain-connect")
+            .with_system(SYSTEM)
             .with_tier(Tier::Mutate)
-            .with_scopes(&[DOMAIN_CONNECT_TEMPLATE_READ, DOMAIN_CONNECT_TEMPLATE_WRITE])
-            .with_output_schema::<InitOutput>(),
-        |ctx, args: InitArgs| async move {
-            let template = if args.no_interactive {
-                // Non-interactive mode: build from flags (clap validates required fields)
-                let provider_id = args.provider_id.expect("clap validates required_if_eq");
-                let provider_name = args.provider_name.expect("clap validates required_if_eq");
-                let service_id = args.service_id.expect("clap validates required_if_eq");
-                let service_name = args.service_name.expect("clap validates required_if_eq");
-
-                // Validate provider ID (should be domain-like)
-                if !provider_id.contains('.') {
-                    return Err(GddyError::validation(
-                        "Provider ID must be a domain (e.g., acme.com)",
-                    )
-                    .with_fix("Use a fully-qualified domain name for --provider-id")
-                    .with_system("domain-connect")
-                    .into_cli_error());
-                }
-
-                // Validate service ID (alphanumeric + hyphen)
-                if !service_id.chars().all(|c| c.is_alphanumeric() || c == '-') {
-                    return Err(GddyError::validation(
-                        "Service ID must be alphanumeric with hyphens only",
-                    )
-                    .with_fix("Use only letters, numbers, and hyphens in --service-id")
-                    .with_system("domain-connect")
-                    .into_cli_error());
-                }
-
-                // Build template from flags
-                let mut template = Template::from_basic_inputs(
-                    provider_id.clone(),
-                    provider_name.clone(),
-                    service_id.clone(),
-                    service_name.clone(),
-                    args.description.clone(),
-                );
-
-                // Set additional template fields from args
-                template.logo_url = args.logo_url.clone();
-                template.variable_description = args.variable_description.clone();
-                template.sync_pub_key_domain = args.sync_pub_key_domain.clone();
-                template.sync_redirect_domain = args.sync_redirect_domain.clone();
-                template.sync_block = args.sync_block;
-                template.shared = args.shared;
-                template.shared_provider_name = args.shared_provider_name;
-                template.shared_service_name = args.shared_service_name;
-                template.multi_instance = args.multi_instance;
-                template.warn_phishing = args.warn_phishing;
-                template.host_required = args.host_required;
-
-                // Add records from flags using key=value parsers
-                add_a_records(&mut template, &args.add_a, &args.group_id, &args.essential)?;
-                add_aaaa_records(
-                    &mut template,
-                    &args.add_aaaa,
-                    &args.group_id,
-                    &args.essential,
-                )?;
-                add_cname_records(
-                    &mut template,
-                    &args.add_cname,
-                    &args.group_id,
-                    &args.essential,
-                )?;
-                add_mx_records(&mut template, &args.add_mx, &args.group_id, &args.essential)?;
-                add_txt_records(
-                    &mut template,
-                    &args.add_txt,
-                    &args.group_id,
-                    &args.essential,
-                )?;
-                add_srv_records(
-                    &mut template,
-                    &args.add_srv,
-                    &args.group_id,
-                    &args.essential,
-                )?;
-                add_ns_records(&mut template, &args.add_ns, &args.group_id, &args.essential)?;
-                add_spfm_records(
-                    &mut template,
-                    &args.add_spfm,
-                    &args.group_id,
-                    &args.essential,
-                )?;
-                add_redir301_records(
-                    &mut template,
-                    &args.add_redir301,
-                    &args.group_id,
-                    &args.essential,
-                )?;
-                add_redir302_records(
-                    &mut template,
-                    &args.add_redir302,
-                    &args.group_id,
-                    &args.essential,
-                )?;
-                add_apexcname_records(
-                    &mut template,
-                    &args.add_apexcname,
-                    &args.group_id,
-                    &args.essential,
-                )?;
-                add_caa_records(
-                    &mut template,
-                    &args.add_caa,
-                    &args.group_id,
-                    &args.essential,
-                )?;
-
-                template
-            } else {
-                // Interactive mode
-                run_interactive()?
-            };
-
-            // Convert to JSON
-            let json_output = template
-                .to_json_pretty()
-                .map_err(|e| GddyError::unexpected(e.to_string()).into_cli_error())?;
-
-            // Generate filename from template
-            let filename = format!("{}.{}.json", template.provider_id, template.service_id);
-
-            // Get full path for display
-            let full_path = std::env::current_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from("."))
-                .join(&filename);
-
-            // Write to file
-            std::fs::write(&filename, &json_output).map_err(|e| {
-                GddyError::unexpected(format!("Failed to write file {}: {}", filename, e))
-                    .with_fix("Check file permissions and disk space")
-                    .with_system("domain-connect")
-                    .into_cli_error()
-            })?;
-
-            let data = json!({
-                "providerId": template.provider_id,
-                "serviceId": template.service_id,
-                "fileName": filename,
-                "recordCount": template.records.len(),
-                "template": template,
-            });
-
-            let output = if ctx.middleware.output_format == "human" {
-                human_init(
-                    &filename,
-                    &full_path.display().to_string(),
-                    template.records.len(),
-                    data,
-                )
-            } else {
-                data
-            };
-
-            Ok(CommandResult::new(output).with_next_actions(init_next_actions(&filename)))
-        },
+            .mutates(true)
+            .handles_dry_run(true)
+            .no_auth(true)
+            .with_output_schema::<InitOutput>()
+            .with_view(view_columns()),
+        run,
     )
 }
 
