@@ -8,9 +8,9 @@ An application-settings capability lets a GoDaddy Platform Application (GPA) con
 
 ## Add a settings form to an application
 
-To add a settings form to an application, add the placement, add the form, release the application, and enable it for a store.
+To add a settings form to an application, add the placement, add the form, release the application, and enable it for a store. After the steps, a section for each of the placement options, the form, release errors, and enabling and backfilling has the details.
 
-1. Add the placement, which writes the group, slug, entryPath, order, capabilities, and icon fields into `godaddy.toml` (go to [Placement options](#placement-options) for the options):
+1. Add the placement, which writes the group, slug, entryPath, order, capabilities, and icon fields into `godaddy.toml`:
 
    ```sh
    gddy platform app add settings \
@@ -24,15 +24,15 @@ To add a settings form to an application, add the placement, add the form, relea
      --icon-name percent --icon-library lucide
    ```
 
-2. Add the form, either as a `[settings.presentation]` block in the entry `add settings` just wrote, or as a JSON file (go to [The form](#the-form) for the details).
+2. Add the form, either as a `[settings.presentation]` block in the entry `add settings` just wrote, or as a JSON file.
 
-3. Release the application (go to [Release errors](#release-errors) for what can fail):
+3. Release the application:
 
    ```sh
    gddy platform app release --application-id <id> --version <version>
    ```
 
-4. Enable the application for a store, then confirm it with `enablement` (go to [Enable and backfill](#enable-and-backfill) for how releases and stores interact):
+4. Enable the application for a store, then confirm it with `enablement`:
 
    ```sh
    gddy platform app enable <name> --store-id <storeId>
@@ -50,7 +50,7 @@ These options need a note:
 
 ### The form
 
-`add settings` only writes placement metadata. The actual field and section definitions (`presentation`) aren't flag-driven. `presentation` and `presentationFile` are mutually exclusive. To use a JSON file, point to it with `--presentation-file <path>`, or edit a `presentationFile` entry into the entry afterward. Go to [Presentation shape](#presentation-shape) for the details.
+`add settings` only writes placement metadata. The actual field and section definitions (`presentation`) aren't flag-driven. `presentation` and `presentationFile` are mutually exclusive. To use a JSON file, point to it with `--presentation-file <path>`, or edit a `presentationFile` entry into the entry afterward. Go to the "Presentation shape" section later in this guide for the details.
 
 ### Release errors
 
