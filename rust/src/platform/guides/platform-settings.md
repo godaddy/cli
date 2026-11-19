@@ -8,14 +8,9 @@ An application-settings capability lets a GoDaddy Platform Application (GPA) con
 
 ## Add a settings form to an application
 
-To add a settings form to an application, add the placement, add the form, release the application, and enable it for a store. These notes apply to the steps:
+To add a settings form to an application, add the placement, add the form, release the application, and enable it for a store.
 
-- **Placement:** `entryPath` is relative to the application's registered `proxy_url`, same as action URLs. `--capability` defaults to `read` and `write` server-side if omitted. `--icon-name` and `--icon-library` must be given together or not at all. A `config` capability requires `read` plus one or more `--config-key` values; the command writes those values to `metadata.configKeys`.
-- **Form:** `add settings` only writes placement metadata. The actual field and section definitions (`presentation`) aren't flag-driven. `presentation` and `presentationFile` are mutually exclusive.
-- **Release:** `release` resends every setting in `godaddy.toml`, the same as it does for actions, subscriptions, and extensions. It rejects any settings entry with neither `presentation` nor `presentationFile`. The error has the code `VALIDATION_ERROR`. It says the setting has no presentation, and that you need to add a `[settings.presentation]` block or a `presentationFile` before releasing.
-- **Enable:** `enable` makes the placement discoverable for a store, and `enablement` lists the apps enabled on that store. Settings, like actions, subscriptions, and uiExtensions, are keyed per release with no inheritance. A store already enabled against an older release doesn't pick up settings added in a newer one until you re-run `enable` for that store.
-
-1. Add the placement, which writes the group, slug, entryPath, order, capabilities, and icon fields into `godaddy.toml`:
+1. Add the placement, which writes the group, slug, entryPath, order, capabilities, and icon fields into `godaddy.toml` (go to [Placement options](#placement-options) for the options):
 
    ```sh
    gddy platform app add settings \
@@ -29,20 +24,41 @@ To add a settings form to an application, add the placement, add the form, relea
      --icon-name percent --icon-library lucide
    ```
 
-2. Add the form, either as a `[settings.presentation]` block in the entry `add settings` just wrote, or as a JSON file with `--presentation-file <path>` (or by editing `presentationFile` into the entry afterward). Go to [Presentation shape](#presentation-shape) for the details.
+2. Add the form, either as a `[settings.presentation]` block in the entry `add settings` just wrote, or as a JSON file (go to [The form](#the-form) for the details).
 
-3. Release the application:
+3. Release the application (go to [Release errors](#release-errors) for what can fail):
 
    ```sh
    gddy platform app release --application-id <id> --version <version>
    ```
 
-4. Enable the application for a store, then confirm it with `enablement`:
+4. Enable the application for a store, then confirm it with `enablement` (go to [Enable and backfill](#enable-and-backfill) for how releases and stores interact):
 
    ```sh
    gddy platform app enable <name> --store-id <storeId>
    gddy platform app enablement --store-id <storeId>
    ```
+
+### Placement options
+
+These options need a note:
+
+- `entryPath` is relative to the application's registered `proxy_url`, same as action URLs.
+- `--capability` defaults to `read` and `write` server-side if omitted.
+- `--icon-name` and `--icon-library` must be given together or not at all.
+- A `config` capability requires `read` plus one or more `--config-key` values; the command writes those values to `metadata.configKeys`.
+
+### The form
+
+`add settings` only writes placement metadata. The actual field and section definitions (`presentation`) aren't flag-driven. `presentation` and `presentationFile` are mutually exclusive. To use a JSON file, point to it with `--presentation-file <path>`, or edit a `presentationFile` entry into the entry afterward. Go to [Presentation shape](#presentation-shape) for the details.
+
+### Release errors
+
+`release` resends every setting in `godaddy.toml`, the same as it does for actions, subscriptions, and extensions. It rejects any settings entry with neither `presentation` nor `presentationFile`. The error has the code `VALIDATION_ERROR`. It says the setting has no presentation, and that you need to add a `[settings.presentation]` block or a `presentationFile` before releasing.
+
+### Enable and backfill
+
+`enable` makes the placement discoverable for a store, and `enablement` lists the apps enabled on that store. Settings, like actions, subscriptions, and uiExtensions, are keyed per release with no inheritance. A store already enabled against an older release doesn't pick up settings added in a newer one until you re-run `enable` for that store.
 
 ## Presentation shape
 
