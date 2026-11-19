@@ -18,42 +18,44 @@ A purchase is **paid and not reversible**, so `purchase` has two gates (`--agree
 Registration completes **asynchronously**: `purchase` submits the registration and waits briefly for the registry, reporting the operation's `status` (`COMPLETED` when done). The domain then shows up in `gddy domain list`. If `purchase` gives up waiting before reaching a terminal status, it will give you an operation ID which you can use to check its progress with:
 `gddy domain operation status <operation-id>`.
 
-## The flow
+## Quote and purchase a domain
 
-1. **Find a name** (optional): if you don't have one in mind, get suggestions
-   from a seed word or phrase:
+To buy a domain, run up to four commands in order. The first two are optional. These notes apply to the steps:
+
+- **Suggestions:** leave the phrase out to get suggestions based on what we know about you and your account. Narrow them with `--tlds com --tlds dev` (repeatable), bound the name length with `--length-min` and `--length-max`, and cap the count with the global `--limit`. Suggestions are available-by-contract, but availability is re-checked at quote time.
+- **Quote:** this is where you choose the registration settings and review the terms and price. Set registration options here, because they're locked into the token:
+  - `--period <1-10>`: registration length in years (default 1).
+  - `--privacy`: add privacy protection.
+  - `--no-renew`: disable auto-renew (on by default).
+  - `--nameserver <host>`: custom nameserver (repeatable); omit for GoDaddy's.
+- **Token:** the quote is cached locally (next to your `contacts.toml`), so **run `quote` and `purchase` on the same machine**, within the token's ~10-minute lifetime. If the token has expired or isn't found, just re-run `gddy domain quote`.
+
+1. Get name suggestions (optional), from a seed word or phrase or with the phrase left out:
+
    ```
    gddy domain suggest "avocado jewelry"
-   ```
-   Or leave the phrase out to get suggestions based on what we know about you
-   and your account:
-   ```
    gddy domain suggest
    ```
-   Narrow with `--tlds com --tlds dev` (repeatable), bound the name length with
-   `--length-min`/`--length-max`, and cap the count with the global `--limit`.
-   Suggestions are available-by-contract, but availability is re-checked at
-   quote time.
-2. **Check availability** (optional): confirm a name and see its price:
-   `gddy domain available example.com`
-3. **Quote it**: this is where you choose the registration settings and review
-   the terms and price:
+
+2. Check availability (optional) to confirm a name and see its price:
+
+   ```
+   gddy domain available example.com
+   ```
+
+3. Quote the domain to review the terms and price and lock in your registration settings:
+
    ```
    gddy domain quote example.com
    ```
-   The output shows the price, the required legal agreements, the resolved
-   contact and preference settings, and the `quoteToken` (with its `expiresAt`). Set
-   registration options here (they're locked into the token):
-   - `--period <1-10>`: registration length in years (default 1).
-   - `--privacy`: add privacy protection.
-   - `--no-renew`: disable auto-renew (on by default).
-   - `--nameserver <host>`: custom nameserver (repeatable); omit for GoDaddy's.
-4. **Purchase**, accepting the agreements and confirming the charge:
+
+4. Read the quote, which shows the price, the required legal agreements, the resolved contact and preference settings, and the `quoteToken` (with its `expiresAt`).
+
+5. Purchase the domain, accepting the agreements and confirming the charge:
+
    ```
    gddy domain purchase --quote-token <token> --agree --confirm
    ```
-
-The quote is cached locally (next to your `contacts.toml`), so **run `quote` and `purchase` on the same machine**, within the token's ~10-minute lifetime. If the token has expired or isn't found, just re-run `gddy domain quote`.
 
 ### The three decisions
 
