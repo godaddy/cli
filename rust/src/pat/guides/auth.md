@@ -9,7 +9,7 @@ The GoDaddy CLI supports two ways to authenticate:
 - **OAuth with `gddy auth login`**: interactive, browser-based login.
 - **Personal Access Token (PAT) with `gddy pat add`**: non-interactive, long-lived token. Best for CI/CD, scripts, and headless environments.
 
-Both can be configured at the same time. Per environment, the CLI prefers a PAT when one is available; otherwise it falls back to OAuth (see [How the CLI chooses a credential](#how-the-cli-chooses-a-credential) for the full precedence order).
+Both can be configured at the same time. Per environment, the CLI prefers a PAT when one is available; otherwise it falls back to OAuth (go to [How the CLI chooses a credential](#how-the-cli-chooses-a-credential) for the full precedence order).
 
 Each command that requires authentication also has a required set of permissions, called scopes.
 
@@ -37,7 +37,7 @@ Personal Access Tokens, or PATs, allow you to assign permissions to the CLI in c
 
 1. Run `gddy pat create` (pass `--env <env>` for a non-prod environment) to open the Personal Access Token page for your environment in your browser. If the browser doesn't open, visit the URL the command prints. It already points at the right environment's Developer Portal, unlike the [prod-only page](https://developer.godaddy.com/personal-access-token) linked elsewhere in this guide.
 2. Click **+ Generate Token**.
-3. In the **Generate personal access token** dialog, fill in a **Name**, an **Expiration** (in days), and the **Scopes** the token needs (see the [PAT scopes reference](https://developer.godaddy.com/en/docs/api-users/auth#pat-scopes); for example `domains.domain:read`, `domains.dns:update`). A write-scoped token also satisfies reads for the same resource; a read-scoped token is refused on writes.
+3. In the **Generate personal access token** dialog, fill in a **Name**, an **Expiration** (in days), and the **Scopes** the token needs (go to the [PAT scopes reference](https://developer.godaddy.com/en/docs/api-users/auth#pat-scopes); for example `domains.domain:read`, `domains.dns:update`). A write-scoped token also satisfies reads for the same resource; a read-scoped token is refused on writes.
 4. Click **Generate Token**. The token is shown once in a "Copy your new token" dialog. Copy it immediately. You can't retrieve it again from the Personal Access Token page; if you lose it, revoke it and generate a new one.
 
 ### Store a PAT in the CLI
