@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.40](https://github.com/godaddy/cli/compare/v0.2.39...v0.2.40) (2026-11-19)
+
+
+### Features
+
+* **dns:** show priority, port, service and protocol in listings, delete previews and set results ([#379](https://github.com/godaddy/cli/issues/379)) ([e6a7346](https://github.com/godaddy/cli/commit/e6a7346c403654964e6218626893de04093e603b))
+* **platform-app:** set an application's distribution type on init and update ([#372](https://github.com/godaddy/cli/issues/372)) ([44a23dd](https://github.com/godaddy/cli/commit/44a23ddf9119cd21a8625451623c0c550c9d177f))
+
 ## [0.2.39](https://github.com/godaddy/cli/compare/v0.2.38...v0.2.39) (2026-11-18)
 
 
