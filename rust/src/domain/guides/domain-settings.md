@@ -4,7 +4,7 @@ summary: Manage settings on domains you already own, including auto-renew, trans
 
 # Manage domain settings with `gddy`
 
-This guide is for domains **you already own**. Use it to inspect a domain and change settings including auto-renewal, transfer lock, and nameservers.
+This guide is for domains you already own. Use it to inspect a domain and change settings including auto-renewal, transfer lock, and nameservers.
 
 To **register a new domain**, follow `gddy guide domain-purchase` instead. To manage **DNS records** (A, CNAME, MX, and so on), follow `gddy guide dns`.
 

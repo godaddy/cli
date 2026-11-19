@@ -4,18 +4,18 @@ summary: Quote, review, and purchase a domain with gddy
 
 # Buy a domain with `gddy`
 
-Registering a domain is a **two-step, quote-then-purchase** flow:
+Registering a domain is a two-step, quote-then-purchase flow:
 
 1. `gddy domain quote <domain>` locks a price and returns the legal agreements
    and a single-use **quote token** (valid ~10 minutes).
 2. `gddy domain purchase --quote-token <token> --agree --confirm` accepts that
    quote and registers the domain.
 
-A purchase is **paid and not reversible**, so `purchase` has two gates (`--agree`, `--confirm`) on top of the token. The quote token locks the registration price and settings you reviewed.
+A purchase is paid and not reversible, so `purchase` has two gates (`--agree`, `--confirm`) on top of the token. The quote token locks the registration price and settings you reviewed.
 
-**The quoted price doesn't include taxes and fees.** The ICANN fee and any applicable taxes are added when you register, so the total charged is higher than the price shown by `suggest`, `available` and `quote`. Whether tax applies depends on the billing address of your payment method. The `Premium Fees` column is something else: it lists the extra cost of a premium domain and is empty for a non-premium domain. Once the registration completes, `purchase` gives you the order ID, and `gddy shopping order get <order-id>` shows the total charged.
+The quoted price doesn't include taxes and fees. The ICANN fee and any applicable taxes are added when you register, so the total charged is higher than the price shown by `suggest`, `available` and `quote`. Whether tax applies depends on the billing address of your payment method. The `Premium Fees` column is something else: it lists the extra cost of a premium domain and is empty for a non-premium domain. Once the registration completes, `purchase` gives you the order ID, and `gddy shopping order get <order-id>` shows the total charged.
 
-Registration completes **asynchronously**: `purchase` submits the registration and waits briefly for the registry, reporting the operation's `status` (`COMPLETED` when done). The domain then shows up in `gddy domain list`. If `purchase` gives up waiting before reaching a terminal status, it will give you an operation ID which you can use to check its progress with:
+Registration completes asynchronously. `purchase` submits the registration and waits briefly for the registry, reporting the operation's `status` (`COMPLETED` when done). Then the domain displays in `gddy domain list`. If `purchase` gives up waiting before reaching a terminal status, it will give you an operation ID which you can use to check its progress with:
 `gddy domain operation status <operation-id>`.
 
 ## Quote and purchase a domain
