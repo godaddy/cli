@@ -56,7 +56,7 @@ Then run `gddy env set staging`, or pass `--env staging` to a single command.
 
 Settings that used to be ignored without a message now stop the command:
 
-- A malformed override, from an environment variable or `environments.toml`, fails with an error such as `field auth_url: "not-a-url" is not a valid http(s) URL`. It used to fall back to the default endpoint. A blank override still falls back to the default.
-- An unknown name for `--env` fails with an error that lists the known environments. Commands that look up an environment's API address, such as `gddy api` and `gddy hosting`, used to use the production address without telling you.
+- A malformed override, from an environment variable or `environments.toml`, fails with an error, for example `field auth_url: "not-a-url" is not a valid http(s) URL`. It used to fall back to the default endpoint. A blank override still falls back to the default.
+- An unknown name for `--env` fails with an error that lists the known environments. Commands that look up an environment's API address (`gddy api` and `gddy hosting`, for example) used to use the production address without telling you.
 
 If a script began failing after this upgrade, run it with `--debug` and check which environment variable or `--env` value it sets.
