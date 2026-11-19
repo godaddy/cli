@@ -15,6 +15,7 @@ mod add;
 mod add_extension;
 mod config;
 mod deploy;
+mod distribution_type;
 mod enablements;
 mod import;
 mod info;
