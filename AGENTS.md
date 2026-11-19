@@ -4,14 +4,9 @@ This is a command-line application. Source code is written in Rust and lives und
 
 ## Commands
 
-- **Build**: `cargo build`
-- **Run**: `cargo run -- <command>`
 - **Test**: `cargo test --workspace` (the workspace has a root package, so plain
   `cargo test` silently skips the `domains-client` and `generate-api-catalog`
   members — always pass `--workspace`)
-- **Lint**: `cargo clippy --workspace -- -D warnings`
-- **Format**: `cargo fmt`
-- **Check**: `cargo check --workspace`
 - **Refresh API specs**: `cargo run -p generate-api-catalog`
   — set `SKIP_DOMAINS_REFRESH` to skip the domains-client spec pull for
   local iteration without network access.
@@ -24,24 +19,9 @@ This is a command-line application. Source code is written in Rust and lives und
 - `cargo fmt --check` — must be clean
 - `./rust/scripts/check-module-size.sh` — must pass
 
-## Architecture
-
-GoDaddy CLI is a Rust binary (edition 2024) built using:
-
-- **cli-engine**: Command registration, auth (PKCE OAuth), credential storage, streaming
-- **clap**: Argument parsing (via cli-engine's `CommandSpec`/`GroupSpec`)
-- **reqwest**: HTTP client with rustls-tls
-- **serde_json**: JSON serialization and API payloads
-- **tokio**: Async runtime
-
 ## Code Style
 
-- **Rust edition 2024**. Follow existing patterns in the codebase.
-- Lints are enforced via `Cargo.toml` (`[lints.rust]` and `[lints.clippy]`):
-  - `unsafe_code = "deny"`, `unwrap_used = "deny"`, `exit = "deny"`
-  - Use `.expect("reason")` instead of `.unwrap()`
-  - No `println!`/`eprintln!` — use `tracing` or `cli-engine` event streams
-- Keep functions focused; avoid premature abstractions.
+- No `println!`/`eprintln!` — use `tracing` or `cli-engine` event streams.
 
 ## Shopping post-purchase actions
 
@@ -95,32 +75,7 @@ Full checklist: [Command authoring](./docs/command-authoring.md).
 [Code file structure](./docs/code-structure.md) for specifics.
 - CI fails any `.rs` file over 1000 lines. Split file exceeding this limit.
 
-## Key Concepts
-
-### Authentication
-
-- Handled entirely by `cli-engine` (PKCE OAuth flow, secure credential storage).
-- The `ctx.credential` field on `CommandContext` provides the current token.
-
-### Configuration
-
-- Application settings in TOML format (`godaddy.toml`, `godaddy.<env>.toml`).
-- Read/write via `crate::config::{read_config, write_config, config_path}`.
-
-### Extension security scanner
-
-- Pre-bundle AST scan in `extension/security/` (oxc): SEC001–SEC010, SEC012, plus
-  SEC011 package scripts (`scan_extension`).
-- Post-bundle regex scanner in `extension/security/mod.rs` (rule data in
-  `extension/security/rules.rs`).
-- Rules SEC101–SEC110 ported from the TS scanner; SEC111–SEC115 added in the
-  Rust port with no TS baseline (SEC111/SEC112/SEC115 block, SEC113/SEC114
-  warn). Uses `fancy-regex` for lookahead support.
-- `scan_extension(dir) -> Result<ScanReport, ScanError>`, `scan_bundle(content, path) -> Vec<Finding>`,
-  `is_blocked(findings) -> bool`.
-- Deploy runs pre-bundle scan before esbuild, then post-bundle scan on the artifact.
-
-### esbuild dependency
+## Extension bundling
 
 - The `bundle_extension` function spawns `esbuild` as a subprocess.
 - It searches `node_modules/.bin/esbuild` walking up from CWD, then falls back to PATH.

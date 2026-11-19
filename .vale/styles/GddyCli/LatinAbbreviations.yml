@@ -1,0 +1,18 @@
+# The swaps match the trailing space or comma and put it back, so a one-click fix
+# turns "e.g. the" into "for example the", not "for examplethe".
+extends: substitution
+message: "Use '%s' instead of '%s'."
+ignorecase: true
+# Re-case the replacement when the match starts a sentence ("E.g. " becomes "For example ").
+capitalize: true
+level: error
+nonword: true
+action:
+  name: replace
+swap:
+  '\b(?:eg|e\.g\.)\s': 'for example '
+  '\b(?:eg|e\.g\.),': 'for example,'
+  '\bviz\.\s': 'namely '
+  '\bviz\.,': 'namely,'
+  '\bergo\s': 'therefore '
+  '\bergo,': 'therefore,'

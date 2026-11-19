@@ -10,6 +10,7 @@ use shopping_client::types::{
 use crate::error::GddyError;
 use crate::next_action::next_action;
 use crate::shopping::client::{Checkout, ClientError, build_client};
+use crate::shopping::line_items::{DOMAIN_CATEGORY, domain_line_id, line_items};
 
 pub(crate) async fn make_client(ctx: &CommandContext) -> Result<shopping_client::Client> {
     crate::http::ensure_generated_client_transport_observer_registered();
@@ -81,6 +82,7 @@ pub(crate) fn update_response(checkout: Checkout) -> Result<Checkout> {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct CheckoutInput {
     pub(crate) items: Vec<String>,
+    pub(crate) domains: Vec<String>,
     pub(crate) currency: Option<String>,
     pub(crate) buyer_first_name: Option<String>,
     pub(crate) buyer_last_name: Option<String>,
@@ -91,11 +93,11 @@ pub(crate) struct CheckoutInput {
 
 impl CheckoutInput {
     pub(crate) fn create_body(&self) -> Result<CheckoutWritableRequest> {
-        if self.items.is_empty() {
-            return Err(
-                GddyError::validation("checkout create requires at least one --item")
-                    .into_cli_error(),
-            );
+        if !self.has_line_items() {
+            return Err(GddyError::validation(
+                "checkout create requires at least one --item or --domain",
+            )
+            .into_cli_error());
         }
         self.body()
     }
@@ -109,8 +111,8 @@ impl CheckoutInput {
         }
 
         let mut body = checkout_to_writable(checkout)?;
-        if !self.items.is_empty() {
-            body.line_items = line_items(&self.items)?;
+        if self.has_line_items() {
+            body.line_items = line_items(&self.items, &self.domains)?;
         }
         if let Some(currency) = &self.currency {
             let context = body
@@ -148,8 +150,12 @@ impl CheckoutInput {
         Ok(CheckoutWritableRequest(body))
     }
 
+    fn has_line_items(&self) -> bool {
+        !self.items.is_empty() || !self.domains.is_empty()
+    }
+
     fn has_update(&self) -> bool {
-        !self.items.is_empty()
+        self.has_line_items()
             || self.currency.is_some()
             || self.has_buyer_update()
             || self.payment_instrument.is_some()
@@ -163,7 +169,7 @@ impl CheckoutInput {
     }
 
     pub(crate) fn completion_body(&self) -> Result<CheckoutCompleteRequest> {
-        if !self.items.is_empty()
+        if self.has_line_items()
             || self.currency.is_some()
             || self.buyer_first_name.is_some()
             || self.buyer_last_name.is_some()
@@ -187,8 +193,8 @@ impl CheckoutInput {
 
     fn body(&self) -> Result<CheckoutWritableRequest> {
         let mut body = CheckoutWritableRequestSchema::default();
-        if !self.items.is_empty() {
-            body.line_items = line_items(&self.items)?;
+        if self.has_line_items() {
+            body.line_items = line_items(&self.items, &self.domains)?;
         }
         if let Some(currency) = &self.currency {
             body.context = Some(UcpRefsSchemaContext(Context {
@@ -263,14 +269,20 @@ fn checkout_to_writable(checkout: &Checkout) -> Result<CheckoutWritableRequestSc
 }
 
 fn writable_line_item(line_item: &LineItem) -> Result<UcpRefsSchemaLineItem> {
-    let item_id = line_item
-        .item
-        .as_ref()
-        .and_then(|item| item.id.clone())
-        .ok_or_else(|| {
-            GddyError::unexpected("checkout response contained a line item without an item ID")
-                .into_cli_error()
-        })?;
+    let item = line_item.item.as_ref().ok_or_else(|| {
+        GddyError::unexpected("checkout response contained a line item without an item ID")
+            .into_cli_error()
+    })?;
+    let (item_id, category) = match domain_line_id(item) {
+        Some(id) => (id, Some(DOMAIN_CATEGORY.to_owned())),
+        None => (
+            item.id.clone().ok_or_else(|| {
+                GddyError::unexpected("checkout response contained a line item without an item ID")
+                    .into_cli_error()
+            })?,
+            item.category.clone(),
+        ),
+    };
     let quantity = line_item.quantity.ok_or_else(|| {
         GddyError::unexpected("checkout response contained a line item without a quantity")
             .into_cli_error()
@@ -281,6 +293,7 @@ fn writable_line_item(line_item: &LineItem) -> Result<UcpRefsSchemaLineItem> {
         input: line_item.input.clone(),
         item: Some(Item {
             id: Some(item_id),
+            category,
             ..Default::default()
         }),
         parent_id: line_item.parent_id.clone(),
@@ -331,52 +344,6 @@ fn preserved_payment_body(
             ..Default::default()
         }],
     }))
-}
-
-fn line_items(items: &[String]) -> Result<Vec<UcpRefsSchemaLineItem>> {
-    items
-        .iter()
-        .map(|item| {
-            let (id, quantity) = parse_item(item)?;
-            Ok(UcpRefsSchemaLineItem(LineItem {
-                item: Some(Item {
-                    id: Some(id.to_owned()),
-                    ..Default::default()
-                }),
-                quantity: Some(quantity),
-                ..Default::default()
-            }))
-        })
-        .collect()
-}
-
-fn parse_item(value: &str) -> Result<(&str, std::num::NonZeroU64)> {
-    let value = value.trim();
-    let (id, quantity) = match value.rsplit_once('=') {
-        Some((id, quantity)) => {
-            let quantity = quantity.parse::<u64>().map_err(|_| {
-                GddyError::validation(format!(
-                    "invalid --item {value:?}: quantity after '=' must be a positive integer"
-                ))
-                .into_cli_error()
-            })?;
-            (id, quantity)
-        }
-        None => (value, 1),
-    };
-    let quantity = std::num::NonZeroU64::new(quantity).ok_or_else(|| {
-        GddyError::validation(format!(
-            "invalid --item {value:?}: item ID must be non-empty and quantity must be positive"
-        ))
-        .into_cli_error()
-    })?;
-    if id.trim().is_empty() {
-        return Err(GddyError::validation(format!(
-            "invalid --item {value:?}: item ID must be non-empty and quantity must be positive"
-        ))
-        .into_cli_error());
-    }
-    Ok((id.trim(), quantity))
 }
 
 fn nonblank_value<'a>(value: Option<&'a str>, error: &str) -> Result<&'a str> {
@@ -677,6 +644,80 @@ mod tests {
                 .as_ref()
                 .and_then(|item| item.id.clone()),
             Some("product-1".to_owned())
+        );
+    }
+
+    #[test]
+    fn builds_domain_checkout_body() {
+        let body = CheckoutInput {
+            domains: vec!["example.com:2yr".to_owned()],
+            currency: Some("USD".to_owned()),
+            ..CheckoutInput::default()
+        }
+        .create_body()
+        .expect("domain-only checkout should build");
+        assert_eq!(
+            serde_json::to_value(&body).expect("serialize")["line_items"],
+            serde_json::json!([{
+                "item": {"id": "example.com:2yr", "category": "domain"},
+                "quantity": 1
+            }])
+        );
+    }
+
+    #[test]
+    fn create_requires_an_item_or_a_domain() {
+        assert!(CheckoutInput::default().create_body().is_err());
+    }
+
+    #[test]
+    fn update_with_domains_replaces_items() {
+        let replaced = CheckoutInput {
+            items: vec!["product-2".to_owned()],
+            domains: vec!["example.net".to_owned()],
+            ..CheckoutInput::default()
+        }
+        .update_body(&checkout())
+        .expect("item and domain replacement should be valid");
+        let ids = replaced
+            .0
+            .line_items
+            .iter()
+            .filter_map(|line| line.0.item.as_ref()?.id.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, vec!["product-2", "example.net"]);
+    }
+
+    #[test]
+    fn unchanged_update_resends_a_domain_line_by_its_domain_name() {
+        let mut current = checkout();
+        current.line_items[0].item = Some(Item {
+            id: Some("domain".to_owned()),
+            common_name: Some("example.com".to_owned()),
+            title: Some(".com Domain Registration".to_owned()),
+            term: Some(shopping_client::types::ItemTerm {
+                number_of_terms: std::num::NonZeroU64::new(2),
+                term_type: Some("YEAR".to_owned()),
+            }),
+            ..Default::default()
+        });
+        current.line_items[0].quantity = std::num::NonZeroU64::new(1);
+        current.line_items[0].input = None;
+
+        let body = CheckoutInput {
+            buyer_email: Some("updated@example.test".to_owned()),
+            ..CheckoutInput::default()
+        }
+        .update_body(&current)
+        .expect("buyer update should be valid");
+
+        assert_eq!(
+            serde_json::to_value(&body).expect("serialize")["line_items"],
+            serde_json::json!([{
+                "id": "line-1",
+                "item": {"id": "example.com:2yr", "category": "domain"},
+                "quantity": 1
+            }])
         );
     }
 

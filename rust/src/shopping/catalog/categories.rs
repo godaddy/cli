@@ -179,7 +179,6 @@ fn categories(response: &CatalogSearchSearchResponse) -> Vec<String> {
         .iter()
         .flat_map(|product| product.categories.iter())
         .filter_map(|category| category.value.as_deref())
-        .filter(|category| !category.eq_ignore_ascii_case("domain"))
         .map(str::to_owned)
         .collect::<BTreeSet<_>>()
         .into_iter()
@@ -224,19 +223,19 @@ mod tests {
     }
 
     #[test]
-    fn derives_sorted_unique_non_domain_categories_from_products() {
+    fn derives_sorted_unique_categories_from_products() {
         let response = CatalogSearchSearchResponse {
             products: vec![
                 product_with_categories(&["webHosting", "email"]),
                 product_with_categories(&["email", "domain"]),
-                product_with_categories(&["DOMAIN", "sslCertificate"]),
+                product_with_categories(&["domain", "sslCertificate"]),
                 Product::default(),
             ],
             ..Default::default()
         };
         assert_eq!(
             categories(&response),
-            vec!["email", "sslCertificate", "webHosting"]
+            vec!["domain", "email", "sslCertificate", "webHosting"]
         );
     }
 

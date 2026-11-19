@@ -5,6 +5,7 @@ mod checkout;
 mod common;
 mod currency;
 mod human;
+mod line_items;
 mod money;
 mod order;
 mod product_actions;

@@ -74,6 +74,7 @@ pub(crate) fn refresh(
     capture_open_response_properties(&mut spec)?;
     preserve_dynamic_ucp_response_metadata(&mut spec)?;
     preserve_payment_instrument_fields(&mut spec)?;
+    preserve_domain_item_fields(&mut spec)?;
     add_idempotency_headers(&mut spec)?;
     prune_documentation_fields(&mut spec);
     crate::spec_normalize::add_required_response_descriptions(&mut spec);
@@ -274,6 +275,36 @@ fn preserve_payment_instrument_fields(spec: &mut Value) -> Result<()> {
     Ok(())
 }
 
+/// Checkout responses identify a domain line by `common_name` (its FQDN) and
+/// `term` while `id` holds a generic offer name, so a checkout update needs
+/// both to send the same domain and term back. The contract does not declare
+/// them yet.
+fn preserve_domain_item_fields(spec: &mut Value) -> Result<()> {
+    let properties = spec
+        .pointer_mut("/components/schemas/item/properties")
+        .and_then(Value::as_object_mut)
+        .context("Shopping item properties are missing")?;
+    for name in ["common_name", "display_name"] {
+        properties.insert(
+            name.to_owned(),
+            serde_json::json!({"type": "string", "ucp_request": "omit"}),
+        );
+    }
+    properties.insert("term".to_owned(), item_term_schema());
+    Ok(())
+}
+
+fn item_term_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "ucp_request": "omit",
+        "properties": {
+            "number_of_terms": {"type": "integer", "minimum": 1},
+            "term_type": {"type": "string"}
+        }
+    })
+}
+
 fn add_idempotency_headers(spec: &mut Value) -> Result<()> {
     let paths = spec
         .get_mut("paths")
@@ -445,7 +476,8 @@ mod tests {
 
     use super::{
         OPEN_RESPONSE_SCHEMAS, capture_open_response_properties, ensure_refs_resolved,
-        preserve_payment_instrument_fields, prune_documentation_fields, relax, repoint_schema_refs,
+        preserve_domain_item_fields, preserve_payment_instrument_fields,
+        prune_documentation_fields, relax, repoint_schema_refs,
     };
 
     #[test]
@@ -659,6 +691,27 @@ mod tests {
         let error = capture_open_response_properties(&mut spec).expect_err("schema is missing");
 
         assert!(error.to_string().contains("ssl_schema"), "{error}");
+    }
+
+    #[test]
+    fn preserving_domain_item_fields_adds_common_and_display_name() {
+        let mut spec = json!({
+            "components": {"schemas": {"item": {"properties": {"id": {"type": "string"}}}}}
+        });
+
+        preserve_domain_item_fields(&mut spec).expect("item schema is present");
+
+        let properties = spec
+            .pointer("/components/schemas/item/properties")
+            .expect("properties");
+        assert_eq!(properties["common_name"]["type"], "string");
+        assert_eq!(properties["display_name"]["type"], "string");
+        assert_eq!(
+            properties["term"]["properties"]["number_of_terms"]["type"],
+            "integer"
+        );
+        assert_eq!(properties["id"]["type"], "string");
+        assert!(preserve_domain_item_fields(&mut json!({})).is_err());
     }
 
     #[test]

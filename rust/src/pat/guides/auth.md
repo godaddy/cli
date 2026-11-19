@@ -6,8 +6,8 @@ summary: How authentication and authorization works with gddy
 
 The GoDaddy CLI supports two ways to authenticate:
 
-- **OAuth via `gddy auth login`** — interactive, browser-based login.
-- **Personal Access Token (PAT) via `gddy pat add`** — non-interactive, long-lived token. Best for CI/CD, scripts, and headless environments.
+- **OAuth with `gddy auth login`**: interactive, browser-based login.
+- **Personal Access Token (PAT) with `gddy pat add`**: non-interactive, long-lived token. Best for CI/CD, scripts, and headless environments.
 
 Both can be configured at the same time. Per environment, the CLI prefers a PAT when one is available; otherwise it falls back to OAuth (see [How the CLI chooses a credential](#how-the-cli-chooses-a-credential) for the full precedence order).
 
@@ -15,9 +15,9 @@ Each command that requires authentication also has a required set of permissions
 
 ## Interactive OAuth
 
-If a command requires authentication or permissions that have not yet been granted, `gddy` will open the browser to a GoDaddy login screen and will ask you for confirmation that you want to grant `gddy` permissions. If you do not yet have a GoDaddy account, you can register within the login screen.
+If a command requires authentication or permissions that haven't been granted yet, `gddy` opens the browser to a GoDaddy login screen. It asks you to confirm that you want to grant `gddy` permissions. If you don't have a GoDaddy account yet, you can register within the login screen.
 
-Once you have logged in, an access token is stored in your OS keychain (or a protected file fallback), and it is reused until it expires. If a command needs wider scopes, the CLI may re-prompt through the browser to grant those additional permissions.
+After you log in, `gddy` stores an access token in your OS keychain (or a protected file fallback) and reuses it until it expires. If a command needs wider scopes, the CLI may re-prompt through the browser to grant those additional permissions.
 
 If you want to authenticate in advance, you can explicitly run:
 
@@ -31,18 +31,18 @@ If you want to check your current authentication status, run `gddy auth status`.
 
 ## Personal Access Tokens
 
-Personal Access Tokens, or PATs, allow you to assign permissions to the CLI in cases where an interactive browser experience is not possible.
+Personal Access Tokens, or PATs, allow you to assign permissions to the CLI in cases where an interactive browser experience isn't possible.
 
-### Creating a PAT
+### Create a PAT
 
-1. Run `gddy pat create` (pass `--env <env>` for a non-prod environment) to open the Personal Access Token page for your environment in your browser. If the browser doesn't open, visit the URL the command prints — it already points at the right environment's Developer Portal, unlike the [prod-only page](https://developer.godaddy.com/personal-access-token) linked elsewhere in this guide.
+1. Run `gddy pat create` (pass `--env <env>` for a non-prod environment) to open the Personal Access Token page for your environment in your browser. If the browser doesn't open, visit the URL the command prints. It already points at the right environment's Developer Portal, unlike the [prod-only page](https://developer.godaddy.com/personal-access-token) linked elsewhere in this guide.
 2. Click **+ Generate Token**.
-3. In the **Generate personal access token** dialog, fill in a **Name**, an **Expiration** (in days), and the **Scopes** the token needs (see the [PAT scopes reference](https://developer.godaddy.com/en/docs/api-users/auth#pat-scopes) — e.g. `domains.domain:read`, `domains.dns:update`). A write-scoped token also satisfies reads for the same resource; a read-scoped token is refused on writes.
-4. Click **Generate Token**. The token is shown once in a "Copy your new token" dialog — copy it immediately. You can't retrieve it again from the Personal Access Token page; if you lose it, revoke it and generate a new one.
+3. In the **Generate personal access token** dialog, fill in a **Name**, an **Expiration** (in days), and the **Scopes** the token needs (see the [PAT scopes reference](https://developer.godaddy.com/en/docs/api-users/auth#pat-scopes); for example `domains.domain:read`, `domains.dns:update`). A write-scoped token also satisfies reads for the same resource; a read-scoped token is refused on writes.
+4. Click **Generate Token**. The token is shown once in a "Copy your new token" dialog. Copy it immediately. You can't retrieve it again from the Personal Access Token page; if you lose it, revoke it and generate a new one.
 
-### Storing a PAT in the CLI
+### Store a PAT in the CLI
 
-Read the token from stdin so it does not appear in shell history:
+Read the token from stdin so it stays out of shell history:
 
 ```sh
 echo 'gd_pat_...' | gddy pat add --env prod "CI token"
@@ -54,9 +54,9 @@ Alternatively, pass it explicitly:
 gddy pat add --env prod --token 'gd_pat_...' "CI token"
 ```
 
-PATs are saved to your platform's `gddy` configuration directory (e.g. `~/.config/gddy/pat.toml` on Linux) with owner-only permissions where the platform supports it (`0600`).
+PATs are saved to your platform's `gddy` configuration directory (for example `~/.config/gddy/pat.toml` on Linux) with owner-only permissions where the platform supports it (`0600`).
 
-### Listing and removing PATs
+### List and remove PATs
 
 List stored PATs (only the last four characters are shown):
 
@@ -70,9 +70,9 @@ Remove the PAT for an environment:
 gddy pat remove --env prod
 ```
 
-Removing the PAT from the CLI does **not** revoke it in the Developer Portal. To revoke it for real, go to the [Personal Access Token page](https://developer.godaddy.com/personal-access-token), click the trash icon next to the token, and confirm.
+Removing the PAT from the CLI **doesn't** revoke it in the Developer Portal. To revoke it for real, go to the [Personal Access Token page](https://developer.godaddy.com/personal-access-token), click the trash icon next to the token, and confirm.
 
-### Using PATs in CI
+### Use PATs in CI
 
 Instead of storing a PAT in the registry, supply it through an environment variable:
 
@@ -97,7 +97,7 @@ For each command, the CLI resolves credentials in this order:
 
 1. `GDDY_PAT_<ENV>` environment variable
 2. `GDDY_PAT` environment variable
-3. Stored PAT for the environment in the `gddy` configuration directory (e.g. `~/.config/gddy/pat.toml` on Linux)
+3. Stored PAT for the environment in the `gddy` configuration directory (for example `~/.config/gddy/pat.toml` on Linux)
 4. OAuth token from `gddy auth login` (browser flow)
 
 If a PAT is configured, the CLI sends it as:
@@ -106,11 +106,11 @@ If a PAT is configured, the CLI sends it as:
 Authorization: Bearer gd_pat_...
 ```
 
-The GoDaddy API gateway exchanges the PAT for a short-lived access token and enforces the PAT's scopes. If a command needs scopes the PAT does not grant, the API returns `403` and the CLI surfaces that error.
+The GoDaddy API gateway exchanges the PAT for a short-lived access token and enforces the PAT's scopes. If a command needs scopes the PAT doesn't grant, the API returns `403` and the CLI surfaces that error.
 
 ### Security notes
 
-- Treat PATs like passwords. Do not commit them to source control.
+- Treat PATs like passwords. Don't commit them to source control.
 - Prefer `GDDY_PAT_<ENV>` environment variables in CI over storing PATs in the registry file.
 - Regenerate leaked PATs on the [Personal Access Token page](https://developer.godaddy.com/personal-access-token) immediately.
-- The CLI only validates PAT format before storing, but it does **not** contact the API to verify the PAT is still active or has the scopes you need.
+- The CLI only validates PAT format before storing, but it **doesn't** contact the API to verify the PAT is still active or has the scopes you need.

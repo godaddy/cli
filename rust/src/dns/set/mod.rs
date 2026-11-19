@@ -9,7 +9,7 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 
 use super::list::build_list_output;
 use super::records::{
-    RecordOptions, RecordWriteArgs, fetch_records, v3_records, validate_caa_fields,
+    RecordOptions, RecordWriteArgs, detail_columns, fetch_records, v3_records, validate_caa_fields,
     validate_record_name, validate_svcb_fields, validate_tlsa_fields,
 };
 use super::records::{ZONE_AND_NAME, verified_result};
@@ -68,18 +68,26 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("created", "Created").align(Alignment::Right),
         TableColumn::new("deleted", "Deleted").align(Alignment::Right),
         TableColumn::new("action", "Action"),
-        TableColumn::new("records", "Records").nested(vec![
-            TableColumn::new("type", "Type").essential(true),
-            TableColumn::new("name", "Name"),
-            TableColumn::new("data", "Data").essential(true),
-            TableColumn::new("ttl", "TTL").align(Alignment::Right),
-            TableColumn::new("recordId", "Record ID"),
-        ]),
-        TableColumn::new("plan", "Plan").nested(vec![
-            TableColumn::new("action", "Action").essential(true),
-            TableColumn::new("recordId", "Record ID"),
-            TableColumn::new("data", "Data").essential(true),
-        ]),
+        TableColumn::new("records", "Records")
+            .hide_when_empty(true)
+            .nested({
+                let mut columns = vec![
+                    TableColumn::new("type", "Type").essential(true),
+                    TableColumn::new("name", "Name"),
+                    TableColumn::new("data", "Data").essential(true),
+                    TableColumn::new("ttl", "TTL").align(Alignment::Right),
+                ];
+                columns.extend(detail_columns());
+                columns.push(TableColumn::new("recordId", "Record ID"));
+                columns
+            }),
+        TableColumn::new("plan", "Plan")
+            .hide_when_empty(true)
+            .nested(vec![
+                TableColumn::new("action", "Action").essential(true),
+                TableColumn::new("recordId", "Record ID"),
+                TableColumn::new("data", "Data").essential(true),
+            ]),
     ]
 }
 
