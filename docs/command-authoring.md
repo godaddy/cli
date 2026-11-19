@@ -47,6 +47,10 @@ Users don't know our system names, API names or environments.
 ## 4. Guides (`guides/*.md`)
 
 - Structure: introduction (what you'll learn), concepts (what the CLI exposes, including entity relationships, opaque identifiers and consistent terminology), then task-oriented command sequences with any non-obvious step explained.
+- Concepts: put them under one `## Concepts` heading. Start with a lead-in, for example "The following terms and concepts are relevant to <topic>:", then list each term in bold, followed by a colon and its definition. Don't give each term its own sub-heading.
+- Lead-ins: every heading that holds sub-headings has a sentence before its first sub-heading. Don't number headings or write "Step N" headings.
+- Procedures: start the heading with a verb and say what it acts on ("Upload the source", not "Upload"). After the heading, write a lead-in, then numbered steps. Each step is one sentence that ends in a colon when a command or example follows. Put explanations in the lead-in, not between the steps.
+- Pointers: write "Go to X for Y", not "See X".
 - Update discovery metadata and any related proposal docs when command availability changes, so agent matching and documentation don't contradict shipped behavior.
 - Use soft line breaks in prose. The renderer wraps to the terminal width, and hard breaks look wrong in narrow terminals. Hard breaks are fine inside shell examples.
 - Describe what customers can do, not which APIs are being called.
