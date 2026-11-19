@@ -13,11 +13,11 @@ The following sections describe two terms relevant to this guide: a mailbox, and
 
 ### Mailbox
 
-A **mailbox** is a single email address (for example, `jane@example.com`) backed by GoDaddy Business Email. Each mailbox has its own credentials and storage. Provisioning a mailbox is asynchronous. The create command returns immediately and the mailbox becomes usable once `status` reaches `COMPLETED`.
+A mailbox is a single email address (for example, `jane@example.com`) backed by GoDaddy Business Email. Each mailbox has its own credentials and storage. Provisioning a mailbox is asynchronous. The create command returns immediately and the mailbox becomes usable once `status` reaches `COMPLETED`.
 
 ### Email plan or account
 
-An email plan or **account** (`accountId`) identifies an existing GoDaddy Business Email plan you already hold. Think of it as a container that can hold a mailbox. You might have zero, one, or several eligible accounts (for example, if you have bought more than one email plan). So `email create` needs to know which one to provision the new mailbox under.
+An email plan or account (`accountId`) identifies an existing GoDaddy Business Email plan you already hold. Think of it as a container that can hold a mailbox. You might have zero, one, or several eligible accounts (for example, if you have bought more than one email plan). So `email create` needs to know which one to provision the new mailbox under.
 
 When an account has `default: true` it's the recommended choice. Use it when you have no other preference.
 
