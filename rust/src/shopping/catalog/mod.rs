@@ -22,6 +22,18 @@ pub(super) fn checkout_create_action(env: &str, variant_id: &str, currency: &str
     .with_param("currency", NextActionParam::value(currency))
 }
 
+pub(super) fn checkout_create_domain_action(env: &str, domain: &str, currency: &str) -> NextAction {
+    next_action(
+        command_for_env(
+            env,
+            "checkout create --domain <domain> --currency <currency>",
+        ),
+        "Add the domain name to a checkout session.",
+    )
+    .with_param("domain", NextActionParam::value(domain))
+    .with_param("currency", NextActionParam::value(currency))
+}
+
 pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
         GroupSpec::new("catalog", "Explore GoDaddy's product catalog")

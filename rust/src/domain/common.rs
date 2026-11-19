@@ -170,7 +170,7 @@ pub(super) fn period_label(period: u64) -> String {
 /// that isn't all-numeric (ICANN disallows those). Returns the ASCII
 /// (punycode, lowercase) form `Host::parse` computed, so a name typed as
 /// Unicode or pre-encoded reaches the API identically.
-pub(super) fn validate_domain_name(raw: &str) -> Result<String> {
+pub(crate) fn validate_domain_name(raw: &str) -> Result<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err(CliCoreError::message("domain name is required"));
