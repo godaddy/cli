@@ -9,6 +9,8 @@ Creating a mailbox takes three commands: check eligibility, create the mailbox, 
 
 ## Key concepts
 
+Two terms matter for the rest of this guide: a mailbox, and an email plan or account.
+
 ### Mailbox
 
 A **mailbox** is a single email address (for example, `jane@example.com`) backed by GoDaddy Business Email. Each mailbox has its own credentials and storage. Provisioning a mailbox is asynchronous. The create command returns immediately and the mailbox becomes usable once `status` reaches `COMPLETED`.
@@ -208,6 +210,8 @@ Typical provisioning takes several seconds to a minute.
    ```
 
 ## Error handling
+
+These sections cover why the eligibility check or the create command can fail, the rules for the username in an email address, and other HTTP errors.
 
 ### Eligibility failure reasons
 
