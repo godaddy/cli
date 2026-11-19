@@ -9,7 +9,7 @@ The GoDaddy CLI supports two ways to authenticate:
 - **OAuth with `gddy auth login`**: interactive, browser-based login.
 - **Personal Access Token (PAT) with `gddy pat add`**: non-interactive, long-lived token. Best for CI/CD, scripts, and headless environments.
 
-Both can be configured at the same time. Per environment, the CLI prefers a PAT when one is available; otherwise it falls back to OAuth (go to [How the CLI chooses a credential](#how-the-cli-chooses-a-credential) for the full precedence order).
+Both can be configured at the same time. Per environment, the CLI prefers a PAT when one is available; otherwise it falls back to OAuth (go to the "How the CLI chooses a credential" section later in this guide for the full precedence order).
 
 Each command that requires authentication also has a required set of permissions, called scopes.
 
