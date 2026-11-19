@@ -1,0 +1,54 @@
+name: Breaking change docs
+
+# A pull request that marks a breaking change (a `!` in its title or a commit subject,
+# or a `BREAKING CHANGE:` footer) has to document it in the upgrade guide, so users
+# who upgrade know what to change. See .github/scripts/check-breaking-docs.sh for the
+# rules and .agents/skills/breaking-changes/SKILL.md for what to write.
+#
+# This runs on every pull request, with no `paths` filter, so it can be made a
+# required check without a skipped run leaving it pending. It uses `pull_request`
+# rather than `pull_request_target`: the script and guide it reads are the pull
+# request's own, and nothing from the pull request runs with write access. `edited`
+# re-runs it when the title changes.
+
+on:
+  # No branch filter, so a pull request stacked on another branch is checked too.
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  breaking-docs:
+    name: Breaking change docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Test the check
+        run: bash .github/scripts/check-breaking-docs-test.sh
+
+      - name: Check breaking changes are documented
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Passed through the environment, never interpolated into the script, so a
+          # title or commit message can't inject shell commands.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          commits_file=$(mktemp)
+          changed_files_file=$(mktemp)
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/commits" \
+            --jq '.[].commit.message' >"$commits_file"
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" \
+            --jq '.[].filename' >"$changed_files_file"
+          COMMITS_FILE=$commits_file CHANGED_FILES_FILE=$changed_files_file \
+            bash .github/scripts/check-breaking-docs.sh
