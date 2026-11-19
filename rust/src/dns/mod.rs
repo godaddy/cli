@@ -23,18 +23,15 @@ use cli_engine::{CliCoreError, GroupSpec, Module, RuntimeGroupSpec};
 mod add;
 mod conflicts;
 mod delete;
+mod failure;
 mod list;
 pub(crate) mod records;
 mod set;
 
-/// Partial add/set/delete failure: outcomes may mix validation, API, and
-/// transport errors, so this is classified as unexpected with a DNS-specific fix.
-pub(super) fn mutate_failed(message: impl Into<String>) -> CliCoreError {
-    crate::error::GddyError::unexpected(message)
-        .with_fix(
-            "Re-run with only the failed value(s), or use gddy dns list to inspect the current records.",
-        )
-        .into_cli_error()
+/// A failed add/set/delete: reported with the code of its failures' shared kind
+/// (see [`failure`]), or as unexpected when they differ.
+fn mutate_failed(failure: failure::MutateFailure) -> CliCoreError {
+    failure.into_cli_error()
 }
 
 pub fn module() -> Module {

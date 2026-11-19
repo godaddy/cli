@@ -2,7 +2,7 @@ use super::*;
 use httpmock::prelude::*;
 use serde_json::{Value, json};
 
-fn client_for(server: &MockServer) -> domains_client::Client {
+pub(super) fn client_for(server: &MockServer) -> domains_client::Client {
     domains_client::client_with_builder(
         reqwest::Client::builder(),
         &server.base_url(),

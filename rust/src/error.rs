@@ -11,45 +11,53 @@ use cli_engine::{CliCoreError, DetailedError};
 
 /// Stable agent-facing error codes.
 pub(crate) mod codes {
-    pub(crate) const NOT_FOUND: &str = "NOT_FOUND";
     pub(crate) const AMBIGUOUS_MATCH: &str = "AMBIGUOUS_MATCH";
-    pub(crate) const VALIDATION_ERROR: &str = "VALIDATION_ERROR";
-    pub(crate) const NETWORK_ERROR: &str = "NETWORK_ERROR";
     pub(crate) const AUTH_REQUIRED: &str = "AUTH_REQUIRED";
-    pub(crate) const ONBOARDING_REQUIRED: &str = "ONBOARDING_REQUIRED";
     pub(crate) const CONFIG_ERROR: &str = "CONFIG_ERROR";
+    pub(crate) const NETWORK_ERROR: &str = "NETWORK_ERROR";
+    pub(crate) const NOT_FOUND: &str = "NOT_FOUND";
+    pub(crate) const ONBOARDING_REQUIRED: &str = "ONBOARDING_REQUIRED";
+    pub(crate) const RECORD_EXISTS: &str = "RECORD_EXISTS";
+    pub(crate) const RECORD_NOT_FOUND: &str = "RECORD_NOT_FOUND";
     pub(crate) const SECURITY_BLOCKED: &str = "SECURITY_BLOCKED";
     pub(crate) const UNEXPECTED_ERROR: &str = "UNEXPECTED_ERROR";
+    pub(crate) const VALIDATION_ERROR: &str = "VALIDATION_ERROR";
+    pub(crate) const ZONE_NOT_FOUND: &str = "ZONE_NOT_FOUND";
 }
 
 mod fixes {
-    pub(super) const NOT_FOUND: &str =
-        "Use discovery commands such as: gddy platform app list or gddy platform action list.";
     pub(super) const AMBIGUOUS_MATCH: &str =
         "Narrow the query, or add --method, to match exactly one operation.";
-    pub(super) const VALIDATION: &str = "Review command arguments and try again with valid values.";
     pub(super) const AUTH: &str = "Run: gddy auth login";
+    pub(super) const CONFIG: &str = "Check your config with: gddy env info";
+    pub(super) const FORBIDDEN: &str = "You may lack permission for this resource. Confirm scopes with: gddy auth scope, or re-authenticate with: gddy auth login";
+    pub(super) const NETWORK_CLIENT: &str = "Check request path/query/body. Inspect error.details.response for API validation feedback.";
+    pub(super) const NETWORK_CONNECTIVITY: &str =
+        "Verify environment connectivity with: gddy env get and retry.";
+    pub(super) const NETWORK_GRAPHQL: &str = "Check GraphQL query, variables, and operationName. Inspect error.details.response.errors for resolver/validation details.";
+    pub(super) const NETWORK_SERVER: &str =
+        "The API is currently failing server-side. Retry, or check service health/incidents.";
+    pub(super) const NOT_FOUND: &str =
+        "Use discovery commands such as: gddy platform app list or gddy platform action list.";
+    /// Live `api call` 404: the requested URL/resource was not found (not a catalog miss).
+    pub(super) const NOT_FOUND_API: &str =
+        "Check the request path and parameters. Inspect the response body for details.";
+    pub(super) const NOT_FOUND_EMAIL: &str = "Use: gddy email list";
+    pub(super) const NOT_FOUND_HOSTING: &str = "Use: gddy hosting app list";
     pub(super) const ONBOARDING: &str =
         "Run: gddy platform app onboard, then retry after completion.";
-    pub(super) const FORBIDDEN: &str = "You may lack permission for this resource. Confirm scopes with: gddy auth scope, or re-authenticate with: gddy auth login";
-    pub(super) const CONFIG: &str = "Check your config with: gddy env info";
+    pub(super) const RECORD_EXISTS: &str = "List every record in the zone with: gddy dns list <domain>; a record of another type, such as a CNAME, can block the name. To replace records instead of adding, use: gddy dns set (add --replace-conflicting-types to remove a conflicting record of another type)";
+    pub(super) const RECORD_NOT_FOUND: &str =
+        "The record may already be gone. Inspect the current records with: gddy dns list <domain>";
     pub(super) const SECURITY: &str =
         "Resolve security findings and rerun: gddy platform app deploy --name <name>";
     pub(super) const UNEXPECTED: &str =
         "Run: gddy tree for command discovery and retry with corrected input.";
     pub(super) const UNEXPECTED_RESPONSE: &str =
         "The API returned an unexpected response body. Retry, or report this if it persists.";
-    pub(super) const NETWORK_CONNECTIVITY: &str =
-        "Verify environment connectivity with: gddy env get and retry.";
-    pub(super) const NETWORK_CLIENT: &str = "Check request path/query/body. Inspect error.details.response for API validation feedback.";
-    pub(super) const NETWORK_SERVER: &str =
-        "The API is currently failing server-side. Retry, or check service health/incidents.";
-    pub(super) const NETWORK_GRAPHQL: &str = "Check GraphQL query, variables, and operationName. Inspect error.details.response.errors for resolver/validation details.";
-    pub(super) const NOT_FOUND_HOSTING: &str = "Use: gddy hosting app list";
-    /// Live `api call` 404: the requested URL/resource was not found (not a catalog miss).
-    pub(super) const NOT_FOUND_API: &str =
-        "Check the request path and parameters. Inspect the response body for details.";
-    pub(super) const NOT_FOUND_EMAIL: &str = "Use: gddy email list";
+    pub(super) const VALIDATION: &str = "Review command arguments and try again with valid values.";
+    pub(super) const ZONE_NOT_FOUND: &str =
+        "Check the domain name, and that the account owns it, with: gddy domain list";
 }
 
 fn not_found_fix_for(system: &str) -> &'static str {
@@ -112,6 +120,25 @@ impl GddyError {
         Self::new(codes::AMBIGUOUS_MATCH, message).with_fix(fixes::AMBIGUOUS_MATCH)
     }
 
+    /// A DNS record the caller tried to add is already there (or its name is
+    /// taken by a record that cannot share it).
+    #[must_use]
+    pub(crate) fn record_exists(message: impl Into<String>) -> Self {
+        Self::new(codes::RECORD_EXISTS, message).with_fix(fixes::RECORD_EXISTS)
+    }
+
+    /// The DNS zone for the given domain does not exist for this account.
+    #[must_use]
+    pub(crate) fn zone_not_found(message: impl Into<String>) -> Self {
+        Self::new(codes::ZONE_NOT_FOUND, message).with_fix(fixes::ZONE_NOT_FOUND)
+    }
+
+    /// A DNS record the caller addressed does not exist.
+    #[must_use]
+    pub(crate) fn record_not_found(message: impl Into<String>) -> Self {
+        Self::new(codes::RECORD_NOT_FOUND, message).with_fix(fixes::RECORD_NOT_FOUND)
+    }
+
     #[must_use]
     pub(crate) fn validation(message: impl Into<String>) -> Self {
         Self::new(codes::VALIDATION_ERROR, message).with_fix(fixes::VALIDATION)
@@ -164,6 +191,18 @@ impl GddyError {
         } else {
             format!("HTTP error {status}: {body}")
         };
+        Self::from_status(status, message, system)
+    }
+
+    /// [`from_http`](Self::from_http) for a caller that has already written the
+    /// message: the status picks the code and fix, `message` is used as given.
+    #[must_use]
+    pub(crate) fn from_status(
+        status: u16,
+        message: impl Into<String>,
+        system: impl Into<String>,
+    ) -> Self {
+        let message = message.into();
         let system = system.into();
         match status {
             401 => Self::auth(message).with_system(system),
@@ -379,6 +418,17 @@ mod tests {
             "{:?}",
             server.error_fix()
         );
+    }
+
+    #[test]
+    fn record_exists_points_at_an_unfiltered_listing_so_a_blocking_cname_shows() {
+        let err = GddyError::record_exists("already there");
+        assert_eq!(err.error_code(), codes::RECORD_EXISTS);
+        let fix = err.error_fix().expect("fix");
+        // A listing filtered to the attempted type would hide a CNAME at the name.
+        assert!(fix.contains("gddy dns list <domain>;"), "{fix}");
+        assert!(!fix.contains("--type"), "{fix}");
+        assert!(fix.contains("--replace-conflicting-types"), "{fix}");
     }
 
     #[test]

@@ -6,6 +6,7 @@
 use domains_client::types;
 use serde_json::{Value, json};
 
+use super::super::failure::{DnsFailure, MutateFailure};
 use super::super::records::{RecordOptions, as_stored, change_entry, record_value, v3_record};
 use super::plan::SetAction;
 
@@ -19,7 +20,7 @@ pub(super) struct SetOutcome {
     /// The `--data` value (replace/create) or record id (delete).
     pub(super) detail: String,
     /// `Some(msg)` if the call failed.
-    pub(super) error: Option<String>,
+    pub(super) error: Option<DnsFailure>,
     /// The record's id: the one replaced, left alone or deleted. A created record
     /// has it in `new`.
     pub(super) record_id: Option<String>,
@@ -31,7 +32,7 @@ pub(super) struct SetOutcome {
 }
 
 impl SetOutcome {
-    pub(super) fn new(kind: &'static str, detail: String, error: Option<String>) -> Self {
+    pub(super) fn new(kind: &'static str, detail: String, error: Option<DnsFailure>) -> Self {
         Self {
             kind,
             detail,
@@ -100,7 +101,7 @@ pub(super) fn summarize_set_outcomes(
     record_type: &str,
     name: &str,
     outcomes: &[SetOutcome],
-) -> Result<Value, String> {
+) -> Result<Value, MutateFailure> {
     let failed = outcomes.iter().filter(|o| o.error.is_some()).count();
     let count = |k: &str| {
         outcomes
@@ -124,11 +125,14 @@ pub(super) fn summarize_set_outcomes(
             })
             .collect::<Vec<_>>()
             .join("\n");
-        return Err(format!(
-            "set for {name} ({record_type}) partially failed — {failed} of {} action(s):\n\
-             {breakdown}\n\nRe-run the original `gddy dns set` command, or `gddy dns list \
-             {domain} --type {record_type} --name {name}` to review the current state.",
-            outcomes.len(),
+        return Err(MutateFailure::new(
+            format!(
+                "set for {name} ({record_type}) partially failed — {failed} of {} action(s):\n\
+                 {breakdown}\n\nRe-run the original `gddy dns set` command, or `gddy dns list \
+                 {domain} --type {record_type} --name {name}` to review the current state.",
+                outcomes.len(),
+            ),
+            outcomes.iter().filter_map(|o| o.error.as_ref()),
         ));
     }
 
@@ -294,7 +298,11 @@ mod tests {
 
         let mixed = vec![
             SetOutcome::new("replaced", "9.9.9.9".into(), None),
-            SetOutcome::new("created", "8.8.8.8".into(), Some("422 bad".into())),
+            SetOutcome::new(
+                "created",
+                "8.8.8.8".into(),
+                Some("422 bad".to_string().into()),
+            ),
         ];
         let err = summarize_set_outcomes("example.com", "A", "www", &mixed).expect_err("a failure");
         assert!(err.contains("1 of 2"), "{err}");
