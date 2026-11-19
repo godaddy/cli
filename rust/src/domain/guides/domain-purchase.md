@@ -14,9 +14,9 @@ Registration completes asynchronously. `purchase` submits the registration and w
 
 ## Quote and purchase a domain
 
-To buy a domain, run up to four commands in order. The first two are optional. Quoting a domain gives you a single-use quote token, which locks in the price and the registration settings you review.
+To buy a domain, run up to four commands in order. The first two are optional. Quoting a domain gives you a single-use quote token, which locks in the price and the registration settings you review. After the steps, a section for each of suggestions, quote options and quote lifetime has the details.
 
-1. (_Optional_) Get name suggestions, from a seed word or phrase or with no phrase (go to *Find a name* for the options):
+1. (_Optional_) Get name suggestions, from a seed word or phrase or with no phrase:
 
    ```
    gddy domain suggest "avocado jewelry"
@@ -29,7 +29,7 @@ To buy a domain, run up to four commands in order. The first two are optional. Q
    gddy domain available example.com
    ```
 
-3. Quote the domain to review the terms and price and lock in your registration settings (go to *Quote options* for the settings):
+3. Quote the domain to review the terms and price and lock in your registration settings:
 
    ```
    gddy domain quote example.com
@@ -37,7 +37,7 @@ To buy a domain, run up to four commands in order. The first two are optional. Q
 
 4. Read the quote, which shows the price, the required legal agreements, the resolved contact and preference settings, and the `quoteToken` (with its `expiresAt`).
 
-5. Purchase the domain, accepting the agreements and confirming the charge (go to *Quote lifetime* for how long the quote lasts):
+5. Purchase the domain, accepting the agreements and confirming the charge:
 
    ```
    gddy domain purchase --quote-token <token> --agree --confirm
@@ -86,7 +86,7 @@ You can type a name either as Unicode (`münchen.de`) or in its encoded form (`x
 
 ## Contacts
 
-A registration has four contact roles: **registrant**, **admin**, **billing**, and **tech**. If you don't supply them, the API uses your GoDaddy account's default contacts, which is usually what you want. Contacts are part of the quote, so configure them *before* you quote.
+A registration has four contact roles: **registrant**, **admin**, **billing**, and **tech**. If you don't supply them, GoDaddy uses your account's default contacts, which is usually what you want. Contacts are part of the quote, so configure them *before* you quote.
 
 If you register many domains and want to set your own contacts once, save them in a `contacts.toml` in your `gddy` config directory. The quickest start is to generate a template and edit it:
 
