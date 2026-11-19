@@ -93,14 +93,14 @@ mod tests {
         let expected = manifest.expected_domains();
 
         assert_eq!(expected.len(), 24);
-        assert_eq!(manifest.remote.len(), 25);
+        assert_eq!(manifest.remote.len(), 26);
         assert_eq!(
             manifest
                 .remote
                 .iter()
                 .filter(|source| !source.catalog)
                 .count(),
-            1
+            2
         );
         assert!(manifest.local.is_empty());
     }

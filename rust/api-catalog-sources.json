@@ -103,6 +103,11 @@
       "repository": "domains.domain-lifecycle-specification"
     },
     {
+      "domain": "domain-connect",
+      "repository": "domains.domain-connections-specification",
+      "catalog": false
+    },
+    {
       "domain": "email",
       "repository": "email.mailbox-lifecycle-specification"
     }
