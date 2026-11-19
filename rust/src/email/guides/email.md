@@ -41,8 +41,6 @@ To create a mailbox, run three commands in order:
    gddy email get <mailboxId>
    ```
 
-The rest of this section describes each step in detail.
-
 ### Check eligibility
 
 Before creating a mailbox, verify the email address is eligible and discover which email plan can be used. The domain must be owned by the authenticated GoDaddy shopper.
