@@ -5,7 +5,7 @@
 use cli_engine::{
     Alignment, CliCoreError, CommandResult, NextAction, NextActionParam, TableColumn,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::domain::api_error;
 use crate::idn::DomainForm;
@@ -484,6 +484,12 @@ pub(super) const DETAIL_FIELDS: &[&str] = &[
 /// has a value for it, so a table of A and TXT records is unchanged while SRV,
 /// MX and CAA records bring the fields that distinguish them.
 pub(super) fn detail_columns() -> Vec<TableColumn> {
+    detail_columns_at("", "")
+}
+
+/// [`detail_columns`] for fields held in a nested object: `path` is prepended to
+/// each field name (`old.`) and `label` to each header (`Old `).
+fn detail_columns_at(path: &str, label: &str) -> Vec<TableColumn> {
     let numeric = ["priority", "weight", "port", "flag"];
     DETAIL_FIELDS
         .iter()
@@ -498,7 +504,8 @@ pub(super) fn detail_columns() -> Vec<TableColumn> {
                 "tag" => "Tag",
                 _ => "Parameters",
             };
-            let column = TableColumn::new(*field, header).hide_when_empty(true);
+            let column = TableColumn::new(format!("{path}{field}"), format!("{label}{header}"))
+                .hide_when_empty(true);
             if numeric.contains(field) {
                 column.align(Alignment::Right)
             } else {
@@ -518,6 +525,78 @@ pub(super) fn detail_values(rec: &types::DnsRecord) -> serde_json::Map<String, V
         .iter()
         .filter_map(|field| all.get(*field).map(|v| ((*field).to_owned(), v.clone())))
         .collect()
+}
+
+/// How a record is named in a plan entry and in per-record results
+pub(super) fn record_label_value(rec: &types::DnsRecord) -> Option<String> {
+    if rec.type_.as_str() == "TLSA" {
+        Some(merged_tlsa_data(rec)).filter(|text| !text.is_empty())
+    } else {
+        record_value(rec).map(str::to_owned)
+    }
+}
+
+/// A record as it appears in a plan entry's `old` or `new`
+pub(super) fn record_snapshot(rec: &types::DnsRecord) -> Value {
+    let mut row = detail_values(rec);
+    row.insert("type".to_owned(), json!(rec.type_.as_str()));
+    row.insert("data".to_owned(), json!(record_label_value(rec)));
+    row.insert("ttl".to_owned(), json!(rec.ttl));
+    Value::Object(row)
+}
+
+/// One entry of the `records` that `dns add`, `dns set` and `dns delete` report,
+/// whether the write is only previewed (`--dry-run`) or really done: what happens
+/// to one record (`create`, `replace`, `unchanged` or `delete`), the record's id
+/// (`null` for a create that has not been made yet), and the record before
+/// (`old`) and after (`new`), `null` where there is none.
+pub(super) fn change_entry(
+    action: &str,
+    record_id: Option<&str>,
+    old: Option<&types::DnsRecord>,
+    new: Option<&types::DnsRecord>,
+) -> Value {
+    json!({
+        "action": action,
+        "recordId": record_id,
+        "old": old.map(record_snapshot),
+        "new": new.map(record_snapshot),
+    })
+}
+
+/// Table columns for the `records` of a write (see [`change_entry`]): the action, the
+/// old and new value, the type-specific fields that tell records apart (only when
+/// some entry has them, like [`detail_columns`]), then TTLs and the record id.
+/// Column order is priority order — on a narrow terminal the last columns go first
+/// — so what identifies a record comes before what merely describes it.
+pub(super) fn change_columns() -> Vec<TableColumn> {
+    let mut columns = vec![
+        TableColumn::new("action", "Action").essential(true),
+        TableColumn::new("old.data", "Old").hide_when_empty(true),
+        TableColumn::new("new.data", "New").hide_when_empty(true),
+    ];
+    // What tells one record from another under the same name (an SRV's service and
+    // port, a CAA's tag) is never dropped to make room: a delete of several
+    // otherwise-identical rows is unreadable without it.
+    columns.extend(detail_columns_at("old.", "Old ").into_iter().map(|column| {
+        let identifies = matches!(
+            column.field.as_str(),
+            "old.service" | "old.port" | "old.tag"
+        );
+        column.essential(identifies)
+    }));
+    columns.extend(detail_columns_at("new.", "New "));
+    columns.extend([
+        TableColumn::new("old.ttl", "Old TTL")
+            .align(Alignment::Right)
+            .hide_when_empty(true),
+        TableColumn::new("new.ttl", "New TTL")
+            .align(Alignment::Right)
+            .hide_when_empty(true),
+        TableColumn::new("recordId", "Record ID"),
+        TableColumn::new("error", "Error").hide_when_empty(true),
+    ]);
+    columns
 }
 
 /// Whether two v3 records have the same content — every field except `ttl`
@@ -574,6 +653,36 @@ pub(super) fn comparable(record: &types::DnsRecord, compare_ttl: bool) -> Value 
         }
     }
     value
+}
+
+/// The record as the API will hold it once written, for a preview to show what a
+/// real run will return: names lower-cased, hostname-valued data lower-cased with
+/// a trailing dot, CAA data and TLSA hex lower-cased (the rules [`comparable`]
+/// compares by). Keeps the TTL and any recordId. A record that does not survive
+/// the round trip is returned as given.
+pub(super) fn as_stored(record: &types::DnsRecord) -> types::DnsRecord {
+    let mut value = comparable(record, true);
+    if let Some(fields) = value.as_object_mut() {
+        // `comparable` trims the dot off hostnames to compare them; the API keeps it.
+        // The root target `.` is all dot, so trimming leaves it empty; that is
+        // still a value to restore, unlike a record that had none.
+        let had_data = record.data.as_deref().is_some_and(|data| !data.is_empty());
+        if let Some(Value::String(data)) = fields.get_mut("data")
+            && had_data
+            && matches!(
+                record.type_.as_str(),
+                "ALIAS" | "CNAME" | "MX" | "SRV" | "HTTPS" | "SVCB"
+            )
+        {
+            data.push('.');
+        }
+    }
+    serde_json::from_value::<types::DnsRecord>(value)
+        .map(|stored| types::DnsRecord {
+            record_id: record.record_id.clone(),
+            ..stored
+        })
+        .unwrap_or_else(|_| record.clone())
 }
 
 /// Types the API stores under a composed name (`_service._proto.name` for SRV,
@@ -648,14 +757,12 @@ pub(super) async fn fetch_records(
     Ok(all)
 }
 
-/// Whether `wanted` names `record`: either the short name the record is listed
-/// under, or the composed name the API itself understands (`_service._proto.name`
-/// for SRV, `_port._proto.name` for TLSA), so a selector written either way finds
-/// it. Case does not matter.
-fn listed_name_matches(record: &types::DnsRecord, wanted: &str) -> bool {
-    if record.name.eq_ignore_ascii_case(wanted) {
-        return true;
-    }
+/// The name the API files a record under. For SRV (`_service._proto.name`) and
+/// TLSA (`_port._proto.name`) that is the composed owner, while a list response
+/// shows only the short `name` plus separate fields; every other type is filed
+/// under its own name. At the zone apex (`@`) the composed owner is the prefix
+/// alone. `None` for an SRV or TLSA record missing a field the prefix needs.
+pub(super) fn composed_owner(record: &types::DnsRecord) -> Option<String> {
     let prefix = match record.type_.as_str() {
         "SRV" => record
             .service
@@ -666,14 +773,21 @@ fn listed_name_matches(record: &types::DnsRecord, wanted: &str) -> bool {
             .port
             .zip(record.protocol.as_deref())
             .map(|(port, protocol)| format!("_{port}.{protocol}")),
-        _ => None,
-    };
-    // At the zone apex (`@`) the composed name is the prefix alone.
-    let composed = prefix.map(|prefix| match record.name.as_str() {
+        _ => return Some(record.name.clone()),
+    }?;
+    Some(match record.name.as_str() {
         "@" => prefix,
         name => format!("{prefix}.{name}"),
-    });
-    composed.is_some_and(|composed| composed.eq_ignore_ascii_case(wanted))
+    })
+}
+
+/// Whether `wanted` names `record`: either the short name the record is listed
+/// under, or the composed name the API itself understands (see
+/// [`composed_owner`]), so a selector written either way finds it. Case does not
+/// matter.
+fn listed_name_matches(record: &types::DnsRecord, wanted: &str) -> bool {
+    record.name.eq_ignore_ascii_case(wanted)
+        || composed_owner(record).is_some_and(|owner| owner.eq_ignore_ascii_case(wanted))
 }
 
 /// Next action pointing back at `dns list` to verify a write, pre-filled with
