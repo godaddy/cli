@@ -10,7 +10,7 @@ Managed WordPress on this platform is a WordPress site that lives inside an Airo
 
 The following terms and concepts are relevant to managed WordPress sites:
 
-**Site**: the WordPress app, created with `--app-type MHWP`. Unlike a Node.js app there is no source upload, no build and no deployment, and no PREVIEW environment. The site is provisioned ready to serve, in the United States, and is reachable at `urls.publish` on `app get` once creation completes. The display name you pass as `--name` labels the app in the CLI and in Airo App Builder; it doesn't become the WordPress site title.
+**Site**: the WordPress app, created with `--app-type MHWP`. Unlike a Node.js app there's no source upload, no build and no deployment, and no PREVIEW environment. The site is provisioned ready to serve, in the United States, and is reachable at `urls.publish` on `app get` after creation completes. The display name you pass as `--name` labels the app in the CLI and in Airo App Builder; it doesn't become the WordPress site title.
 
 **Placeholder page**: what the site shows instead of its content until it's taken live, and again after it's unpublished.
 
