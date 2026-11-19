@@ -5,11 +5,7 @@ summary: GoDaddy Business Email product and how to use the GoDaddy CLI to create
 
 This guide explains the GoDaddy Business Email product and how to use the GoDaddy CLI to create, and manage mailboxes.
 
-Creating a mailbox is a **three-step** flow:
-
-1. `gddy email check-eligibility --email <emailAddress>`: verify the address is eligible, find which account to use, and see which consents you need to give.
-2. `gddy email create --email <emailAddress>`: submit the provisioning request. Returns immediately with a mailbox ID.
-3. `gddy email get <mailboxId>`: poll until `status` is `COMPLETED`.
+Creating a mailbox takes three commands: check eligibility, create the mailbox, and poll until it's ready. Go to [Create a mailbox](#create-a-mailbox) for the steps.
 
 ## Key concepts
 
@@ -25,7 +21,29 @@ When an account has `default: true` it's the recommended choice. Use it when you
 
 ## Create a mailbox
 
-### Step 1: Check eligibility
+To create a mailbox, run three commands in order:
+
+1. Check eligibility to verify the address, find which account to use, and see which consents you need to give:
+
+   ```
+   gddy email check-eligibility --email <emailAddress>
+   ```
+
+2. Create the mailbox to submit the provisioning request, which returns a mailbox ID right away:
+
+   ```
+   gddy email create --email <emailAddress>
+   ```
+
+3. Poll the mailbox until `status` is `COMPLETED`:
+
+   ```
+   gddy email get <mailboxId>
+   ```
+
+The rest of this section describes each step in detail.
+
+### Check eligibility
 
 Before creating a mailbox, verify the email address is eligible and discover which email plan can be used. The domain must be owned by the authenticated GoDaddy shopper.
 
@@ -85,7 +103,7 @@ When the account has **no free-trial** plan, `requirements` is an empty array an
 
 **Failure (address can't be provisioned):** the command returns a 422 error with a `details` array explaining why. See [Eligibility failure reasons](#eligibility-failure-reasons) for the full list.
 
-### Step 2: Create the mailbox
+### Create the mailbox
 
 Pass the chosen `accountId` and one `--consent` for each `requirements[].type`:
 
@@ -153,7 +171,7 @@ The command returns `202 Accepted` immediately with the new mailbox at `status: 
 }
 ```
 
-### Step 3: Poll until ready
+### Poll until ready
 
 Use the `mailboxId` from the create response:
 
