@@ -5,15 +5,14 @@ summary: GoDaddy Business Email product and how to use the GoDaddy CLI to create
 
 This guide explains the GoDaddy Business Email product and how to use the GoDaddy CLI to create, and manage mailboxes.
 
-Creating a mailbox takes three commands: check eligibility, create the mailbox, and poll until it's ready. Go to [Create a mailbox](#create-a-mailbox) for the steps.
 
 ## Concepts
 
 The following terms and concepts are relevant to creating and managing mailboxes:
 
-**Mailbox**: a single email address (for example, `jane@example.com`) backed by GoDaddy Business Email. Each mailbox has its own credentials and storage. Provisioning a mailbox is asynchronous. The create command returns immediately and the mailbox becomes usable once `status` reaches `COMPLETED`.
+**Mailbox**: a single email address (for example, `jane@example.com`). Each mailbox has its own credentials and storage.
 
-**Email plan or account**: an existing GoDaddy Business Email plan you already hold, identified by `accountId`. Think of it as a container that can hold a mailbox. You might have zero, one, or several eligible accounts (for example, if you have bought more than one email plan). So `email create` needs to know which one to provision the new mailbox under. When an account has `default: true` it's the recommended choice. Use it when you have no other preference.
+**Email plan or account**: an email subscription plan you hold, identified by `accountId`. Think of it as a container that can hold one or more mailboxes. You can buy multiple accounts.
 
 ## Create a mailbox
 
@@ -46,7 +45,7 @@ The result lists each eligible account with these fields:
 | Field                             | Description                                                                                    |
 | --------------------------------- | ---------------------------------------------------------------------------------------------- |
 | `eligibleAccounts[].accountId`    | Pass to `--account-id` on `email create`.                                                      |
-| `eligibleAccounts[].default`      | `true` on the recommended account. Use this one when no specific preference.                   |
+| `eligibleAccounts[].default`      | `true` on the recommended account. Use this one if you have no preference.                   |
 | `eligibleAccounts[].requirements` | Legal agreements you must accept. Each `type` must be passed as `--consent` on `email create`. The array is empty when the account has no free-trial plan, and then you don't need `--consent`. |
 
 1. Run the eligibility check:
@@ -57,7 +56,7 @@ The result lists each eligible account with these fields:
 
 2. Read the result, which lists each eligible account (go to [Eligibility result](#eligibility-result) for an example).
 
-3. If the command fails with a 422 error, its message lists each reason as an issue code (go to [Eligibility failure reasons](#eligibility-failure-reasons) for the full list).
+3. If the command fails, go to [Eligibility failure reasons](#eligibility-failure-reasons) for an explanation of each error code.
 
 ### Create the mailbox
 
