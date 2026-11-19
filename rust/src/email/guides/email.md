@@ -171,7 +171,7 @@ After you've checked eligibility, create the mailbox with the account and consen
    }
    ```
 
-The mailbox **isn't ready to use yet**. Provisioning continues in the background; poll with `gddy email get` until `status` reaches `COMPLETED` (success) or `FAILED` (terminal error). Recommended poll interval is 2–4 seconds; don't poll faster than once per second.
+The mailbox isn't ready to use yet. Provisioning continues in the background; poll with `gddy email get` until `status` reaches `COMPLETED` (success) or `FAILED` (terminal error). Recommended poll interval is 2–4 seconds; don't poll faster than once per second.
 
 ### Poll until ready
 
