@@ -69,23 +69,23 @@ struct InitArgs {
     #[arg(long = "sync-pub-key-domain", value_name = "DOMAIN")]
     sync_pub_key_domain: Option<String>,
 
-    /// Domains customers may be sent back to after setup, e.g. acme.com
+    /// Domains customers may be sent back to after setup, comma-separated, e.g. acme.com,app.acme.com
     #[arg(long = "sync-redirect-domain", value_name = "DOMAINS")]
     sync_redirect_domain: Option<String>,
 
-    /// Turn off the one-step setup flow for this template (true or false)
+    /// Turn off the in-browser (synchronous) setup flow for this template (true or false)
     #[arg(long = "sync-block", value_name = "BOOL")]
     sync_block: Option<bool>,
 
-    /// Deprecated alias of --shared-provider-name (true or false)
+    /// Older form of --shared-provider-name; set both for DNS providers that only read this one (true or false)
     #[arg(long = "shared", value_name = "BOOL")]
     shared: Option<bool>,
 
-    /// Let the provider name be supplied when the template is applied (true or false)
+    /// Let extra text be added to the provider name when the template is applied (true or false)
     #[arg(long = "shared-provider-name", value_name = "BOOL")]
     shared_provider_name: Option<bool>,
 
-    /// Let the service name be supplied when the template is applied (true or false)
+    /// Let extra text be added to the service name when the template is applied (true or false)
     #[arg(long = "shared-service-name", value_name = "BOOL")]
     shared_service_name: Option<bool>,
 
