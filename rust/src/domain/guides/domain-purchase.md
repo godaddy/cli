@@ -22,14 +22,14 @@ Registration completes **asynchronously**: `purchase` submits the registration a
 
 To buy a domain, run up to four commands in order. The first two are optional. Quoting a domain gives you a quote token, which locks in the price and the registration settings you review.
 
-1. Get name suggestions (optional), from a seed word or phrase or with no phrase (go to [Find a name](#find-a-name) for the options):
+1. (_Optional_) Get name suggestions, from a seed word or phrase or with no phrase (go to [Find a name](#find-a-name) for the options):
 
    ```
    gddy domain suggest "avocado jewelry"
    gddy domain suggest
    ```
 
-2. Check availability (optional) to confirm a name and see its price:
+2. (_Optional_) Check availability to confirm a name and see its price:
 
    ```
    gddy domain available example.com
