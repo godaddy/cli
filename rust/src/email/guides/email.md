@@ -43,163 +43,173 @@ To create a mailbox, run three commands in order:
 
 ### Check eligibility
 
-Before creating a mailbox, verify the email address is eligible and discover which email plan can be used. The domain must be owned by the authenticated GoDaddy shopper.
+Before you create a mailbox, check that the email address is eligible and find which email plan to use. The domain must be owned by the authenticated GoDaddy shopper.
 
-```
-gddy email check-eligibility --email someone@example.com
-```
+1. Run the eligibility check:
 
-**Success (email address is eligible):** the command returns an `EligibilityResult`:
+   ```
+   gddy email check-eligibility --email someone@example.com
+   ```
 
-```json
-{
-  "isEligible": true,
-  "eligibleAccounts": [
-    {
-      "accountId": "00000000-0000-0000-0000-000000000001",
-      "mailboxType": "TITAN",
-      "accountName": "Professional Email",
-      "default": true,
-      "requirements": [
-        {
-          "type": "FREETRIAL_AUTORENEW",
-          "title": "Email auto renew",
-          "reference": "By creating your email you agree that after your trial ends on January 1, 2026, your email will auto-renew for $2.99/mo. Cancel anytime in Account Settings."
-        }
-      ]
-    }
-  ]
-}
-```
+2. Read the result, which has this shape for an eligible address:
 
-Key fields:
+   ```json
+   {
+     "isEligible": true,
+     "eligibleAccounts": [
+       {
+         "accountId": "00000000-0000-0000-0000-000000000001",
+         "mailboxType": "TITAN",
+         "accountName": "Professional Email",
+         "default": true,
+         "requirements": [
+           {
+             "type": "FREETRIAL_AUTORENEW",
+             "title": "Email auto renew",
+             "reference": "By creating your email you agree that after your trial ends on January 1, 2026, your email will auto-renew for $2.99/mo. Cancel anytime in Account Settings."
+           }
+         ]
+       }
+     ]
+   }
+   ```
 
-
-| Field                             | Description                                                                                    |
-| --------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `eligibleAccounts[].accountId`    | Pass to `--account-id` on `email create`.                                                      |
-| `eligibleAccounts[].default`      | `true` on the recommended account. Use this one when no specific preference.                   |
-| `eligibleAccounts[].requirements` | Legal agreements you must accept. Each `type` must be passed as `--consent` on `email create`. |
+   Key fields:
 
 
-When the account has **no free-trial** plan, `requirements` is an empty array and you don't need a `--consent` flag:
+   | Field                             | Description                                                                                    |
+   | --------------------------------- | ---------------------------------------------------------------------------------------------- |
+   | `eligibleAccounts[].accountId`    | Pass to `--account-id` on `email create`.                                                      |
+   | `eligibleAccounts[].default`      | `true` on the recommended account. Use this one when no specific preference.                   |
+   | `eligibleAccounts[].requirements` | Legal agreements you must accept. Each `type` must be passed as `--consent` on `email create`. |
 
-```json
-{
-  "isEligible": true,
-  "eligibleAccounts": [
-    {
-      "accountId": "00000000-0000-0000-0000-000000000002",
-      "mailboxType": "TITAN",
-      "accountName": "Professional Email Pro Plus",
-      "default": true,
-      "requirements": []
-    }
-  ]
-}
-```
 
-**Failure (address can't be provisioned):** the command returns a 422 error with a `details` array explaining why. See [Eligibility failure reasons](#eligibility-failure-reasons) for the full list.
+   When the account has **no free-trial** plan, `requirements` is an empty array and you don't need a `--consent` flag:
+
+   ```json
+   {
+     "isEligible": true,
+     "eligibleAccounts": [
+       {
+         "accountId": "00000000-0000-0000-0000-000000000002",
+         "mailboxType": "TITAN",
+         "accountName": "Professional Email Pro Plus",
+         "default": true,
+         "requirements": []
+       }
+     ]
+   }
+   ```
+
+3. If the command returns a 422 error, read its `details` array to see why the address can't be provisioned (go to [Eligibility failure reasons](#eligibility-failure-reasons) for the full list).
 
 ### Create the mailbox
 
-Pass the chosen `accountId` and one `--consent` for each `requirements[].type`:
+After you've checked eligibility, create the mailbox with the account and consents you chose.
 
-```
-gddy email create --email someone@example.com \
-  --account-id 00000000-0000-0000-0000-000000000001 \
-  --consent FREETRIAL_AUTORENEW
-```
+1. Run the create command with the chosen `accountId` and one `--consent` for each `requirements[].type`:
 
-`--consent` is repeatable. Pass one per required requirement type. `FREETRIAL_AUTORENEW` is the only requirement type the API issues. When `requirements` is empty, omit `--consent` entirely.
+   ```
+   gddy email create --email someone@example.com \
+     --account-id 00000000-0000-0000-0000-000000000001 \
+     --consent FREETRIAL_AUTORENEW
+   ```
 
-`--account-id` is optional when there is exactly one eligible account with `default: true`; the CLI will use it automatically.
+   `--consent` is repeatable. Pass one per required requirement type. `FREETRIAL_AUTORENEW` is the only requirement type the API issues. When `requirements` is empty, omit `--consent` entirely.
 
-`--first-name` and `--last-name` are optional; they set the display name on the mailbox.
+   `--account-id` is optional when there is exactly one eligible account with `default: true`; the CLI will use it automatically.
 
-The command returns `202 Accepted` immediately with the new mailbox at `status: EXECUTING` and the mailbox ID. The mailbox **isn't ready to use yet**. Provisioning continues in the background; poll with `gddy email get` until `status` reaches `COMPLETED` (success) or `FAILED` (terminal error). Recommended poll interval is 2–4 seconds; don't poll faster than once per second.
+   `--first-name` and `--last-name` are optional; they set the display name on the mailbox.
 
-**Example response (with consents):**
+2. Read the `202 Accepted` response, which returns immediately with the mailbox ID and `status: EXECUTING`:
 
-```json
-{
-  "mailboxId": "73e99614-0db5-46b1-8ea7-b5228a1fe7a6",
-  "emailAddress": "someone@example.com",
-  "mailboxType": "TITAN",
-  "firstName": "Jane",
-  "lastName": "Smith",
-  "displayName": "Jane Smith",
-  "status": "EXECUTING",
-  "createdAt": "2026-09-02T17:51:29Z",
-  "updatedAt": "2026-09-02T17:51:29Z",
-  "agreements": [
-    {
-      "type": "FREETRIAL_AUTORENEW",
-      "agreed": true
-    }
-  ],
-  "links": [
-    {
-      "rel": "self",
-      "href": "/v1/email/mailboxes/73e99614-0db5-46b1-8ea7-b5228a1fe7a6"
-    }
-  ]
-}
-```
+   The mailbox **isn't ready to use yet**. Provisioning continues in the background; poll with `gddy email get` until `status` reaches `COMPLETED` (success) or `FAILED` (terminal error). Recommended poll interval is 2–4 seconds; don't poll faster than once per second.
 
-**Example response (no consents required):**
+   **Example response (with consents):**
 
-```json
-{
-  "mailboxId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "emailAddress": "someone@example.com",
-  "mailboxType": "TITAN",
-  "firstName": "Jane",
-  "lastName": "Smith",
-  "displayName": "Jane Smith",
-  "status": "EXECUTING",
-  "createdAt": "2026-09-02T17:51:29Z",
-  "updatedAt": "2026-09-02T17:51:29Z",
-  "links": [
-    {
-      "rel": "self",
-      "href": "/v1/email/mailboxes/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-    }
-  ]
-}
-```
+   ```json
+   {
+     "mailboxId": "73e99614-0db5-46b1-8ea7-b5228a1fe7a6",
+     "emailAddress": "someone@example.com",
+     "mailboxType": "TITAN",
+     "firstName": "Jane",
+     "lastName": "Smith",
+     "displayName": "Jane Smith",
+     "status": "EXECUTING",
+     "createdAt": "2026-09-02T17:51:29Z",
+     "updatedAt": "2026-09-02T17:51:29Z",
+     "agreements": [
+       {
+         "type": "FREETRIAL_AUTORENEW",
+         "agreed": true
+       }
+     ],
+     "links": [
+       {
+         "rel": "self",
+         "href": "/v1/email/mailboxes/73e99614-0db5-46b1-8ea7-b5228a1fe7a6"
+       }
+     ]
+   }
+   ```
+
+   **Example response (no consents required):**
+
+   ```json
+   {
+     "mailboxId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+     "emailAddress": "someone@example.com",
+     "mailboxType": "TITAN",
+     "firstName": "Jane",
+     "lastName": "Smith",
+     "displayName": "Jane Smith",
+     "status": "EXECUTING",
+     "createdAt": "2026-09-02T17:51:29Z",
+     "updatedAt": "2026-09-02T17:51:29Z",
+     "links": [
+       {
+         "rel": "self",
+         "href": "/v1/email/mailboxes/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+       }
+     ]
+   }
+   ```
 
 ### Poll until ready
 
-Use the `mailboxId` from the create response:
+Typical provisioning takes several seconds to a minute.
 
-```
-gddy email get 73e99614-0db5-46b1-8ea7-b5228a1fe7a6
-```
+1. Run `gddy email get` with the `mailboxId` from the create response:
 
-Repeat until `status` in the response is `COMPLETED` or `FAILED`. Typical provisioning takes several seconds to a minute. On `FAILED`, there is no automatic retry. Resubmit the creation request if appropriate.
+   ```
+   gddy email get 73e99614-0db5-46b1-8ea7-b5228a1fe7a6
+   ```
 
-**Example response (**`COMPLETED`**):**
+2. Repeat until `status` in the response is `COMPLETED` or `FAILED`:
 
-```json
-{
-  "mailboxId": "73e99614-0db5-46b1-8ea7-b5228a1fe7a6",
-  "emailAddress": "someone@example.com",
-  "mailboxType": "TITAN",
-  "firstName": "Jane",
-  "lastName": "Smith",
-  "displayName": "Jane Smith",
-  "status": "COMPLETED",
-  "createdAt": "2026-09-02T17:51:29Z",
-  "updatedAt": "2026-09-02T17:51:50Z",
-  "links": [
-    {
-      "rel": "self",
-      "href": "/v1/email/mailboxes/73e99614-0db5-46b1-8ea7-b5228a1fe7a6"
-    }
-  ]
-}
-```
+   On `FAILED`, there is no automatic retry. Resubmit the creation request if appropriate.
+
+   **Example response (**`COMPLETED`**):**
+
+   ```json
+   {
+     "mailboxId": "73e99614-0db5-46b1-8ea7-b5228a1fe7a6",
+     "emailAddress": "someone@example.com",
+     "mailboxType": "TITAN",
+     "firstName": "Jane",
+     "lastName": "Smith",
+     "displayName": "Jane Smith",
+     "status": "COMPLETED",
+     "createdAt": "2026-09-02T17:51:29Z",
+     "updatedAt": "2026-09-02T17:51:50Z",
+     "links": [
+       {
+         "rel": "self",
+         "href": "/v1/email/mailboxes/73e99614-0db5-46b1-8ea7-b5228a1fe7a6"
+       }
+     ]
+   }
+   ```
 
 ## Error handling
 
