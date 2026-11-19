@@ -14,7 +14,7 @@ The following terms and concepts are relevant to deploying a Node.js application
 
 **Environments**: each app has PREVIEW (staging) and PUBLISH (production). The CLI calls this `variant`. Uploads land on PREVIEW. `deployment publish` promotes that build to PUBLISH.
 
-**Subscription**: a hosting plan you already bought (resources and billing). Attach the app to one before the first publish. Don't have one? See *Buy a plan*.
+**Subscription**: a hosting plan you already bought (resources and billing). Attach the app to one before the first publish. Don't have one? Go to *Buy a plan*.
 
 **Slot**: available space within a subscription for an attached app. Each app attached to a subscription takes up one slot, and a given subscription can have one or more slots.
 
@@ -51,7 +51,7 @@ When zipping your project, exclude the `node_modules` directory.
 
 For a full list of application requirements and instructions on preparing a `.zip` file for uploading, go to [Node.js app requirements](https://developer.godaddy.com/en/docs/api-users/hosting/app-requirements).
 
-## Upload
+## Upload the source
 
 Deploys code to the app's PREVIEW environment. You can run this again to replace what was uploaded before.
 
@@ -65,7 +65,7 @@ Poll the import until COMPLETED:
 gddy hosting source status --app-id <app-id> --import-id <import-id>
 ```
 
-## Preview
+## Preview the app
 
 Once the import is COMPLETED the app is live on its PREVIEW URL. Retrieve it:
 
@@ -92,7 +92,7 @@ gddy hosting subscription attach --app-id <app-id> --subscription-id <subscripti
 
 If several plans have open slots, pick the one you want.
 
-If `totalAvailableSlots` is 0, see *Buy a plan*.
+If `totalAvailableSlots` is 0, go to *Buy a plan*.
 
 Skip this on later deploys.
 
@@ -108,13 +108,13 @@ AI assistants: if an existing plan has an open slot, tell the user and let them 
 
 When the order completes, poll `gddy hosting subscription list --hosting-product=WEB_HOSTING` until a plan with a free slot shows up whose `subscriptionId` wasn't in the list before checkout. Attach the app to that plan.
 
-## Publish
+## Publish the app
 
 ```sh
 gddy hosting deployment publish --app-id <app-id>
 ```
 
-If publish returns `WH_PLAN_REQUIRED`, the app has no plan. See *Attach a plan*.
+If publish returns `WH_PLAN_REQUIRED`, the app has no plan. Go to *Attach a plan*.
 
 Poll until COMPLETED:
 
@@ -142,7 +142,7 @@ For a CUSTOM domain whose DNS **isn't** on GoDaddy, poll `hosting domain get` an
 
 Keep polling until `verificationStatus` is `ACTIVE`. `cdnStatus` follows CDN provisioning (`INIT` → `PENDING` → `ACTIVE`).
 
-## Redeploy
+## Redeploy the app
 
 Upload the source again, wait for the import to complete, then publish again. Skip *Create the app* and *Attach a plan*.
 
