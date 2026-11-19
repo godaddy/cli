@@ -111,6 +111,20 @@ check "from 1.0 on, a missing section names the major line" 1 \
   "feat(dns)!: x" "feat: x"$'\n' "$touched" 1.4.2 "$guide_02_to_03" \
   "## 1 to 2"
 
+action_only=$'action/action.yml\naction/install.sh\n'
+check "a breaking change to only the action needs no CLI notes" 0 \
+  "fix(action)!: rename the version input" "fix(action): x"$'\n' "$action_only" 0.2.39 "$guide_old_only" \
+  "doesn't change anything under rust/"
+check "a breaking footer on an action-only change needs no CLI notes" 0 \
+  "fix(action): rename the version input" $'fix(action): x\n\nBREAKING CHANGE: the input is renamed.\n' "$action_only" 0.2.39 "$guide_old_only"
+check "a breaking change touching both the action and the CLI needs CLI notes" 1 \
+  "fix!: rename it everywhere" "fix: x"$'\n' $'action/action.yml\nrust/src/dns/add.rs\n' 0.2.39 "$guide_02_to_03" \
+  "## 0.2 to 0.3"
+check "a breaking change touching only docs and workflows needs no CLI notes" 0 \
+  "ci!: change the runner" "ci: x"$'\n' $'.github/workflows/cicd.yml\ndocs/maintainers.md\n' 0.2.39 "$guide_old_only"
+check "a directory that only starts like the CLI path does not count" 0 \
+  "fix!: x" "fix: x"$'\n' $'rustic/notes.md\n' 0.2.39 "$guide_old_only"
+
 check "an unreadable version is an error" 2 \
   "fix(dns)!: x" "x"$'\n' "$touched" "not-a-version" "$guide_02_to_03" \
   "Can't read the crate version"
