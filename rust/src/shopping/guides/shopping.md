@@ -1,5 +1,5 @@
 ---
-summary: Find GoDaddy products, create a checkout session with products, complete purchase, and review orders.
+summary: Find GoDaddy products and domain names, create a checkout session, complete purchase, and review orders.
 ---
 
 # Shopping for GoDaddy Products
@@ -101,6 +101,29 @@ gddy shopping checkout update <checkout-id> \
   --item <purchase-option-id> \
   --buyer-email jane.doe@example.com
 ```
+
+## Buy a domain name
+
+Check the availability and price of one or more domain names. Repeat `--domain` for each name:
+
+```bash
+gddy shopping catalog search --domain example.com --domain example.net
+```
+
+Add an available domain name to a checkout session with `--domain`. Append `:<YEARS>yr` to choose a registration term; the terms you can choose depend on the domain ending. Repeat `--domain` for more names, and combine it with `--item` to buy domains and other products together:
+
+```bash
+gddy shopping checkout create --domain example.com
+gddy shopping checkout create --domain example.com:2yr --item <purchase-option-id>
+```
+
+`checkout update` accepts `--domain` too. Like `--item`, it replaces all items in the checkout session, so list every item and domain you want to keep:
+
+```bash
+gddy shopping checkout update <checkout-id> --domain example.com --domain example.net
+```
+
+Then review the checkout session and place the order the same way as for any other product. To choose a domain's registration settings, such as privacy or contacts, before you buy it, use `gddy domain quote` and `gddy domain purchase` instead. See `gddy guide domain-purchase`.
 
 ## Place an order
 
