@@ -14,7 +14,7 @@ The following terms and concepts are relevant to deploying a Node.js application
 
 **Environments**: each app has PREVIEW (staging) and PUBLISH (production). The CLI calls this `variant`. Uploads land on PREVIEW. `deployment publish` promotes that build to PUBLISH.
 
-**Subscription**: a hosting plan you already bought (resources and billing). Attach the app to one before the first publish. Don't have one? Go to *Buy a plan*.
+**Subscription**: a hosting plan you already bought (resources and billing). Attach the app to one before the first publish. Don't have one? Go to the "Buy a plan" section later in this guide.
 
 **Slot**: available space within a subscription for an attached app. Each app attached to a subscription takes up one slot, and a given subscription can have one or more slots.
 
@@ -92,7 +92,7 @@ gddy hosting subscription attach --app-id <app-id> --subscription-id <subscripti
 
 If several plans have open slots, pick the one you want.
 
-If `totalAvailableSlots` is 0, go to *Buy a plan*.
+If `totalAvailableSlots` is 0, go to the "Buy a plan" section later in this guide.
 
 Skip this on later deploys.
 
@@ -114,7 +114,7 @@ When the order completes, poll `gddy hosting subscription list --hosting-product
 gddy hosting deployment publish --app-id <app-id>
 ```
 
-If publish returns `WH_PLAN_REQUIRED`, the app has no plan. Go to *Attach a plan*.
+If publish returns `WH_PLAN_REQUIRED`, the app has no plan. Go to the "Attach a plan" section earlier in this guide.
 
 Poll until COMPLETED:
 
@@ -144,7 +144,7 @@ Keep polling until `verificationStatus` is `ACTIVE`. `cdnStatus` follows CDN pro
 
 ## Redeploy the app
 
-Upload the source again, wait for the import to complete, then publish again. Skip *Create the app* and *Attach a plan*.
+Upload the source again, wait for the import to complete, then publish again. Skip the "Create the app" and "Attach a plan" sections.
 
 ## Other commands
 
