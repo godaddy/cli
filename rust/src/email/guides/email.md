@@ -7,19 +7,13 @@ This guide explains the GoDaddy Business Email product and how to use the GoDadd
 
 Creating a mailbox takes three commands: check eligibility, create the mailbox, and poll until it's ready. Go to [Create a mailbox](#create-a-mailbox) for the steps.
 
-## Key concepts
+## Concepts
 
-The following sections describe two terms relevant to this guide: a mailbox, and an email plan or account.
+The following terms and concepts are relevant to creating and managing mailboxes:
 
-### Mailbox
+**Mailbox**: a single email address (for example, `jane@example.com`) backed by GoDaddy Business Email. Each mailbox has its own credentials and storage. Provisioning a mailbox is asynchronous. The create command returns immediately and the mailbox becomes usable once `status` reaches `COMPLETED`.
 
-A mailbox is a single email address (for example, `jane@example.com`) backed by GoDaddy Business Email. Each mailbox has its own credentials and storage. Provisioning a mailbox is asynchronous. The create command returns immediately and the mailbox becomes usable once `status` reaches `COMPLETED`.
-
-### Email plan or account
-
-An email plan or account (`accountId`) identifies an existing GoDaddy Business Email plan you already hold. Think of it as a container that can hold a mailbox. You might have zero, one, or several eligible accounts (for example, if you have bought more than one email plan). So `email create` needs to know which one to provision the new mailbox under.
-
-When an account has `default: true` it's the recommended choice. Use it when you have no other preference.
+**Email plan or account**: an existing GoDaddy Business Email plan you already hold, identified by `accountId`. Think of it as a container that can hold a mailbox. You might have zero, one, or several eligible accounts (for example, if you have bought more than one email plan). So `email create` needs to know which one to provision the new mailbox under. When an account has `default: true` it's the recommended choice. Use it when you have no other preference.
 
 ## Create a mailbox
 
