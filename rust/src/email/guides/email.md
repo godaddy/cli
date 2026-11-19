@@ -9,7 +9,7 @@ Creating a mailbox takes three commands: check eligibility, create the mailbox, 
 
 ## Key concepts
 
-Two terms matter for the rest of this guide: a mailbox, and an email plan or account.
+The following sections describe two terms relevant to this guide: a mailbox, and an email plan or account.
 
 ### Mailbox
 
