@@ -61,7 +61,7 @@ The result lists each eligible account with these fields:
    gddy email check-eligibility --email someone@example.com
    ```
 
-2. Read the result, which has this shape for an eligible address:
+2. Read the result, which follows this shape for an eligible address:
 
    ```json
    {
