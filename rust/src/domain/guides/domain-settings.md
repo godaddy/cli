@@ -35,7 +35,7 @@ gddy domain auto-renew set example.com --enable
 gddy domain auto-renew set example.com --disable
 ```
 
-Pass exactly one of `--enable` or `--disable`. Turning auto-renew off means the domain won't renew on its own. You would need to renew it before expiry if you want to keep it.
+Pass exactly one of `--enable` or `--disable`. Turning auto-renew off means the domain won't renew on its own. Renew it before it expires if you want to keep it.
 
 ## Transfer lock
 
