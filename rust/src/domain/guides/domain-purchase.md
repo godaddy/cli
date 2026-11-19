@@ -68,9 +68,9 @@ To buy a domain, run up to four commands in order. The first two are optional. T
 
 AI assistants: Before using `--agree` or `--confirm`, show the end user the quoted price from `domain quote` (including any premium fees), tell them that taxes and fees such as the ICANN fee are added on top so the total charged will be higher, and show each required legal agreement's title and URL (from `quote`'s `requiredAgreements`), and obtain their explicit confirmation to proceed. The user must be able to click through and read the agreements. Do not infer confirmation from a general request to buy or register a domain.
 
-## Buying with other products
+## Buy a domain with other products
 
-To buy a domain together with other GoDaddy products, or to pay with the same checkout session as them, use `gddy shopping checkout create --domain <domain>` instead. That path uses your account's default registration settings. See `gddy guide shopping`.
+To buy a domain together with other GoDaddy products, or to pay with the same checkout session as them, use `gddy shopping checkout create --domain <domain>` instead. That path uses your account's default registration settings. Go to `gddy guide shopping` for the details.
 
 ## International domain names
 
