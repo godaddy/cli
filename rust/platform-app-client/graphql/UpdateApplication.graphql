@@ -6,6 +6,7 @@ mutation UpdateApplication($id: String!, $input: MutationUpdateApplicationInput!
     name
     description
     status
+    distributionType
     url
     proxyUrl
     authorizationScopes

@@ -18,7 +18,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             )
             .with_system("applications")
             .with_tier(Tier::Read)
-            .with_default_fields("name,label,status")
+            .with_default_fields("name,label,status,distributionType")
             .with_output_schema::<ApplicationSummary>()
             .with_pagination(PaginationConfig::new(0, 200)),
         |ctx| async move {

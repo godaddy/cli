@@ -5,6 +5,7 @@ query ApplicationWithLatestRelease($name: String!) {
     name
     description
     status
+    distributionType
     url
     proxyUrl
     authorizationScopes

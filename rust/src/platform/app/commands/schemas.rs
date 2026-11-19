@@ -8,6 +8,7 @@ output_schema!(ApplicationSummary {
     "label": "string", optional;
     "description": "string", optional;
     "status": "string";
+    "distributionType": "string";
     "url": "string", optional;
     "proxyUrl": "string", optional;
 });
@@ -16,6 +17,7 @@ output_schema!(ApplicationInit {
     "id": "string";
     "name": "string";
     "status": "string";
+    "distributionType": "string";
     "clientId": "string";
     "orgId": "string", optional;
     "url": "string";
@@ -38,6 +40,7 @@ output_schema!(ApplicationImport {
     "id": "string";
     "name": "string";
     "status": "string";
+    "distributionType": "string";
     "clientId": "string";
     "url": "string";
     "proxyUrl": "string";
@@ -54,6 +57,7 @@ output_schema!(ApplicationUpdate {
     "label": "string", optional;
     "description": "string", optional;
     "status": "string";
+    "distributionType": "string";
     "url": "string", optional;
     "proxyUrl": "string", optional;
     "authorizationScopes": "[]string";
