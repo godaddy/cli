@@ -40,13 +40,21 @@ To create a mailbox, run three commands in order:
 
 Before you create a mailbox, check that the email address is eligible and find which email plan to use. The domain must be owned by the authenticated GoDaddy shopper.
 
-The result lists each eligible account with these fields:
+The CLI prints the result under `data`, with `next_actions`, a list of suggested follow-up commands, next to it. The result lists each eligible account with these fields:
 
-| Field                             | Description                                                                                    |
-| --------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `eligibleAccounts[].accountId`    | Pass to `--account-id` on `email create`.                                                      |
-| `eligibleAccounts[].default`      | `true` on the recommended account. Use this one if you have no preference.                   |
-| `eligibleAccounts[].requirements` | Legal agreements you must accept. Each `type` must be passed as `--consent` on `email create`. The array is empty when the account has no free-trial plan, and then you don't need `--consent`. |
+| Field | Description |
+| ----- | ----------- |
+| `eligibleAccounts[].accountId` | Pass to `--account-id` on `email create`. |
+| `eligibleAccounts[].default` | `true` on the recommended account. Use this one if you have no preference. |
+| `eligibleAccounts[].requirements` | Legal agreements you must accept. The list might be empty, depending on your plan, and then you don't need `--consent`. |
+
+Each entry in `requirements` has these fields:
+
+| Field | Description |
+| ----- | ----------- |
+| `type` | The agreement's identifier. Pass it as `--consent` on `email create`. |
+| `title` | A readable title for the agreement. |
+| `reference` | A pointer to the full agreement text, which might be a link or a plain identifier. Read the agreement before you pass its `type` as a consent. |
 
 1. Run the eligibility check:
 
@@ -54,19 +62,43 @@ The result lists each eligible account with these fields:
    gddy email check-eligibility --email someone@example.com
    ```
 
-2. Read the result, which lists each eligible account (go to [Eligibility result](#eligibility-result) for an example).
+2. Read the result, which lists each eligible account:
+
+   ```json
+   {
+     "isEligible": true,
+     "eligibleAccounts": [
+       {
+         "accountId": "00000000-0000-0000-0000-000000000001",
+         "mailboxType": "TITAN",
+         "accountName": "Professional Email",
+         "default": true,
+         "requirements": [
+           {
+             "type": "FREETRIAL_AUTORENEW",
+             "title": "Email auto renew",
+             "reference": "By creating your email you agree that after your trial ends on January 1, 2026, your email will auto-renew for $2.99/mo. Cancel anytime in Account Settings."
+           }
+         ]
+       }
+     ]
+   }
+   ```
 
 3. If the command fails, go to [Eligibility failure reasons](#eligibility-failure-reasons) for an explanation of each error code.
 
 ### Create the mailbox
 
-After you've checked eligibility, create the mailbox with the account and consents you chose. Three of the options need a note:
+After you've checked eligibility, create the mailbox with an account from the result. If the result lists legal agreements, read each one first, then pass one `--consent` for each. The command has these options:
 
-- `--consent` is repeatable. Pass one per required requirement type. `FREETRIAL_AUTORENEW` is the only requirement type the API issues. When `requirements` is empty, omit `--consent` entirely.
-- `--account-id` is optional when there is exactly one eligible account with `default: true`; the CLI will use it automatically.
-- `--first-name` and `--last-name` are optional; they set the display name on the mailbox.
+| Option | Example | Description |
+| ------ | ------- | ----------- |
+| `--email` | `someone@example.com` | The email address to create. |
+| `--account-id` | `00000000-0000-0000-0000-000000000001` | An account ID from the eligibility result. Optional when there is exactly one eligible account with `default: true`; the CLI uses it automatically. |
+| `--consent` | `FREETRIAL_AUTORENEW` | The `type` of an agreement from the eligibility result. Repeat it for every agreement. Omit it when `requirements` is empty, and the response then has no `agreements`. |
+| `--first-name`, `--last-name` | `Jane`, `Smith` | Optional. They set the display name on the mailbox. |
 
-1. Run the create command with the chosen `accountId` and one `--consent` for each `requirements[].type`:
+1. Run the create command with an account ID from the result and one `--consent` for each agreement:
 
    ```
    gddy email create --email someone@example.com \
@@ -74,13 +106,39 @@ After you've checked eligibility, create the mailbox with the account and consen
      --consent FREETRIAL_AUTORENEW
    ```
 
-2. Read the response, which comes back right away with the mailbox ID and `status: EXECUTING` (go to [Mailbox response](#mailbox-response) for an example).
+2. Read the response, which comes back right away with the mailbox ID and `status: EXECUTING`:
+
+   ```json
+   {
+     "mailboxId": "73e99614-0db5-46b1-8ea7-b5228a1fe7a6",
+     "emailAddress": "someone@example.com",
+     "mailboxType": "TITAN",
+     "firstName": "Jane",
+     "lastName": "Smith",
+     "displayName": "Jane Smith",
+     "status": "EXECUTING",
+     "createdAt": "2026-09-02T17:51:29Z",
+     "updatedAt": "2026-09-02T17:51:29Z",
+     "agreements": [
+       {
+         "type": "FREETRIAL_AUTORENEW",
+         "agreed": true
+       }
+     ],
+     "links": [
+       {
+         "rel": "self",
+         "href": "/v1/email/mailboxes/73e99614-0db5-46b1-8ea7-b5228a1fe7a6"
+       }
+     ]
+   }
+   ```
 
 The mailbox isn't ready to use yet. Provisioning continues in the background; poll with `gddy email get` until `status` reaches `COMPLETED` (success) or `FAILED` (terminal error). Recommended poll interval is 2–4 seconds; don't poll faster than once per second.
 
 ### Poll until ready
 
-Typical provisioning takes several seconds to a minute. The response has the same fields as the [Mailbox response](#mailbox-response) from `create`. On `FAILED`, there is no automatic retry. Resubmit the creation request if appropriate.
+Typical provisioning takes several seconds to a minute. The response has the same fields as the `create` response, with `status` set to `COMPLETED` or `FAILED` and a later `updatedAt`. On `FAILED`, there is no automatic retry. Resubmit the creation request if appropriate.
 
 1. Run `gddy email get` with the `mailboxId` from the create response:
 
@@ -89,65 +147,6 @@ Typical provisioning takes several seconds to a minute. The response has the sam
    ```
 
 2. Repeat until `status` in the response is `COMPLETED` or `FAILED`.
-
-## Example responses
-
-These examples show the `data` field of the CLI's JSON output. The CLI also prints `next_actions`, a list of suggested follow-up commands.
-
-### Eligibility result
-
-`check-eligibility` returns this for an address with one eligible account that has a free-trial agreement. For an account with no free-trial plan, `requirements` is an empty array.
-
-```json
-{
-  "isEligible": true,
-  "eligibleAccounts": [
-    {
-      "accountId": "00000000-0000-0000-0000-000000000001",
-      "mailboxType": "TITAN",
-      "accountName": "Professional Email",
-      "default": true,
-      "requirements": [
-        {
-          "type": "FREETRIAL_AUTORENEW",
-          "title": "Email auto renew",
-          "reference": "By creating your email you agree that after your trial ends on January 1, 2026, your email will auto-renew for $2.99/mo. Cancel anytime in Account Settings."
-        }
-      ]
-    }
-  ]
-}
-```
-
-### Mailbox response
-
-`create` returns this with `status: EXECUTING`. `get` returns the same fields, with `status` set to `COMPLETED` or `FAILED` and a later `updatedAt`. If you pass no `--consent`, `agreements` is left out.
-
-```json
-{
-  "mailboxId": "73e99614-0db5-46b1-8ea7-b5228a1fe7a6",
-  "emailAddress": "someone@example.com",
-  "mailboxType": "TITAN",
-  "firstName": "Jane",
-  "lastName": "Smith",
-  "displayName": "Jane Smith",
-  "status": "EXECUTING",
-  "createdAt": "2026-09-02T17:51:29Z",
-  "updatedAt": "2026-09-02T17:51:29Z",
-  "agreements": [
-    {
-      "type": "FREETRIAL_AUTORENEW",
-      "agreed": true
-    }
-  ],
-  "links": [
-    {
-      "rel": "self",
-      "href": "/v1/email/mailboxes/73e99614-0db5-46b1-8ea7-b5228a1fe7a6"
-    }
-  ]
-}
-```
 
 ## Error handling
 
