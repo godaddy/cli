@@ -28,18 +28,18 @@ redirect_uris = [
 
 The list accepts up to five unique HTTPS URLs, each no longer than 2048 characters. Credentials and fragments aren't allowed, and the list must not repeat `url` or the root-relative `/api/godaddy/callback` resolved against `url`. Omitting `redirect_uris` leaves the existing App Registry allowlist unchanged during an update; `redirect_uris = []` clears the additional callbacks. `init --config` sends the list when creating an application. Both `update` (including a label-only or description-only update) and `deploy` synchronize it when the key is present, so an explicit empty list clears remote extras in either flow. The list contains extras only and doesn't replace the callbacks registered automatically from `url`.
 
-## Configure it
+## Configure the application
 
 Most `gddy platform app add <subcommand>` commands only append to `godaddy.toml`:
 
 - `add action --name <name> --url <url>`: an HTTP endpoint the platform calls on the app's behalf.
 - `add subscription --name <name> --url <url> --events <event...>`: a webhook route for platform events; run `gddy platform webhook event` to see valid event types.
-- `add extension <embed|checkout|blocks> ...`: a UI extension bundle (see that subcommand's own `--help`).
-- `add settings --group <group> --slug <slug> --entry-path <path> ...`: placement metadata for a merchant-facing settings form or link. This only writes placement fields (group, slug, entryPath, order, capabilities, and icon). The presentation itself (`[settings.presentation]`) has to be hand-authored in `godaddy.toml` afterward. See the `platform-settings` guide (`gddy guide platform-settings`) for the full presentation shape.
+- `add extension <embed|checkout|blocks> ...`: a UI extension bundle (run that subcommand with `--help` for details).
+- `add settings --group <group> --slug <slug> --entry-path <path> ...`: placement metadata for a merchant-facing settings form or link. This only writes placement fields (group, slug, entryPath, order, capabilities, and icon). The presentation itself (`[settings.presentation]`) has to be hand-authored in `godaddy.toml` afterward. Go to the `platform-settings` guide (`gddy guide platform-settings`) for the full presentation shape.
 
 Run `gddy platform app config validate` any time to check the manifest without a network call. It checks every rule the API would otherwise enforce (required fields, URL, UUID, and semver shapes, and settings placement rules). It reports every violation it finds, not just the first.
 
-## Release
+## Release the application
 
 ```sh
 gddy platform app release --application-id <id> --version 1.2.3
@@ -47,7 +47,7 @@ gddy platform app release --application-id <id> --version 1.2.3
 
 This resends every action, subscription, UI extension, and settings entry in `godaddy.toml` as one versioned release. Omitting an entry from the manifest doesn't archive it globally, but a store enabled against a *newer* release won't have it. A settings entry with no `[settings.presentation]` block fails the release with a `VALIDATION_ERROR`. A manifest that fails to parse or validate also fails the release outright. Only a genuinely missing manifest falls back to an empty release. The version must be semver.
 
-## Deploy
+## Deploy the extensions
 
 ```sh
 gddy platform app deploy

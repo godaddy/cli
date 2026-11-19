@@ -4,11 +4,18 @@ summary: How to register an application-settings form via godaddy.toml (settings
 
 # Application settings
 
-An application-settings capability lets a GoDaddy Platform Application (GPA) contribute a form to a Commerce-owned settings surface (for example `tax-center`). Merchants fill it out, and the GPA's own `load`, `save`, and `validate` endpoints own the data. `app-registry-api` stores and validates only the registration and presentation metadata. It never sees merchant values. This guide covers the `gddy platform app` side of registering one. For the platform contract itself (lifecycle endpoints, signing, `settings-api` composition), see `app-registry-api`'s `docs/GPA-SETTINGS-REGISTRATION.md` and `docs/SETTINGS.md`.
+An application-settings capability lets a GoDaddy Platform Application (GPA) contribute a form to a Commerce-owned settings surface (for example `tax-center`). Merchants fill it out, and the GPA's own `load`, `save`, and `validate` endpoints own the data. `app-registry-api` stores and validates only the registration and presentation metadata. It never sees merchant values. This guide covers the `gddy platform app` side of registering one. For the platform contract itself (lifecycle endpoints, signing, `settings-api` composition), go to `app-registry-api`'s `docs/GPA-SETTINGS-REGISTRATION.md` and `docs/SETTINGS.md`.
 
-## Workflow
+## Add a settings form to an application
 
-1. **Add the placement**: `gddy platform app add settings` writes the group, slug, entryPath, order, capabilities, and icon fields into `godaddy.toml`:
+To add a settings form to an application, add the placement, add the form, release the application, and enable it for a store. These notes apply to the steps:
+
+- **Placement:** `entryPath` is relative to the application's registered `proxy_url`, same as action URLs. `--capability` defaults to `read` and `write` server-side if omitted. `--icon-name` and `--icon-library` must be given together or not at all. A `config` capability requires `read` plus one or more `--config-key` values; the command writes those values to `metadata.configKeys`.
+- **Form:** `add settings` only writes placement metadata. The actual field and section definitions (`presentation`) aren't flag-driven. `presentation` and `presentationFile` are mutually exclusive.
+- **Release:** `release` resends every setting in `godaddy.toml`, the same as it does for actions, subscriptions, and extensions. It rejects any settings entry with neither `presentation` nor `presentationFile`. The error has the code `VALIDATION_ERROR`. It says the setting has no presentation, and that you need to add a `[settings.presentation]` block or a `presentationFile` before releasing.
+- **Enable:** `enable` makes the placement discoverable for a store, and `enablement` lists the apps enabled on that store. Settings, like actions, subscriptions, and uiExtensions, are keyed per release with no inheritance. A store already enabled against an older release doesn't pick up settings added in a newer one until you re-run `enable` for that store.
+
+1. Add the placement, which writes the group, slug, entryPath, order, capabilities, and icon fields into `godaddy.toml`:
 
    ```sh
    gddy platform app add settings \
@@ -22,13 +29,20 @@ An application-settings capability lets a GoDaddy Platform Application (GPA) con
      --icon-name percent --icon-library lucide
    ```
 
-   `entryPath` is relative to the application's registered `proxy_url`, same as action URLs. `--capability` defaults to `read`+`write` server-side if omitted. `--icon-name` and `--icon-library` must be given together or not at all. A `config` capability requires `read` plus one or more `--config-key` values; the command writes those values to `metadata.configKeys`.
+2. Add the form, either as a `[settings.presentation]` block in the entry `add settings` just wrote, or as a JSON file with `--presentation-file <path>` (or by editing `presentationFile` into the entry afterward). Go to [Presentation shape](#presentation-shape) for the details.
 
-2. **Author the form**: this command only writes placement metadata. The actual field and section definitions (`presentation`) aren't flag-driven. Either hand-add a `[settings.presentation]` block directly into the entry `add settings` just wrote, or point it at a JSON file with `--presentation-file <path>` (or by editing `presentationFile` into the entry afterward). The two are mutually exclusive. See the "Presentation shape" section.
+3. Release the application:
 
-3. **Release**: `gddy platform app release --application-id <id> --version <version>` resends every setting in `godaddy.toml`, the same as it does for actions, subscriptions, and extensions. It rejects any settings entry with neither `presentation` nor `presentationFile`. The error has the code `VALIDATION_ERROR`. It says the setting has no presentation, and that you need to add a `[settings.presentation]` block or a `presentationFile` before releasing.
+   ```sh
+   gddy platform app release --application-id <id> --version <version>
+   ```
 
-4. **Enable and backfill**: `gddy platform app enable <name> --store-id <storeId>` makes the placement discoverable for a store. Confirm with `gddy platform app enablement --store-id <storeId>` (lists apps enabled on that store). Settings, like actions, subscriptions, and uiExtensions, are keyed per release with no inheritance. A store already enabled against an older release doesn't pick up settings added in a newer one until you re-run `enable` for that store.
+4. Enable the application for a store, then confirm it with `enablement`:
+
+   ```sh
+   gddy platform app enable <name> --store-id <storeId>
+   gddy platform app enablement --store-id <storeId>
+   ```
 
 ## Presentation shape
 
@@ -142,7 +156,7 @@ label = "Configure PayPal"
 openMode = "new-window"
 ```
 
-A link presentation requires the `read` and `open` capabilities and can also declare `delete` and `config`. Form-only capabilities (`write`, `validate`, and `test`) and duplicates are rejected. `open` is rejected on a form presentation. `label` must be non-empty. `openMode` only accepts `"new-window"` for now. `--presentation-file` also accepts a link's full API object (`type: "link"`, `schemaVersion: "settings-link-v1"`, `label`, `openMode`). See `app-registry-api`'s `docs/SETTINGS.md` for the full lifecycle contract this registers into. App Registry never stores a merchant-specific launch URL. It publishes the placement and lets Settings API request one through the GPA's `open` route when a merchant invokes it.
+A link presentation requires the `read` and `open` capabilities and can also declare `delete` and `config`. Form-only capabilities (`write`, `validate`, and `test`) and duplicates are rejected. `open` is rejected on a form presentation. `label` must be non-empty. `openMode` only accepts `"new-window"` for now. `--presentation-file` also accepts a link's full API object (`type: "link"`, `schemaVersion: "settings-link-v1"`, `label`, `openMode`). Go to `app-registry-api`'s `docs/SETTINGS.md` for the full lifecycle contract this registers into. App Registry never stores a merchant-specific launch URL. It publishes the placement and lets Settings API request one through the GPA's `open` route when a merchant invokes it.
 
 ### Public config (`gpa-settings-config-v1`)
 
