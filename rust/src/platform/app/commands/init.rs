@@ -6,6 +6,7 @@ use cli_engine::{
 use platform_app_client::create_application::MutationCreateApplicationInput;
 use serde_json::json;
 
+use super::distribution_type::DistributionTypeArg;
 use super::schemas::ApplicationInit;
 use crate::next_action::{next_action, required_value};
 use crate::platform::app::onboarding::ensure_ready_for_app_init;
@@ -37,6 +38,12 @@ struct InitArgs {
     #[arg(long, value_name = "SCOPES")]
     scopes: Option<String>,
 
+    /// Who can install the application: `public` (anyone, via the
+    /// marketplace) or `private` (your organization only). Omit to use the
+    /// default for new applications.
+    #[arg(long, value_name = "TYPE", value_enum, ignore_case = true)]
+    distribution_type: Option<DistributionTypeArg>,
+
     /// Read defaults from this config file.
     #[arg(long, short = 'c', value_name = "PATH")]
     config: Option<String>,
@@ -53,7 +60,7 @@ struct InitArgs {
     /// --scopes override the corresponding fetched value if also provided,
     /// matching v0.2.14's --from-existing (--label is accepted for
     /// compatibility but, as in v0.2.14, is not applied here).
-    #[arg(long, value_name = "NAME", conflicts_with_all = ["accept_agreements", "name", "config"])]
+    #[arg(long, value_name = "NAME", conflicts_with_all = ["accept_agreements", "name", "config", "distribution_type"])]
     from_existing: Option<String>,
 
     /// With --from-existing, skip the confirmation/abort when the local
@@ -73,6 +80,38 @@ fn validate_resolved_redirect_uris(
     })
 }
 
+/// Resolved application fields that `init` always sends.
+struct CreateFields {
+    name: String,
+    label: String,
+    description: String,
+    url: String,
+    proxy_url: String,
+    organization_id: String,
+    scopes: Vec<String>,
+    redirect_uris: Option<Vec<String>>,
+}
+
+/// An unset distribution type is left out of the request (see
+/// `OmitNoneInInputs` in `platform-app-client/build.rs`) so the registry
+/// default applies.
+fn create_input(
+    fields: CreateFields,
+    distribution_type: Option<DistributionTypeArg>,
+) -> MutationCreateApplicationInput {
+    MutationCreateApplicationInput {
+        name: fields.name,
+        label: fields.label,
+        description: Some(fields.description),
+        url: Some(fields.url),
+        proxy_url: Some(fields.proxy_url),
+        organization_id: Some(fields.organization_id),
+        authorization_scopes: Some(fields.scopes),
+        redirect_uris: fields.redirect_uris,
+        distribution_type: distribution_type.map(Into::into),
+    }
+}
+
 /// `filesWritten` is a small path-by-kind object (`config`/`env`), so it
 /// renders as an indented property bag instead of a raw JSON dump.
 fn init_view_columns() -> Vec<TableColumn> {
@@ -80,6 +119,7 @@ fn init_view_columns() -> Vec<TableColumn> {
         TableColumn::new("id", "ID"),
         TableColumn::new("name", "Name"),
         TableColumn::new("status", "Status"),
+        TableColumn::new("distributionType", "Distribution Type"),
         TableColumn::new("clientId", "Client ID"),
         TableColumn::new("orgId", "Org ID"),
         TableColumn::new("url", "URL").no_truncate(true),
@@ -215,17 +255,19 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
             let client = super::make_client(&ctx).await?;
             let app = client
-                .create_application(MutationCreateApplicationInput {
-                    name: name.clone(),
-                    label: label.clone(),
-                    description: Some(description.clone()),
-                    url: Some(url.clone()),
-                    proxy_url: Some(proxy_url.clone()),
-                    organization_id: Some(onboarding.org_id.clone()),
-                    authorization_scopes: Some(scopes.clone()),
-                    redirect_uris: redirect_uris.clone(),
-                    distribution_type: None,
-                })
+                .create_application(create_input(
+                    CreateFields {
+                        name: name.clone(),
+                        label: label.clone(),
+                        description: description.clone(),
+                        url: url.clone(),
+                        proxy_url: proxy_url.clone(),
+                        organization_id: onboarding.org_id.clone(),
+                        scopes: scopes.clone(),
+                        redirect_uris: redirect_uris.clone(),
+                    },
+                    args.distribution_type,
+                ))
                 .await
                 .map_err(super::client_err)?
                 .ok_or_else(|| {
@@ -300,6 +342,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 "id": app_id,
                 "name": name,
                 "status": app.status,
+                "distributionType": app.distribution_type,
                 "clientId": client_id,
                 "orgId": onboarding.org_id,
                 "url": url,
@@ -338,7 +381,79 @@ pub(super) fn command() -> RuntimeCommandSpec {
 mod tests {
     use serde_json::json;
 
-    use super::{init_view_columns, validate_resolved_redirect_uris};
+    use super::{
+        CreateFields, DistributionTypeArg, create_input, init_view_columns,
+        validate_resolved_redirect_uris,
+    };
+
+    fn init_clap_command() -> clap::Command {
+        super::command().spec.clap_command()
+    }
+
+    fn fields() -> CreateFields {
+        CreateFields {
+            name: "my-app".to_owned(),
+            label: "My App".to_owned(),
+            description: "desc".to_owned(),
+            url: "https://app.example.com".to_owned(),
+            proxy_url: "https://api.example.com".to_owned(),
+            organization_id: "org-1".to_owned(),
+            scopes: vec!["commerce.orders:read".to_owned()],
+            redirect_uris: None,
+        }
+    }
+
+    #[test]
+    fn init_accepts_public_and_private_distribution_types() {
+        for value in ["public", "private", "PUBLIC"] {
+            init_clap_command()
+                .try_get_matches_from(["init", "--name", "my-app", "--distribution-type", value])
+                .expect("public and private must be accepted");
+        }
+    }
+
+    #[test]
+    fn init_rejects_custom_and_unknown_distribution_types() {
+        for value in ["custom", "unlisted"] {
+            let err = init_clap_command()
+                .try_get_matches_from(["init", "--name", "my-app", "--distribution-type", value])
+                .expect_err("value must be rejected at parse time");
+            assert_eq!(err.kind(), clap::error::ErrorKind::InvalidValue, "{err}");
+        }
+    }
+
+    #[test]
+    fn distribution_type_conflicts_with_from_existing() {
+        let err = init_clap_command()
+            .try_get_matches_from([
+                "init",
+                "--from-existing",
+                "my-app",
+                "--distribution-type",
+                "public",
+            ])
+            .expect_err("--from-existing creates nothing, so the flag has no effect");
+        assert_eq!(
+            err.kind(),
+            clap::error::ErrorKind::ArgumentConflict,
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn create_input_omits_distribution_type_unless_given() {
+        let wire = serde_json::to_value(create_input(fields(), None)).expect("serialize");
+        assert!(
+            wire.get("distributionType").is_none(),
+            "registry default must apply: {wire}"
+        );
+        assert_eq!(wire["name"], "my-app");
+        assert_eq!(wire["organizationId"], "org-1");
+
+        let wire = serde_json::to_value(create_input(fields(), Some(DistributionTypeArg::Private)))
+            .expect("serialize");
+        assert_eq!(wire["distributionType"], "PRIVATE");
+    }
 
     #[test]
     fn resolved_url_override_is_validated_before_create() {

@@ -7,6 +7,7 @@ mutation CreateApplication($input: MutationCreateApplicationInput!) {
     name
     description
     status
+    distributionType
     url
     proxyUrl
     authorizationScopes

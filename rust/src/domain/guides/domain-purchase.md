@@ -66,6 +66,10 @@ The quote is cached locally (next to your `contacts.toml`), so **run `quote` and
 
 AI assistants: Before using `--agree` or `--confirm`, show the end user the quoted price from `domain quote` (including any premium fees), tell them that taxes and fees such as the ICANN fee are added on top so the total charged will be higher, and show each required legal agreement's title and URL (from `quote`'s `requiredAgreements`), and obtain their explicit confirmation to proceed. The user must be able to click through and read the agreements. Do not infer confirmation from a general request to buy or register a domain.
 
+## Buying with other products
+
+To buy a domain together with other GoDaddy products, or to pay with the same checkout session as them, use `gddy shopping checkout create --domain <domain>` instead. That path uses your account's default registration settings. See `gddy guide shopping`.
+
 ## International domain names
 
 You can type a name either as Unicode (`münchen.de`) or in its encoded form (`xn--mnchen-3ya.de`); both reach the same domain. Output shows Unicode by default. Add `--punycode` to any `domain` command that shows names to see the encoded form instead, or make that your default with `gddy config set punycode true` (undo it with `gddy config unset punycode`). Precedence is the `--punycode` flag, then the `GDDY_PUNYCODE` environment variable, then your saved setting, then Unicode, so `--punycode=false` turns the encoded form back off for one command.
