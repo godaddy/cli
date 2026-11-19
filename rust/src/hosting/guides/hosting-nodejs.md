@@ -8,6 +8,8 @@ This guide covers the full lifecycle of a hosted Node.js application. Create an 
 
 ## Concepts
 
+The following terms and concepts are relevant to deploying a Node.js application:
+
 **App**: the hosted Node.js application. Create it first. Later commands take `--app-id`.
 
 **Environments**: each app has PREVIEW (staging) and PUBLISH (production). The CLI calls this `variant`. Uploads land on PREVIEW. `deployment publish` promotes that build to PUBLISH.

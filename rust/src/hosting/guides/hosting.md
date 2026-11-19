@@ -8,6 +8,8 @@ summary: Start here for GoDaddy hosting, including what the hosting products sha
 
 ## Concepts
 
+The following terms and concepts are relevant to hosting apps with `gddy hosting`:
+
 **App**: anything you host, whatever the product. You choose the product with `--app-type` when you create the app, and every later command takes the app's `--app-id`.
 
 **Operation**: creating an app, and some other changes that take a while, return an operation ID straight away. Poll it with `gddy hosting operation get --operation-id <operation-id>` until its status is COMPLETED or FAILED.
