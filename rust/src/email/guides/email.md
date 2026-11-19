@@ -16,7 +16,7 @@ The following terms and concepts are relevant to creating and managing mailboxes
 
 ## Create a mailbox
 
-To create a mailbox, run three commands in order:
+To create a mailbox, run three commands in order. After the steps, a section for each command has the details.
 
 1. Check eligibility to verify the address, find which account to use, and see which consents you need to give:
 
@@ -85,7 +85,7 @@ Each entry in `requirements` has these fields:
    }
    ```
 
-3. If the command fails, go to [Eligibility failure reasons](#eligibility-failure-reasons) for an explanation of each error code.
+3. If the command fails, go to the "Eligibility failure reasons" section later in this guide for an explanation of each error code.
 
 ### Create the mailbox
 
@@ -162,7 +162,7 @@ When `check-eligibility` fails with a 422, the error message lists one or more o
 | `DOMAIN_IN_OTHER_EMAIL_PROVIDER` | The domain is already provisioned through a different email provider.                  | The domain can't be used with GoDaddy Business Email. No action is available through the API.                            |
 | `DOMAIN_NOT_ELIGIBLE`            | The domain exists but isn't eligible for API provisioning.                             | Go to the [GoDaddy Email dashboard](https://productivity.godaddy.com/addnewemail).                                 |
 | `EMAIL_PLAN_NOT_AVAILABLE`       | There is no active email plan for this domain.                                         | Run `gddy shopping catalog search --query titan` to see available email plans, select one to purchase, then retry. |
-| `EMAIL_ADDRESS_INVALID`          | The username portion fails format or length validation.                                | Fix the address. Go to [Username rules](#username-rules) for the rules.                                                           |
+| `EMAIL_ADDRESS_INVALID`          | The username portion fails format or length validation.                                | Fix the address. Go to the "Username rules" section later in this guide for the rules.                                                           |
 | `EMAIL_ADDRESS_ALREADY_EXISTS`   | A mailbox with this address already exists.                                            | The address is taken; choose a different username.                                                                 |
 
 ### Create failure reasons (422 from `gddy email create`)
