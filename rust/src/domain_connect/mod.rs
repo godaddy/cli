@@ -65,6 +65,10 @@ mod tests {
                 .await;
             assert_eq!(help.exit_code, 0, "{command}: {}", help.rendered);
         }
+        let plural = revealed
+            .run(["gddy", "domain-connect", "templates", "validate", "--help"])
+            .await;
+        assert_eq!(plural.exit_code, 0, "{}", plural.rendered);
         let guide = revealed.run(["gddy", "guide", "domain-connect"]).await;
         assert_eq!(guide.exit_code, 0, "{}", guide.rendered);
         assert!(

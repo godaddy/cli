@@ -11,10 +11,13 @@ mod types;
 mod validate;
 
 pub(super) fn group() -> RuntimeGroupSpec {
-    RuntimeGroupSpec::new(GroupSpec::new(
-        "template",
-        "Create, check and submit Domain Connect templates",
-    ))
+    RuntimeGroupSpec::new(
+        GroupSpec::new(
+            "template",
+            "Create, check and submit Domain Connect templates",
+        )
+        .with_alias("templates"),
+    )
     .with_command(init::command())
     .with_command(validate::command())
     .with_command(submit::command())
