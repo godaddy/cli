@@ -40,13 +40,13 @@ To create a mailbox, run three commands in order. After the steps, a section for
 
 Before you create a mailbox, check that the email address is eligible and find which email plan to use. The domain must be owned by the authenticated GoDaddy shopper.
 
-The CLI prints the result under `data`, with `next_actions`, a list of suggested follow-up commands, next to it. The result lists each eligible account with these fields:
+The listed eligible accounts have these fields (run `gddy email check-eligibility --schema` for the full JSON schema):
 
 | Field | Description |
 | ----- | ----------- |
-| `eligibleAccounts[].accountId` | Pass to `--account-id` on `email create`. |
-| `eligibleAccounts[].default` | `true` on the recommended account. Use this one if you have no preference. |
-| `eligibleAccounts[].requirements` | Legal agreements you must accept. The list might be empty, depending on your plan, and then you don't need `--consent`. |
+| `accountId` | Pass to `--account-id` on `email create`. |
+| `default` | `true` on the recommended account. Use this one if you have no preference. |
+| `requirements` | Legal agreements you must accept. The list might be empty, depending on your plan, and then you don't need `--consent`. |
 
 Each entry in `requirements` has these fields:
 
@@ -154,7 +154,7 @@ These sections cover why the eligibility check or the create command can fail, t
 
 ### Eligibility failure reasons
 
-When `check-eligibility` fails with a 422, the error message lists one or more of the following `issue` codes.
+When `check-eligibility` fails, the error message lists one or more of the following `issue` codes.
 
 | `issue`                          | When it occurs                                                                         | Recommended action                                                                                                 |
 | -------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
