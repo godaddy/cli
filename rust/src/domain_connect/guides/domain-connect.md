@@ -18,7 +18,7 @@ A template is identified by two values. The **provider ID** is a domain name you
 
 The first account to submit a template for a provider ID owns it. After that, only that account can add services under it or change an existing one, and a change needs a higher `version` in the file.
 
-A record value can be fixed, such as `mail.acme.com`, or a variable whose value is set when the template is applied to a domain. Write a variable between percent signs, such as `%ip%`.
+A record value can be fixed, for example `mail.acme.com`, or a variable whose value is set when the template is applied to a domain. Write a variable between percent signs, for example `%ip%`.
 
 ## Create the template
 
