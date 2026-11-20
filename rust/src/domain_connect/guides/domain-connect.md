@@ -14,7 +14,7 @@ A Domain Connect template lists the DNS records your service needs. After you pu
 
 ## Concepts
 
-A template is identified by two values. The **provider ID** is a domain name you own, such as `acme.com`. The **service ID** is a short name for one service you offer, such as `email` or `managed-wordpress`. Together they name the file: `acme.com.email.json`.
+A template is identified by two values. The **provider ID** is a domain name you own, such as `acme.com`. The **service ID** is a short name for one service you offer, for example `email` or `managed-wordpress`. Together they name the file: `acme.com.email.json`.
 
 The first account to submit a template for a provider ID owns it. After that, only that account can add services under it or change an existing one, and a change needs a higher `version` in the file.
 
