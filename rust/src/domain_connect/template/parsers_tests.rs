@@ -23,7 +23,7 @@ fn txt_data_keeps_its_commas() {
         record.data.as_deref(),
         Some("v=DMARC1; p=none; rua=mailto:a@x.com,mailto:b@x.com")
     );
-    assert_eq!(record.ttl, Some(600));
+    assert_eq!(record.ttl, Some(Number::Literal(600)));
 }
 
 #[test]
@@ -67,11 +67,11 @@ fn apexcname_honors_host_and_ttl() {
     assert_eq!(given.record_type, "APEXCNAME");
     assert_eq!(given.host.as_deref(), Some("www"));
     assert_eq!(given.points_to.as_deref(), Some("target.example.com"));
-    assert_eq!(given.ttl, Some(600));
+    assert_eq!(given.ttl, Some(Number::Literal(600)));
 
     let defaults = one(RecordKind::Apexcname, "value=target.example.com");
     assert_eq!(defaults.host.as_deref(), Some("@"));
-    assert_eq!(defaults.ttl, Some(3600));
+    assert_eq!(defaults.ttl, Some(Number::Literal(3600)));
 }
 
 #[test]
@@ -81,8 +81,8 @@ fn defaults_fill_in_what_is_left_out() {
     assert_eq!(record.record_type, "MX");
     assert_eq!(record.host.as_deref(), Some("@"));
     assert_eq!(record.points_to.as_deref(), Some("mail.test.com"));
-    assert_eq!(record.priority, Some(10));
-    assert_eq!(record.ttl, Some(3600));
+    assert_eq!(record.priority, Some(Number::Literal(10)));
+    assert_eq!(record.ttl, Some(Number::Literal(3600)));
     assert_eq!(record.group_id, None);
     assert_eq!(record.essential, None);
 }
@@ -98,10 +98,10 @@ fn srv_reads_every_field() {
     assert_eq!(record.protocol.as_deref(), Some("_tcp"));
     assert_eq!(record.name.as_deref(), Some("@"));
     assert_eq!(record.target.as_deref(), Some("sip.test.com"));
-    assert_eq!(record.priority, Some(20));
-    assert_eq!(record.weight, Some(5));
-    assert_eq!(record.port, Some(5060));
-    assert_eq!(record.ttl, Some(7200));
+    assert_eq!(record.priority, Some(Number::Literal(20)));
+    assert_eq!(record.weight, Some(Number::Literal(5)));
+    assert_eq!(record.port, Some(Number::Literal(5060)));
+    assert_eq!(record.ttl, Some(Number::Literal(7200)));
     assert_eq!(record.host, None);
 }
 
@@ -206,6 +206,26 @@ fn numbers_must_be_whole_numbers() {
         err.to_string().contains("ttl must be a whole number"),
         "{err}"
     );
+    assert!(fix_of(&err).contains("percent signs"), "{}", fix_of(&err));
+
+    for malformed in ["ttl=%", "ttl=%%", "ttl=%a%b%", "ttl=600s"] {
+        parse_record(RecordKind::A, &format!("value=ip,{malformed}"))
+            .expect_err("neither a number nor a variable");
+    }
+}
+
+#[test]
+fn a_number_can_be_a_variable_and_is_written_as_text() {
+    let record = one(
+        RecordKind::Srv,
+        "service=_sip,protocol=_tcp,target=sip.test.com,port=%port%,ttl=%ttl%",
+    );
+
+    assert_eq!(record.port, Some(Number::Variable("%port%".to_owned())));
+    let written = serde_json::to_value(&record).expect("serialize");
+    assert_eq!(written["port"], "%port%");
+    assert_eq!(written["ttl"], "%ttl%");
+    assert_eq!(written["priority"], 10);
 }
 
 #[test]

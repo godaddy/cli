@@ -164,6 +164,15 @@ pub(super) enum TxtConflictMode {
     Prefix,
 }
 
+/// A number in a record: a literal, or a `%variable%` filled in when the
+/// template is applied. Written to the file as a JSON number or a string.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub(super) enum Number {
+    Literal(i32),
+    Variable(String),
+}
+
 /// A single DNS record in the template.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -185,13 +194,13 @@ pub(super) struct Record {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub protocol: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ttl: Option<i32>,
+    pub ttl: Option<Number>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub priority: Option<i32>,
+    pub priority: Option<Number>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub weight: Option<i32>,
+    pub weight: Option<Number>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub port: Option<i32>,
+    pub port: Option<Number>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -262,7 +271,7 @@ mod tests {
         let record = Record {
             host: Some("@".to_owned()),
             data: Some("v=spf1 ~all".to_owned()),
-            ttl: Some(3600),
+            ttl: Some(Number::Literal(3600)),
             essential: Some(Essential::OnApply),
             txt_conflict_matching_mode: Some(TxtConflictMode::Off),
             ..Record::new(RecordKind::Txt)

@@ -187,7 +187,7 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
-    use crate::domain_connect::template::types::Essential;
+    use crate::domain_connect::template::types::{Essential, Number};
 
     fn run(input: &str) -> (cli_engine::Result<Template>, String) {
         let mut reader = Cursor::new(input.as_bytes().to_vec());
@@ -215,8 +215,8 @@ mod tests {
         assert_eq!(record.record_type, "MX");
         assert_eq!(record.host.as_deref(), Some("@"));
         assert_eq!(record.points_to.as_deref(), Some("mail.acme.com"));
-        assert_eq!(record.priority, Some(10));
-        assert_eq!(record.ttl, Some(3600));
+        assert_eq!(record.priority, Some(Number::Literal(10)));
+        assert_eq!(record.ttl, Some(Number::Literal(3600)));
         assert_eq!(record.group_id.as_deref(), Some("mail"));
         assert_eq!(record.essential, Some(Essential::OnApply));
     }
@@ -246,7 +246,7 @@ mod tests {
         assert_eq!(record.record_type, "A");
         assert_eq!(record.host.as_deref(), Some("www"));
         assert_eq!(record.points_to.as_deref(), Some("192.0.2.1"));
-        assert_eq!(record.ttl, Some(600));
+        assert_eq!(record.ttl, Some(Number::Literal(600)));
         assert_eq!(record.essential, None);
         assert!(prompts.contains("Enter a number from 1 to 12"), "{prompts}");
         assert!(prompts.contains("whole number"), "{prompts}");

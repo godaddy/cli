@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use clap::ValueEnum;
 
-use super::types::{Essential, Record, RecordKind};
+use super::types::{Essential, Number, Record, RecordKind};
 use crate::error::GddyError;
 
 const SYSTEM: &str = "domain-connect";
@@ -234,15 +234,26 @@ fn address(value: String) -> String {
     }
 }
 
-fn number(attr: Attr, value: &str) -> Result<i32, GddyError> {
-    value.parse().map_err(|_| {
-        GddyError::validation(format!(
-            "{} must be a whole number, got '{value}'",
-            attr.key()
-        ))
-        .with_fix(format!("Give {} as digits only.", attr.key()))
-        .with_system(SYSTEM)
-    })
+/// Digits are a literal; `%name%` is a variable filled in when the template
+/// is applied.
+fn number(attr: Attr, value: &str) -> Result<Number, GddyError> {
+    if let Ok(literal) = value.parse() {
+        return Ok(Number::Literal(literal));
+    }
+    let name = value
+        .strip_prefix('%')
+        .and_then(|rest| rest.strip_suffix('%'));
+    if name.is_some_and(|name| !name.is_empty() && !name.contains('%')) {
+        return Ok(Number::Variable(value.to_owned()));
+    }
+    let key = attr.key();
+    Err(GddyError::validation(format!(
+        "{key} must be a whole number or a variable such as %{key}%, got '{value}'"
+    ))
+    .with_fix(format!(
+        "Give {key} as digits only, or as a variable name between percent signs."
+    ))
+    .with_system(SYSTEM))
 }
 
 fn choice<T: ValueEnum>(attr: Attr, value: &str) -> Result<T, GddyError> {
