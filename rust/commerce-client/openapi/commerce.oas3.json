@@ -183,7 +183,6 @@
               "type": "string"
             },
             "maxItems": 80,
-            "nullable": true,
             "type": "array"
           },
           "id": {
@@ -204,6 +203,11 @@
             "type": "string"
           }
         },
+        "required": [
+          "featureList",
+          "id",
+          "name"
+        ],
         "title": "Bundled Features",
         "type": "object"
       },
@@ -243,6 +247,10 @@
             "type": "string"
           }
         },
+        "required": [
+          "governmentId",
+          "type"
+        ],
         "title": "GovernmentId",
         "type": "object"
       },
@@ -271,6 +279,9 @@
             "description": "Phone type"
           }
         },
+        "required": [
+          "details"
+        ],
         "title": "Phone with Type",
         "type": "object"
       },
@@ -370,7 +381,6 @@
               "$ref": "#/components/schemas/GovernmentId"
             },
             "maxItems": 10,
-            "nullable": true,
             "type": "array"
           },
           "id": {
@@ -405,7 +415,6 @@
             "items": {
               "$ref": "#/components/schemas/BundledFeatures"
             },
-            "nullable": true,
             "type": "array"
           },
           "timezone": {
@@ -418,6 +427,10 @@
             "type": "string"
           }
         },
+        "required": [
+          "displayName",
+          "businessId"
+        ],
         "title": "Store",
         "type": "object"
       },
@@ -485,6 +498,9 @@
             "description": "The processor data for the store."
           }
         },
+        "required": [
+          "externalStoreId"
+        ],
         "title": "Payment Details",
         "type": "object"
       },
@@ -569,6 +585,9 @@
             "type": "string"
           }
         },
+        "required": [
+          "countryCode"
+        ],
         "title": "Postal Address (Medium-Grained)",
         "type": "object"
       },
@@ -582,7 +601,10 @@
             "description": "The attribute value.",
             "type": "string"
           }
-        }
+        },
+        "required": [
+          "value"
+        ]
       },
       "country-code": {
         "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
@@ -691,6 +713,10 @@
             "type": "string"
           }
         },
+        "required": [
+          "longitude",
+          "latitude"
+        ],
         "title": "Geographic Coordinates",
         "type": "object"
       },
@@ -792,6 +818,9 @@
             "nullable": true
           }
         },
+        "required": [
+          "op"
+        ],
         "title": "Patch",
         "type": "object"
       },
@@ -823,6 +852,10 @@
             "type": "string"
           }
         },
+        "required": [
+          "countryCode",
+          "nationalNumber"
+        ],
         "title": "Phone",
         "type": "object"
       },

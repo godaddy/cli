@@ -2,7 +2,10 @@
 //! codegen source for the typed `commerce-client` crate — from the
 //! already-cloned Stores OpenAPI spec `main.rs` also pulls for the catalog.
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result};
 use serde_json::{Map, Value};
@@ -58,8 +61,9 @@ pub(crate) fn refresh(
 /// and rewriting `#/$defs/X` refs to `#/components/schemas/X`, since that's
 /// the shape progenitor expects), pins `openapi` to `3.0.3` (progenitor
 /// rejects anything else; this doc uses no 3.1-only constructs), prefixes
-/// every path with [`BASE_PATH`], strips external formats, relaxes every
-/// schema to a tolerant reader, and drops the spec's *documented* non-2xx
+/// every path with [`BASE_PATH`], strips external formats, relaxes the
+/// response-only schemas to tolerant readers (request-reachable schemas stay
+/// strict), and drops the spec's *documented* non-2xx
 /// response schemas (see [`only_2xx_paths`] — this is a codegen-input trim,
 /// not a runtime error-handling gap: real non-2xx responses are still fully
 /// handled at request time via `commerce_client::Error::status()`).
@@ -102,16 +106,67 @@ fn load_and_lift(spec_path: &Path, common_types: Option<&Path>) -> Result<Value>
 
     only_2xx_paths(obj.get_mut("paths").context("missing paths")?);
     strip_external_formats(&mut dereffed);
+    let strict = request_reachable_schemas(&dereffed);
     if let Some(schemas) = dereffed
         .pointer_mut("/components/schemas")
         .and_then(Value::as_object_mut)
     {
-        for schema in schemas.values_mut() {
-            relax(schema);
+        for (name, schema) in schemas.iter_mut() {
+            if !strict.contains(name) {
+                relax(schema);
+            }
         }
     }
 
     Ok(dereffed)
+}
+
+/// Names of the `components.schemas` entries a request body can reach,
+/// directly or through nested `$ref`s. These stay strict so a required field
+/// stays required at the call site (a body without `updateStoreAttribute`'s
+/// `value` should not build). Schemas used by both requests and responses
+/// stay strict too, the same trade the domains spec makes for its dual-use
+/// schemas. Everything else is response-only and gets relaxed.
+fn request_reachable_schemas(spec: &Value) -> HashSet<String> {
+    let mut reachable = HashSet::new();
+    let schemas = spec.pointer("/components/schemas");
+    let Some(paths) = spec.get("paths").and_then(Value::as_object) else {
+        return reachable;
+    };
+    for item in paths.values().filter_map(Value::as_object) {
+        for operation in item.values() {
+            if let Some(body) = operation.get("requestBody") {
+                collect_schema_refs(body, schemas, &mut reachable);
+            }
+        }
+    }
+    reachable
+}
+
+/// Adds every `#/components/schemas/X` reachable from `node` to `seen`,
+/// following refs into `schemas`. `seen` doubles as the visited set, so a
+/// cyclic schema terminates.
+fn collect_schema_refs(node: &Value, schemas: Option<&Value>, seen: &mut HashSet<String>) {
+    match node {
+        Value::Object(map) => {
+            if let Some(Value::String(reference)) = map.get("$ref")
+                && let Some(name) = reference.strip_prefix("#/components/schemas/")
+                && seen.insert(name.to_owned())
+                && let Some(target) = schemas.and_then(|all| all.get(name))
+            {
+                collect_schema_refs(target, schemas, seen);
+            }
+            for value in map.values() {
+                collect_schema_refs(value, schemas, seen);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                collect_schema_refs(item, schemas, seen);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn rewrite_defs_refs(value: &mut Value) {
@@ -212,9 +267,8 @@ fn strip_external_formats(value: &mut Value) {
 /// Drops `required` and marks array properties nullable so a present-but-null
 /// value deserializes to `None` rather than erroring at *response*
 /// deserialization time — it has no effect on what gets sent in a request.
-/// Applied to every schema (no strict/response-only split needed — this
-/// crate only reads these types and persists a bare store id, it never
-/// constructs a nested request body from them).
+/// Applied only to schemas no request body can reach (see
+/// [`request_reachable_schemas`]), so a request keeps its required fields.
 fn relax(defn: &mut Value) {
     let Some(map) = defn.as_object_mut() else {
         return;
@@ -269,6 +323,63 @@ mod tests {
             .map(String::as_str)
             .collect();
         assert_eq!(codes, ["200", "201"]);
+    }
+
+    /// A schema is strict if a request body reaches it directly or through
+    /// nested refs, including through an array and through a cycle; a schema
+    /// only a response reaches is not.
+    #[test]
+    fn request_reachable_schemas_follow_refs_and_ignore_response_only_ones() {
+        let spec = json!({
+            "paths": {
+                "/stores/{id}/attributes/{name}": {
+                    "put": {
+                        "requestBody": { "content": { "application/json": {
+                            "schema": { "$ref": "#/components/schemas/AttributeUpdate" }
+                        } } },
+                        "responses": { "200": { "content": { "application/json": {
+                            "schema": { "$ref": "#/components/schemas/Store" }
+                        } } } }
+                    }
+                },
+                "/stores": {
+                    "get": { "responses": { "200": { "content": { "application/json": {
+                        "schema": { "$ref": "#/components/schemas/StoreList" }
+                    } } } } }
+                }
+            },
+            "components": { "schemas": {
+                "AttributeUpdate": { "properties": {
+                    "value": { "$ref": "#/components/schemas/Value" },
+                    "tags": { "type": "array", "items": { "$ref": "#/components/schemas/Tag" } }
+                } },
+                "Value": { "properties": { "self": { "$ref": "#/components/schemas/Value" } } },
+                "Tag": { "type": "object" },
+                "Store": { "type": "object" },
+                "StoreList": { "properties": { "items": { "$ref": "#/components/schemas/Store" } } }
+            } }
+        });
+
+        let strict = request_reachable_schemas(&spec);
+
+        for name in ["AttributeUpdate", "Value", "Tag"] {
+            assert!(strict.contains(name), "{name} should be strict: {strict:?}");
+        }
+        for name in ["Store", "StoreList"] {
+            assert!(
+                !strict.contains(name),
+                "{name} is response-only: {strict:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_spec_with_no_request_bodies_has_no_strict_schemas() {
+        let spec = json!({
+            "paths": { "/stores": { "get": { "responses": { "200": {} } } } },
+            "components": { "schemas": { "Store": { "required": ["id"] } } }
+        });
+        assert!(request_reachable_schemas(&spec).is_empty());
     }
 
     #[test]
