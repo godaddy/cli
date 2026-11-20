@@ -37,7 +37,7 @@ Most `gddy platform app add <subcommand>` commands only append to `godaddy.toml`
 - `add extension <embed|checkout|blocks> ...`: a UI extension bundle (run that subcommand with `--help` for details).
 - `add settings --group <group> --slug <slug> --entry-path <path> ...`: placement metadata for a merchant-facing settings form or link. This only writes placement fields (group, slug, entryPath, order, capabilities, and icon). The presentation itself (`[settings.presentation]`) has to be hand-authored in `godaddy.toml` afterward. Go to the `platform-settings` guide (`gddy guide platform-settings`) for the full presentation shape.
 
-Run `gddy platform app config validate` any time to check the manifest without a network call. It checks every rule the API would otherwise enforce (required fields, URL, UUID, and semver shapes, and settings placement rules). It reports every violation it finds, not just the first.
+Run `gddy platform app config validate` any time to check the manifest without a network call. It checks every rule the API would otherwise enforce (required fields, URL, UUID, and semver shapes, and settings placement rules). It reports every violation it finds.
 
 ## Release the application
 

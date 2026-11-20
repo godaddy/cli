@@ -98,7 +98,7 @@ Supported field types (`type` discriminates the shape; every field needs `type`,
 
 Every field, section, and `list-group` item field also accepts `description`. Sections also accept `visibleWhen = { field = "...", equals = ... }` to show or hide based on another top-level field's value.
 
-Worked example: the full `godaddy.toml` shape for a manual-tax-style GPA with a nested `list-group`:
+The following example shows the full `godaddy.toml` shape for a manual-tax-style GPA with a nested `list-group`:
 
 ```toml
 [[settings]]
