@@ -1,0 +1,30 @@
+; Records that mail providers ask customers to publish. A dropped
+; verification TXT can take a domain out of the service, which is why the
+; long and awkwardly quoted values matter.
+$ORIGIN example.com.
+$TTL 3600
+
+; Google Workspace
+@                       IN MX 1  aspmx.l.google.com.
+@                       IN MX 5  alt1.aspmx.l.google.com.
+@                       IN MX 5  alt2.aspmx.l.google.com.
+@                       IN MX 10 alt3.aspmx.l.google.com.
+@                       IN TXT "google-site-verification=rXOxyZounnZasA8Z7oaD3c14JdjS9aKSWvsR1EbUSIQ"
+@                       IN TXT "v=spf1 include:_spf.google.com ~all"
+google._domainkey       IN TXT ( "v=DKIM1; k=rsa; "
+                                 "p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx3Yz8qJt0kq1d4m5Nn2vQ3e"
+                                 "Xk1vRZ7oPq9l0YcGJ5s6aH2b8WfT4uVdA1rL7mEoCyQk3nXhB9ZsGi0tUjD6pKwNfR2Mv"
+                                 "S8aYcLqE5oHn1TxB7dJrWk4zUg9PiVfC3mAyQe0lNs6XtR2bZhKjD8wOu5GvT1pLaMc4Yn"
+                                 "IDAQAB" )
+
+; Microsoft 365
+@                       IN MX 0 example-com.mail.protection.outlook.com.
+autodiscover            IN CNAME autodiscover.outlook.com.
+selector1._domainkey    IN CNAME selector1-example-com._domainkey.example.onmicrosoft.com.
+selector2._domainkey    IN CNAME selector2-example-com._domainkey.example.onmicrosoft.com.
+@                       IN TXT "MS=ms12345678"
+_sip._tls               IN SRV 100 1 443 sipdir.online.lync.com.
+_sipfederationtls._tcp  IN SRV 100 1 5061 sipfed.online.lync.com.
+
+; A value longer than one character-string, split the way DNS tools split it.
+long                    IN TXT "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "bbbbbbbbbb"
