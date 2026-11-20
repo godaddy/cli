@@ -6,10 +6,11 @@ use crate::next_action::next_action;
 use crate::scopes::HOSTING_APPLICATION_DELETE as APP_DELETE;
 
 const DELETE_LONG: &str = "Permanently delete a hosting application and all its associated data.\
-     \n\nA WordPress (MHWP) site is deleted along with its content. The command \
-     returns once deletion has started. `hosting app get` then shows status \
-     DELETING until the site is gone, and after that reports it was not found. \
-     There is no operation to poll.";
+     \n\nA WordPress (MHWP) site is deleted along with its content. To take a \
+     WordPress site offline but keep its content, run `hosting app unpublish` \
+     instead. The delete returns once deletion has started. `hosting app get` then \
+     shows status DELETING until the site is gone, and after that reports it was not \
+     found. There is no operation to poll.";
 
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppIdArgs, _, _, _>(
@@ -89,5 +90,13 @@ mod tests {
         assert!(help.contains("deletion has started"), "{help}");
         assert!(help.contains("DELETING"), "{help}");
         assert!(help.contains("no operation to poll"), "{help}");
+        assert!(
+            help.contains(
+                "A WordPress (MHWP) site is deleted along with its content. To take a \
+                 WordPress site offline but keep its content, run `hosting app unpublish` \
+                 instead."
+            ),
+            "{help}"
+        );
     }
 }

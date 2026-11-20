@@ -119,6 +119,9 @@ mod tests {
             "## What the CLI does not do for WordPress sites",
             "hosting app update",
             "hosting app delete",
+            "There is no operation to poll. If the service is temporarily unavailable, wait a \
+             few seconds and run the command again. To take the site offline but keep its \
+             content, run `hosting app unpublish` instead.",
             "hosting runtime get",
             "Deployments, restarts, source imports, secrets, logs, custom domains and plan attachment",
         ] {

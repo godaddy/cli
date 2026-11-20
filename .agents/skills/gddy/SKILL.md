@@ -93,7 +93,7 @@ Use the `hosting app restart` command after creating, updating or deleting an ap
 
 ### Managed WordPress
 
-Run `gddy guide hosting-wordpress` for a walkthrough of creating a WordPress site (`--app-type MHWP`). Publishing needs a free published-site slot on the customer's Airo App Builder plan. A Web Hosting plan from `shopping` does not apply.
+Run `gddy guide hosting-wordpress` for a walkthrough of creating a WordPress site (`--app-type MHWP`).
 
 ## Global flags
 

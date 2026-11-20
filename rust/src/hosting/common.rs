@@ -289,9 +289,6 @@ pub fn is_mhwp_app_id(app_id: &str) -> bool {
     HostingAppType::of_id(app_id) == Some(HostingAppType::Mhwp)
 }
 
-/// App types to list in help text.
-pub const SUPPORTED_APP_TYPES: &str = "NODEJS, MHWP";
-
 /// Markdown for `gddy guide hosting`, the index of the per-product guides.
 pub const HOSTING_GUIDE: &str = include_str!("guides/hosting.md");
 /// Markdown for `gddy guide hosting-nodejs`.
@@ -431,15 +428,6 @@ mod tests {
         assert_eq!(strip_id_prefix("MHW", "MHWP-"), None);
         // The fifth byte falls inside `é`, so there is no prefix to compare.
         assert_eq!(strip_id_prefix("MHWP\u{e9}", "MHWP-"), None);
-    }
-
-    #[test]
-    fn supported_app_types_names_every_app_type() {
-        let all: Vec<&str> = HostingAppType::value_variants()
-            .iter()
-            .map(|t| t.as_str())
-            .collect();
-        assert_eq!(SUPPORTED_APP_TYPES, all.join(", "));
     }
 
     #[test]

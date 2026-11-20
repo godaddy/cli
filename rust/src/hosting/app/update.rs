@@ -15,22 +15,22 @@ struct AppUpdateArgs {
     #[arg(long = "app-id", value_name = "APP_ID")]
     app_id: String,
 
-    /// New display name (1–200 characters).
+    /// New display name (1–200 characters). For a WordPress (MHWP) site this is the
+    /// label in the CLI and in Airo App Builder, not its WordPress site title, and it
+    /// cannot contain '<', '>' or control characters such as tabs and line breaks.
     #[arg(long, value_name = "NAME")]
     name: Option<String>,
 
-    /// New root path.
+    /// New root path. Not for a WordPress (MHWP) site: giving a path refuses the whole
+    /// command, so nothing changes, not even the name.
     #[arg(long = "root-path", value_name = "PATH")]
     root_path: Option<String>,
 }
 
 const UPDATE_LONG: &str = "Update application metadata. At least one of --name or --root-path \
      is required. Changes take effect immediately and do not trigger a \
-     new deployment.\n\nA WordPress (MHWP) site can only be renamed. --root-path does not apply. \
-     If you include it, nothing changes, not even the name. --name is the label \
-     in the CLI and in Airo App Builder. It does not become the WordPress site \
-     title. The name is 1–200 characters and cannot contain '<', '>' or control \
-     characters such as tabs and line breaks.";
+     new deployment.\n\nA Node.js (NODEJS) app takes --name and --root-path. \
+     A WordPress (MHWP) site takes --name only.";
 
 pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppUpdateArgs, _, _, _>(
@@ -134,13 +134,46 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_help_says_a_wordpress_site_only_renames() {
+    async fn update_help_lists_the_flags_each_app_type_takes() {
         let help = run_hosting(&cli(), &["app", "update", "--help"]).await;
-        assert!(help.contains("can only be renamed"), "{help}");
-        assert!(help.contains("such as tabs and line breaks"), "{help}");
+        let (long, options) = help.split_once("Options:").expect("options section");
         assert!(
-            help.contains("does not become the WordPress site title"),
-            "{help}"
+            long.contains(
+                "A Node.js (NODEJS) app takes --name and --root-path. \
+                 A WordPress (MHWP) site takes --name only."
+            ),
+            "{long}"
+        );
+        // The rules for each flag live on the flag.
+        for moved in ["site title", "control characters", "does not apply"] {
+            assert!(
+                !long.contains(moved),
+                "{moved:?} is still in the summary: {long}"
+            );
+        }
+        // The entry is the flag line plus its description, up to the next flag.
+        let flag = |name: &str| {
+            let entry: Vec<&str> = options
+                .lines()
+                .skip_while(|line| !line.trim_start().starts_with(name))
+                .enumerate()
+                .take_while(|(i, line)| *i == 0 || !line.trim_start().starts_with('-'))
+                .map(|(_, line)| line)
+                .collect();
+            assert!(!entry.is_empty(), "no entry for {name}: {options}");
+            entry.join("\n")
+        };
+        let name = flag("--name");
+        assert!(name.contains("1–200 characters"), "{name}");
+        assert!(name.contains("not its WordPress site title"), "{name}");
+        assert!(name.contains("control characters"), "{name}");
+        let root_path = flag("--root-path");
+        assert!(
+            root_path.contains(
+                "Not for a WordPress (MHWP) site: giving a path refuses the whole command, so \
+                 nothing changes, not even the name"
+            ),
+            "{root_path}"
         );
     }
 
