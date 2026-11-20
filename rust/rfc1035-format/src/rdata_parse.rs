@@ -286,7 +286,16 @@ fn custom(
             if tokens.is_empty() {
                 return Err(type_token.error(ErrorKind::Syntax, "missing data"));
             }
-            CustomValue::Words(tokens.iter().map(Token::display).collect())
+            // A quoted string that follows a word with no space between them
+            // (`key="a b"`) belongs to that word.
+            let mut words: Vec<String> = Vec::new();
+            for token in tokens {
+                match words.last_mut() {
+                    Some(last) if token.joined => last.push_str(&token.display()),
+                    _ => words.push(token.display()),
+                }
+            }
+            CustomValue::Words(words)
         }
     };
     Ok(RData::Custom {

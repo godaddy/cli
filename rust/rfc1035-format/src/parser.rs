@@ -3,13 +3,10 @@
 use crate::error::{ErrorKind, ParseError};
 use crate::lexer::{self, Line};
 use crate::name::Name;
-use crate::options::ParseOptions;
+use crate::options::{CLASS_NAMES, ParseOptions};
 use crate::rdata_parse;
 use crate::ttl::parse_ttl;
 use crate::zone::{Record, Zone};
-
-/// Classes this crate recognises. Only `IN` is supported.
-const CLASSES: &[&str] = &["IN", "CH", "HS", "CS"];
 
 /// Read the zone file in `input`. See the crate documentation.
 pub(crate) fn parse(input: &str, options: &ParseOptions) -> Result<Zone, ParseError> {
@@ -166,7 +163,7 @@ impl State {
                     return Err(token.error(ErrorKind::Syntax, "the TTL is given twice"));
                 }
                 ttl = Some(parse_ttl(word).map_err(|m| token.error(ErrorKind::InvalidValue, m))?);
-            } else if CLASSES.iter().any(|c| c.eq_ignore_ascii_case(word)) {
+            } else if CLASS_NAMES.iter().any(|c| c.eq_ignore_ascii_case(word)) {
                 if class_seen {
                     return Err(token.error(ErrorKind::Syntax, "the class is given twice"));
                 }

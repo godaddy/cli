@@ -14,7 +14,7 @@ use super::records::{
     validate_tlsa_fields,
 };
 use super::set::{SetAction, plan_set_actions};
-use super::zone_records::Desired;
+use super::zone_records::{Desired, decode_hex};
 
 /// The records of one type under one name: what the input wants there, what is
 /// there now, and what to do about it.
@@ -72,8 +72,18 @@ fn check(d: &mut Desired) -> Result<(), String> {
         "A" if d.value.parse::<Ipv4Addr>().is_err() => {
             return Err(format!("the value `{}` is not an IPv4 address", d.value));
         }
-        "AAAA" if d.value.parse::<Ipv6Addr>().is_err() => {
-            return Err(format!("the value `{}` is not an IPv6 address", d.value));
+        // An IPv6 address has many spellings (`2001:DB8::1`, `2001:db8:0::1`); the
+        // zone file writer uses one, so compare in that form.
+        "AAAA" => match d.value.parse::<Ipv6Addr>() {
+            Ok(address) => d.value = address.to_string(),
+            Err(_) => return Err(format!("the value `{}` is not an IPv6 address", d.value)),
+        },
+        // `.` is a valid HTTPS or SVCB target, but nothing is not a hostname.
+        "CNAME" | "MX" | "SRV" | "HTTPS" | "SVCB" if d.value.trim().is_empty() => {
+            return Err(format!("{record_type} records need a target name"));
+        }
+        "TLSA" => {
+            decode_hex(&d.value)?;
         }
         _ => {}
     }
@@ -142,6 +152,27 @@ pub(super) fn validate(desired: &mut [Desired]) -> Vec<String> {
     desired
         .iter_mut()
         .filter_map(|d| check(d).err().map(|problem| format!("{}: {problem}", d.at)))
+        .collect()
+}
+
+/// `records` as they should be compared with the input: an AAAA address written in
+/// the one form [`check`] gives the input's. The originals are kept for showing and
+/// writing, since the API stores the text as it was given.
+fn comparable_addresses(records: &[types::DnsRecord]) -> Vec<types::DnsRecord> {
+    records
+        .iter()
+        .map(|record| {
+            let mut record = record.clone();
+            if record.type_.as_str().eq_ignore_ascii_case("AAAA")
+                && let Some(address) = record
+                    .data
+                    .as_deref()
+                    .and_then(|data| data.parse::<Ipv6Addr>().ok())
+            {
+                record.data = Some(address.to_string());
+            }
+            record
+        })
         .collect()
 }
 
@@ -286,13 +317,14 @@ pub(super) fn build_plan(
             .filter(|r| r.type_.as_str() == group.record_type && owner_of(r) == group.owner)
             .map(|r| (*r).clone())
             .collect();
+        let comparable = comparable_addresses(&group.existing);
         group.actions = if replace {
             let records: Vec<types::DnsRecord> =
                 group.desired.iter().map(Desired::record).collect();
             let ttl = group.desired.first().map(Desired::ttl);
-            plan_set_actions(&group.existing, &records, ttl)
+            plan_set_actions(&comparable, &records, ttl)
         } else {
-            plan_additive(&group.existing, &group.desired)
+            plan_additive(&comparable, &group.desired)
         };
     }
 

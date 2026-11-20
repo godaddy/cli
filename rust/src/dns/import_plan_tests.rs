@@ -105,6 +105,70 @@ fn a_and_aaaa_values_must_be_addresses_of_the_right_kind() {
 }
 
 #[test]
+fn an_ipv6_address_matches_the_zone_whatever_its_spelling() {
+    // The zone holds one spelling; a zone file or an older export may use another.
+    let existing = [have("r1", "AAAA", "v6", "2001:db8::1", 600)];
+    for spelling in ["2001:DB8::1", "2001:db8:0:0:0:0:0:1", "2001:0db8::0001"] {
+        for replace in [false, true] {
+            let mut input = vec![want(1, "AAAA", "v6", spelling, 600)];
+            assert!(validate(&mut input).is_empty(), "{spelling}");
+            let p = plan(input, &existing, replace);
+            assert_eq!(
+                kinds(group(&p, "AAAA", "v6")),
+                ["unchanged"],
+                "{spelling} (replace={replace}) is the record the zone already has"
+            );
+            assert!(p.groups.iter().all(|g| !kinds(g).contains(&"delete")));
+        }
+    }
+    // A different address is still a different record.
+    let p = plan(
+        vec![want(1, "AAAA", "v6", "2001:db8::2", 600)],
+        &existing,
+        false,
+    );
+    assert_eq!(kinds(group(&p, "AAAA", "v6")), ["create"]);
+}
+
+#[test]
+fn an_empty_target_or_bad_certificate_is_refused_before_any_plan_is_built() {
+    for ty in ["CNAME", "MX", "SRV", "HTTPS", "SVCB"] {
+        let mut d = want(5, ty, "x", "", 600);
+        d.opts.priority = Some(1);
+        d.opts.weight = Some(1);
+        d.opts.port = Some(1);
+        d.opts.service = Some("_s".into());
+        d.opts.protocol = Some("_tcp".into());
+        d.name = "x".into();
+        let problems = validate(&mut [d]);
+        assert!(
+            problems.iter().any(|p| p.contains("need a target name")),
+            "{ty}: {problems:?}"
+        );
+    }
+    // The root target `.` is a real HTTPS/SVCB value.
+    let mut https = want(1, "HTTPS", "@", ".", 600);
+    https.opts.priority = Some(1);
+    assert!(validate(&mut [https]).is_empty());
+
+    let tlsa = |value: &str| {
+        let mut d = want(2, "TLSA", "www", value, 600);
+        d.opts.port = Some(443);
+        d.opts.protocol = Some("_tcp".into());
+        d.opts.usage = Some(3);
+        d.opts.selector = Some(1);
+        d.opts.matching_type = Some(1);
+        d
+    };
+    for bad in ["", "abc", "zz", "d2abde2"] {
+        let problems = validate(&mut [tlsa(bad)]);
+        assert_eq!(problems.len(), 1, "{bad:?}: {problems:?}");
+        assert!(problems[0].starts_with("line 2: "), "{problems:?}");
+    }
+    assert!(validate(&mut [tlsa("d2abde24")]).is_empty());
+}
+
+#[test]
 fn a_bad_address_stops_the_import_before_replace_could_delete_anything() {
     // Validation runs on every record before a plan is built, so with --replace a
     // record the API would refuse cannot take unrelated existing records with it.

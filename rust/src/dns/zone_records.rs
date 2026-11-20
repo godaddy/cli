@@ -311,6 +311,12 @@ pub(super) fn from_json_text(text: &str) -> Result<Imported, Vec<String>> {
             });
             continue;
         }
+        // A record with no value at all is a mistake in the input, not an empty
+        // value: an empty TXT must be written as `"data": ""`.
+        if record.data.is_none() && record.certificate_data.is_none() {
+            errors.push(format!("{at}: the record has no `data`"));
+            continue;
+        }
         let mut opts = opts_from_record(&record);
         let mut value = record_value(&record).unwrap_or_default().to_owned();
         if record_type == "TLSA" {
@@ -615,7 +621,7 @@ fn absolute_name(text: &str) -> Result<Name, String> {
     Name::parse(&absolute, None).map_err(|e| e.message().to_owned())
 }
 
-fn decode_hex(hex: &str) -> Result<Vec<u8>, String> {
+pub(super) fn decode_hex(hex: &str) -> Result<Vec<u8>, String> {
     if hex.is_empty() || !hex.len().is_multiple_of(2) {
         return Err("the certificate data is not whole bytes of hex".to_owned());
     }

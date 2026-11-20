@@ -298,6 +298,36 @@ fn custom_types_are_read_with_their_shape() {
 }
 
 #[test]
+fn a_word_with_no_space_before_its_quoted_value_stays_one_word() {
+    let opts = ParseOptions::default().with_custom_type("NOTE", CustomShape::Words);
+    let z = parse_text(
+        r#"
+        $ORIGIN example.com.
+        $TTL 60
+        x NOTE key="a b" plain "quoted alone"
+        "#,
+        &opts,
+    )
+    .expect("parses");
+    assert_eq!(
+        z.records[0].data,
+        RData::Custom {
+            type_name: "NOTE".into(),
+            value: CustomValue::Words(vec![
+                "key=\"a b\"".into(),
+                "plain".into(),
+                "\"quoted alone\"".into()
+            ])
+        }
+    );
+    // And it writes back as it was read, so the field boundaries survive.
+    assert!(
+        z.to_zone_file()
+            .contains("NOTE key=\"a b\" plain \"quoted alone\"")
+    );
+}
+
+#[test]
 fn unregistered_types_are_an_error_with_a_hint() {
     let err = fail("@ ALIAS target.example.net.\n");
     assert_eq!(err.kind(), ErrorKind::UnknownType);
@@ -307,7 +337,8 @@ fn unregistered_types_are_an_error_with_a_hint() {
 
 #[test]
 fn built_in_and_malformed_custom_names_are_refused() {
-    for bad in ["A", "mx", "", "has space", "123"] {
+    // `IN` would be read as a class and `1FOO` as a time, so neither could be used.
+    for bad in ["A", "mx", "", "has space", "123", "IN", "ch", "1FOO"] {
         let opts = ParseOptions::default().with_custom_type(bad, CustomShape::Name);
         let err = parse("", &opts).expect_err(bad);
         assert_eq!(err.kind(), ErrorKind::InvalidValue, "{bad:?}");
