@@ -2,15 +2,17 @@
 
 use std::borrow::Cow;
 use std::fmt;
+use std::path::Path;
 
 use cli_engine::{
     CommandResult, CommandSpec, DetailedError, NextAction, NextActionParam, RuntimeCommandSpec,
     Tier,
 };
-use domains_client::types::{TemplateActionOutcome, TemplateActionResult};
+use domains_client::types::TemplateAssessment;
 
 use super::common::{
-    SUBMIT_CONFIRMATION_NOTE, SYSTEM, read_template, result_json, submit, submit_columns, validate,
+    BLOCKED, INVALID, READY, SUBMIT_CONFIRMATION_NOTE, SUBMITTED, SYSTEM, Template, read_template,
+    result_json, submit, submit_columns, validate,
 };
 use crate::error::{GddyError, codes};
 use crate::next_action::next_action;
@@ -46,7 +48,7 @@ struct Refused {
 }
 
 impl Refused {
-    fn new(file: &str, result: &TemplateActionResult) -> Self {
+    fn new(file: &str, result: &TemplateAssessment) -> Self {
         let mut message = format!("{file} was not submitted: {}.", result.outcome);
         for issue in &result.issues {
             message.push_str(&format!(
@@ -63,7 +65,7 @@ impl Refused {
         Self {
             file: file.to_owned(),
             message,
-            blocked: result.outcome == TemplateActionOutcome::Blocked,
+            blocked: result.outcome.as_str() == BLOCKED,
         }
     }
 }
@@ -110,20 +112,43 @@ impl DetailedError for Refused {
     }
 }
 
-fn refusal(file: &str, result: &TemplateActionResult) -> cli_engine::CliCoreError {
+fn refusal(file: &str, result: &TemplateAssessment) -> cli_engine::CliCoreError {
     cli_engine::CliCoreError::with_detailed_error(Refused::new(file, result))
 }
 
 /// A result that neither submitted nor refused the template cannot be trusted
 /// either way, so it is an error instead of a success with no pull request.
-fn unexpected_outcome(file: &str, result: &TemplateActionResult) -> cli_engine::CliCoreError {
+fn unexpected_outcome(file: &str, result: &TemplateAssessment) -> cli_engine::CliCoreError {
     GddyError::unexpected(format!(
         "{file}: the template service answered {} to a submit request.",
         result.outcome
     ))
-    .with_fix("Run `gddy domain-connect template validate` to see where the template stands.")
+    .with_fix(
+        "Run `gddy domain-connect template validate` to see where the template stands. If it \
+         reports an outcome this version of gddy does not list, update gddy with `gddy update \
+         apply`.",
+    )
     .with_system(SYSTEM)
     .into_cli_error()
+}
+
+/// Turns the service's answer into the command's result. A dry run only
+/// checks, so READY is its success; a real run succeeds on SUBMITTED. The
+/// outcome arrives as plain text and more values may be added later, so one
+/// this version does not know is an error instead of a guess either way.
+fn conclude(
+    path: &Path,
+    template: &Template,
+    result: &TemplateAssessment,
+    dry_run: bool,
+) -> cli_engine::Result<CommandResult> {
+    let file = path.display().to_string();
+    match (result.outcome.as_str(), dry_run) {
+        (READY, true) => Ok(CommandResult::new(result_json(path, template, result)).with_dry_run()),
+        (SUBMITTED, false) => Ok(CommandResult::new(result_json(path, template, result))),
+        (BLOCKED | INVALID, _) => Err(refusal(&file, result)),
+        _ => Err(unexpected_outcome(&file, result)),
+    }
 }
 
 pub(super) fn command() -> RuntimeCommandSpec {
@@ -160,29 +185,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_view(submit_columns()),
         |ctx, args: Args| async move {
             let (path, template) = read_template(&args.file)?;
-            let file = path.display().to_string();
             let client = crate::domain::common::make_client(&ctx).await?;
-
-            if ctx.dry_run() {
-                let result = validate(&client, &template).await?;
-                if result.outcome != TemplateActionOutcome::Ready {
-                    return Err(refusal(&file, &result));
-                }
-                return Ok(
-                    CommandResult::new(result_json(&path, &template, &result)).with_dry_run()
-                );
-            }
-
-            let result = submit(&client, &template).await?;
-            match result.outcome {
-                TemplateActionOutcome::Submitted => {
-                    Ok(CommandResult::new(result_json(&path, &template, &result)))
-                }
-                TemplateActionOutcome::Blocked | TemplateActionOutcome::Invalid => {
-                    Err(refusal(&file, &result))
-                }
-                TemplateActionOutcome::Ready => Err(unexpected_outcome(&file, &result)),
-            }
+            let dry_run = ctx.dry_run();
+            let result = if dry_run {
+                validate(&client, &template).await?
+            } else {
+                submit(&client, &template).await?
+            };
+            conclude(&path, &template, &result, dry_run)
         },
     )
 }
@@ -193,8 +203,74 @@ mod tests {
 
     use super::*;
 
-    fn result(value: serde_json::Value) -> TemplateActionResult {
+    fn result(value: serde_json::Value) -> TemplateAssessment {
         serde_json::from_value(value).expect("result fixture")
+    }
+
+    fn outcome(outcome: &str) -> TemplateAssessment {
+        result(json!({ "action": "SUBMIT", "outcome": outcome, "operation": "ADD", "issues": [] }))
+    }
+
+    fn code_of(err: &cli_engine::CliCoreError) -> String {
+        cli_engine::build_error_envelope(err, SYSTEM)
+            .error
+            .map(|error| error.code)
+            .unwrap_or_default()
+    }
+
+    fn concluded(outcome_text: &str, dry_run: bool) -> cli_engine::Result<CommandResult> {
+        let template = json!({ "providerId": "acme.com", "serviceId": "svc" });
+        conclude(
+            Path::new("t.json"),
+            template.as_object().expect("object"),
+            &outcome(outcome_text),
+            dry_run,
+        )
+    }
+
+    #[test]
+    fn only_the_outcome_that_fits_the_run_is_a_success() {
+        assert!(concluded("SUBMITTED", false).is_ok());
+        assert!(concluded("READY", true).is_ok());
+
+        // A real run that was only checked, and a dry run that submitted, are
+        // both answers the command did not ask for.
+        for (text, dry_run) in [("READY", false), ("SUBMITTED", true)] {
+            let err = concluded(text, dry_run).expect_err("not a success");
+            assert_eq!(
+                code_of(&err),
+                "UNEXPECTED_ERROR",
+                "{text} dry_run={dry_run}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_refusal_is_a_validation_error_in_both_kinds_of_run() {
+        for text in ["INVALID", "BLOCKED"] {
+            for dry_run in [false, true] {
+                let err = concluded(text, dry_run).expect_err("refused");
+                assert_eq!(
+                    code_of(&err),
+                    "VALIDATION_ERROR",
+                    "{text} dry_run={dry_run}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn an_outcome_this_version_does_not_know_is_an_error_that_names_it() {
+        for dry_run in [false, true] {
+            let err = concluded("QUEUED", dry_run).expect_err("unknown outcome");
+            assert_eq!(code_of(&err), "UNEXPECTED_ERROR");
+            assert!(err.to_string().contains("QUEUED"), "{err}");
+            assert!(
+                fix_of(&err).contains("gddy update apply"),
+                "{}",
+                fix_of(&err)
+            );
+        }
     }
 
     fn fix_of(err: &cli_engine::CliCoreError) -> String {

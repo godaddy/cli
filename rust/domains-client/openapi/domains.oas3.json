@@ -1467,13 +1467,10 @@
       "PullRequestState": {
         "$id": "https://godaddy.com/schemas/domains/domain-connect/pull-request-state.v2",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "State of the pull request carrying a template on the public Domain-Connect/Templates repository. OPEN — awaiting review. FAST_TRACK — passed the automated merge-or-fail rules and will merge without manual review. MANUAL_REVIEW — a Templates maintainer must review it. MERGED — live in the public repository. CLOSED — closed without merging.\n",
-        "enum": [
+        "description": "State of the pull request carrying a template on the public Domain-Connect/Templates repository (https://github.com/Domain-Connect/Templates), at the time of the response. OPEN — the pull request has been opened and the template is not merged yet. MERGED — the template is merged and live in that repository. Review progress (automated checks, fast-track labels, maintainer review, closure) is not reported here; follow it on the pull request itself. More values may be added; clients must tolerate values they do not recognize.\n",
+        "examples": [
           "OPEN",
-          "FAST_TRACK",
-          "MANUAL_REVIEW",
-          "MERGED",
-          "CLOSED"
+          "MERGED"
         ],
         "title": "Pull Request State",
         "type": "string"
@@ -1861,8 +1858,8 @@
       "TemplateAction": {
         "$id": "https://godaddy.com/schemas/domains/domain-connect/template-action.v2",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "The operation that produced a Template Action Result. VALIDATE — the template was checked against the schema, linter and ownership rules; no side effects. SUBMIT — the template was validated and, when ready, stored with GoDaddy DNS, the provider claimed for the caller, and a pull request opened or updated on the public Templates repository.\n",
-        "enum": [
+        "description": "The operation that produced a Template Assessment. VALIDATE — the template was checked against the schema, linter and ownership rules; no side effects. SUBMIT — the template was validated and, when ready, stored with GoDaddy DNS, the provider claimed for the caller, and a pull request opened or updated on the public Templates repository. More values may be added; clients must tolerate values they do not recognize.\n",
+        "examples": [
           "VALIDATE",
           "SUBMIT"
         ],
@@ -1872,8 +1869,8 @@
       "TemplateActionOutcome": {
         "$id": "https://godaddy.com/schemas/domains/domain-connect/template-action-outcome.v2",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "Outcome of a template action. READY — the template passes all checks and can be submitted. INVALID — the template has schema or linter findings; see issues. BLOCKED — the template cannot be accepted because of ownership, version or DNS rules; see issues. SUBMITTED — a pull request was opened or updated; see pr.\n",
-        "enum": [
+        "description": "Outcome of a template action. READY — the template passes all checks and can be submitted. INVALID — the template has schema or linter findings; see issues. BLOCKED — the template cannot be accepted because of ownership, version or DNS rules; see issues. SUBMITTED — a pull request was opened or updated; see pullRequest. More values may be added; clients must tolerate values they do not recognize.\n",
+        "examples": [
           "READY",
           "INVALID",
           "BLOCKED",
@@ -1882,10 +1879,10 @@
         "title": "Template Action Outcome",
         "type": "string"
       },
-      "TemplateActionResult": {
-        "$id": "https://godaddy.com/schemas/domains/domain-connect/template-action-result.v2",
+      "TemplateAssessment": {
+        "$id": "https://godaddy.com/schemas/domains/domain-connect/template-assessment.v2",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "Outcome of a template action. Returned with 200 on success and, for submit, with 409 (blocked) and 422 (invalid) so that issues can be read uniformly across outcomes.\n",
+        "description": "The assessment of a template by the validate or submit controller. Always returned with 200 once the template has been processed; read outcome, and issues for the reasons.\n",
         "properties": {
           "action": {
             "$ref": "#/components/schemas/TemplateAction",
@@ -1910,9 +1907,9 @@
             "description": "The outcome of the action.",
             "readOnly": true
           },
-          "pr": {
+          "pullRequest": {
             "$ref": "#/components/schemas/TemplatePullRequest",
-            "description": "The pull request opened or updated by a successful submit. Absent for validate.",
+            "description": "The pull request opened or updated by a submit whose outcome is SUBMITTED. Absent for validate and for every other outcome.\n",
             "readOnly": true
           }
         },
@@ -1921,7 +1918,23 @@
           "outcome",
           "issues"
         ],
-        "title": "Template Action Result",
+        "title": "Template Assessment",
+        "type": "object"
+      },
+      "TemplateCriteria": {
+        "$id": "https://godaddy.com/schemas/domains/domain-connect/template-criteria.v2",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Input to the validate-domain-connect-template and submit-domain-connect-template controllers.",
+        "properties": {
+          "template": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "template"
+        ],
+        "title": "Template Criteria",
         "type": "object"
       },
       "TemplateIssue": {
@@ -1975,8 +1988,8 @@
       "TemplateOperation": {
         "$id": "https://godaddy.com/schemas/domains/domain-connect/template-operation.v2",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "Whether a template introduces a new service under the provider (ADD) or changes an existing one (MODIFY). Modifying requires a version higher than the one on record.\n",
-        "enum": [
+        "description": "Whether a template introduces a new service under the provider (ADD) or changes an existing one (MODIFY). Modifying requires a version higher than the one on record. More values may be added; clients must tolerate values they do not recognize.\n",
+        "examples": [
           "ADD",
           "MODIFY"
         ],
@@ -1986,7 +1999,7 @@
       "TemplatePullRequest": {
         "$id": "https://godaddy.com/schemas/domains/domain-connect/template-pull-request.v2",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "The pull request on the public Domain-Connect/Templates repository that carries a submitted template. Track the template's progress at url.\n",
+        "description": "The pull request on the public Domain-Connect/Templates repository (https://github.com/Domain-Connect/Templates) that carries a submitted template. Review progress is tracked on that repository at url.\n",
         "properties": {
           "number": {
             "description": "Pull request number.",
@@ -2005,38 +2018,6 @@
           }
         },
         "title": "Template Pull Request",
-        "type": "object"
-      },
-      "TemplateSubmissionInput": {
-        "$id": "https://godaddy.com/schemas/domains/domain-connect/template-submission-input.v2",
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "Input to the submit-domain-connect-template controller.",
-        "properties": {
-          "template": {
-            "additionalProperties": true,
-            "type": "object"
-          }
-        },
-        "required": [
-          "template"
-        ],
-        "title": "Template Submission Input",
-        "type": "object"
-      },
-      "TemplateValidationCriteria": {
-        "$id": "https://godaddy.com/schemas/domains/domain-connect/template-validation-criteria.v2",
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "Input to the validate-domain-connect-template controller.",
-        "properties": {
-          "template": {
-            "additionalProperties": true,
-            "type": "object"
-          }
-        },
-        "required": [
-          "template"
-        ],
-        "title": "Template Validation Criteria",
         "type": "object"
       },
       "Term": {
@@ -2483,7 +2464,7 @@
     },
     "/v2/domains/submit-domain-connect-template": {
       "post": {
-        "description": "Runs the same validation as `validate-domain-connect-template` and, when\nthe outcome is `READY`, stores the template with the GoDaddy DNS services\nAPI. Only once DNS has stored it is the provider claimed for the caller\nand a pull request opened on the public Templates repository from\nGoDaddy's bot fork. If the caller already has an open pull request for\nthis `providerId` and `serviceId`, that pull request is updated instead.\n\nThe HTTP status mirrors the verdict. `200`: `SUBMITTED`, with the pull\nrequest in `pr`. `422`: `INVALID`; fix the template and resubmit. `409`:\n`BLOCKED`; another shopper owns the provider, the provider exists\nunclaimed or is reserved, the version was not increased, or the DNS\nservices API held the template for review (`DNS_HELD`) or rejected it for\nan ownership conflict (`DNS_REJECTED`). In every case the body is a\n`TemplateActionResult` and the reasons are in `issues`. Nothing is claimed\nor pushed on `409` or `422`.\n\nRequires both `domains.domain-connect-template:read` and\n`domains.domain-connect-template:write`.\n",
+        "description": "Runs the same validation as `validate-domain-connect-template` and, when\nthe outcome is `READY`, stores the template with the GoDaddy DNS services\nAPI. Only once DNS has stored it is the provider claimed for the caller\nand a pull request opened on the public Templates repository from\nGoDaddy's bot fork. If the caller already has an open pull request for\nthis `providerId` and `serviceId`, that pull request is updated instead.\n\nAlways returns `200` once the template has been processed; read\n`outcome`, the same as `validate-domain-connect-template`. `SUBMITTED`:\nthe pull request is in `pullRequest`. `INVALID`: fix the template and\nresubmit. `BLOCKED`: another customer owns the provider, the provider\nexists unclaimed or is reserved, the version was not increased, or the\nDNS services API held the template for review (`DNS_HELD`) or rejected it\nfor an ownership conflict (`DNS_REJECTED`). The reasons are in `issues`.\nNothing is claimed or pushed unless the outcome is `SUBMITTED`.\n\nGoDaddy does not store templates after submission; retrieval and\nlifecycle management go through GoDaddy DNS and the public\nDomain-Connect/Templates repository directly. Follow a submission on the\npull request at `pullRequest.url`.\n\nRequires both `domains.domain-connect-template:read` and\n`domains.domain-connect-template:write`.\n",
         "operationId": "submitDomainConnectTemplate",
         "parameters": [
           {
@@ -2518,7 +2499,7 @@
                 }
               },
               "schema": {
-                "$ref": "#/components/schemas/TemplateSubmissionInput"
+                "$ref": "#/components/schemas/TemplateCriteria"
               }
             }
           },
@@ -2529,6 +2510,37 @@
             "content": {
               "application/json": {
                 "examples": {
+                  "blocked": {
+                    "summary": "Provider owned by another customer; nothing claimed or pushed",
+                    "value": {
+                      "action": "SUBMIT",
+                      "issues": [
+                        {
+                          "code": "PROVIDER_OWNED_BY_OTHER",
+                          "level": "ERROR",
+                          "message": "This providerId belongs to another customer."
+                        }
+                      ],
+                      "operation": "ADD",
+                      "outcome": "BLOCKED"
+                    }
+                  },
+                  "invalid": {
+                    "summary": "Template has schema findings; nothing claimed or pushed",
+                    "value": {
+                      "action": "SUBMIT",
+                      "issues": [
+                        {
+                          "code": "SCHEMA",
+                          "field": "records[0].pointsTo",
+                          "level": "ERROR",
+                          "message": "records[0].pointsTo is required for type A"
+                        }
+                      ],
+                      "operation": "ADD",
+                      "outcome": "INVALID"
+                    }
+                  },
                   "opened": {
                     "summary": "New pull request opened",
                     "value": {
@@ -2536,9 +2548,9 @@
                       "issues": [],
                       "operation": "ADD",
                       "outcome": "SUBMITTED",
-                      "pr": {
+                      "pullRequest": {
                         "number": 1234,
-                        "state": "FAST_TRACK",
+                        "state": "OPEN",
                         "url": "https://github.com/Domain-Connect/Templates/pull/1234"
                       }
                     }
@@ -2550,7 +2562,7 @@
                       "issues": [],
                       "operation": "MODIFY",
                       "outcome": "SUBMITTED",
-                      "pr": {
+                      "pullRequest": {
                         "number": 1234,
                         "state": "OPEN",
                         "url": "https://github.com/Domain-Connect/Templates/pull/1234"
@@ -2559,11 +2571,11 @@
                   }
                 },
                 "schema": {
-                  "$ref": "#/components/schemas/TemplateActionResult"
+                  "$ref": "#/components/schemas/TemplateAssessment"
                 }
               }
             },
-            "description": "Submitted; a pull request was opened or updated. Track progress at `pr.url`.",
+            "description": "Submission processed; the verdict is in `outcome` (`SUBMITTED`, `INVALID` or `BLOCKED`). On `SUBMITTED` a pull request was opened or updated; follow it at `pullRequest.url`. Nothing is claimed or pushed on `INVALID` or `BLOCKED`.\n",
             "headers": {
               "X-Request-Id": {
                 "description": "Request correlation identifier echoed from the request or server-generated when not provided by the client.\n",
@@ -2590,7 +2602,7 @@
     },
     "/v2/domains/validate-domain-connect-template": {
       "post": {
-        "description": "Runs the upstream template JSON schema, the `dc-template-linter` (CI\nrules, then the fast-track merge-or-fail rules) and GoDaddy ownership\nchecks. Has no side effects and always returns `200`; read `outcome`.\n\nThe `providerId` is checked in this order: GoDaddy's ownership table, the\npublic Templates repository, then the GoDaddy DNS products API. A provider\nalready claimed by another shopper, or one that already exists but is\nunclaimed, is `BLOCKED`. Only the shopper who owns a provider can add or\nedit its services, and editing requires a higher `version`.\n",
+        "description": "Runs the upstream template JSON schema, the `dc-template-linter` (CI\nrules, then the fast-track merge-or-fail rules) and GoDaddy ownership\nchecks. Has no side effects and always returns `200`; read `outcome`.\n\nThe `providerId` is checked in this order: GoDaddy's ownership table, the\npublic Templates repository, then the GoDaddy DNS products API. A provider\nalready claimed by another customer, or one that already exists but is\nunclaimed, is `BLOCKED`. Only the customer who owns a provider can add or\nedit its services, and editing requires a higher `version`.\n",
         "operationId": "validateDomainConnectTemplate",
         "parameters": [
           {
@@ -2625,7 +2637,7 @@
                 }
               },
               "schema": {
-                "$ref": "#/components/schemas/TemplateValidationCriteria"
+                "$ref": "#/components/schemas/TemplateCriteria"
               }
             }
           },
@@ -2681,7 +2693,7 @@
                   }
                 },
                 "schema": {
-                  "$ref": "#/components/schemas/TemplateActionResult"
+                  "$ref": "#/components/schemas/TemplateAssessment"
                 }
               }
             },

@@ -58,12 +58,12 @@ async fn validate_sends_the_template_as_written_and_reads_the_outcome() {
     let result = validate(&client(&server), &template()).await.expect("ok");
 
     mock.assert_async().await;
-    assert_eq!(result.outcome, TemplateActionOutcome::Ready);
+    assert_eq!(result.outcome.as_str(), READY);
     assert!(result.issues.is_empty());
 }
 
 #[tokio::test]
-async fn submit_returns_the_pull_request_on_200() {
+async fn submit_returns_the_pull_request_when_submitted() {
     let server = MockServer::start_async().await;
     server
         .mock_async(|when, then| {
@@ -72,30 +72,38 @@ async fn submit_returns_the_pull_request_on_200() {
                 .json_body(json!({ "template": Value::Object(template()) }));
             then.status(200).json_body(json!({
                 "action": "SUBMIT", "outcome": "SUBMITTED", "operation": "ADD", "issues": [],
-                "pr": { "number": 1234, "url": "https://github.com/Domain-Connect/Templates/pull/1234", "state": "FAST_TRACK" }
+                "pullRequest": { "number": 1234, "url": "https://github.com/Domain-Connect/Templates/pull/1234", "state": "OPEN" }
             }));
         })
         .await;
 
     let result = submit(&client(&server), &template()).await.expect("ok");
 
-    assert_eq!(result.outcome, TemplateActionOutcome::Submitted);
-    let pr = result.pr.expect("pull request");
-    assert_eq!(pr.number, Some(1234));
+    assert_eq!(result.outcome.as_str(), SUBMITTED);
+    let pull_request = result.pull_request.expect("pull request");
+    assert_eq!(pull_request.number, Some(1234));
+    assert_eq!(
+        pull_request
+            .state
+            .as_ref()
+            .map(ToString::to_string)
+            .as_deref(),
+        Some("OPEN")
+    );
 }
 
 #[tokio::test]
-async fn submit_reads_a_refusal_from_409_and_422() {
+async fn submit_reads_a_refusal_from_a_200() {
     let server = MockServer::start_async().await;
-    for (status, outcome, code) in [
-        (409, "BLOCKED", "PROVIDER_OWNED_BY_OTHER"),
-        (422, "INVALID", "SCHEMA"),
+    for (outcome, code) in [
+        ("BLOCKED", "PROVIDER_OWNED_BY_OTHER"),
+        ("INVALID", "SCHEMA"),
     ] {
         let mock = server
             .mock_async(|when, then| {
                 when.method(POST)
                     .path("/v2/domains/submit-domain-connect-template");
-                then.status(status).json_body(json!({
+                then.status(200).json_body(json!({
                     "action": "SUBMIT", "outcome": outcome, "operation": "ADD",
                     "issues": [{ "code": code, "level": "ERROR", "message": "m", "field": "providerId" }]
                 }));
@@ -104,19 +112,19 @@ async fn submit_reads_a_refusal_from_409_and_422() {
 
         let result = submit(&client(&server), &template()).await.expect("result");
 
-        assert_eq!(result.outcome.to_string(), outcome);
+        assert_eq!(result.outcome.as_str(), outcome);
         assert_eq!(result.issues[0].code, code);
+        assert!(result.pull_request.is_none());
         mock.delete_async().await;
     }
 }
 
 #[tokio::test]
-async fn submit_does_not_trust_a_422_that_is_not_a_refusal() {
+async fn a_template_that_cannot_be_read_is_an_error_on_both_operations() {
     let server = MockServer::start_async().await;
-    let unprocessable = server
+    server
         .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v2/domains/submit-domain-connect-template");
+            when.method(POST);
             then.status(422).json_body(json!({
                 "name": "UNPROCESSABLE_ENTITY",
                 "message": "The template could not be processed.",
@@ -125,30 +133,64 @@ async fn submit_does_not_trust_a_422_that_is_not_a_refusal() {
             }));
         })
         .await;
+    let client = client(&server);
 
-    let err = submit(&client(&server), &template())
-        .await
-        .expect_err("not a result");
+    let errors = [
+        validate(&client, &template()).await.expect_err("validate"),
+        submit(&client, &template()).await.expect_err("submit"),
+    ];
 
-    let text = err.to_string();
-    assert!(text.contains("UNPROCESSABLE_ENTITY"), "{text}");
-    assert!(text.contains("records must be an array."), "{text}");
-    assert!(fix_of(&err).contains("records list"), "{}", fix_of(&err));
-    unprocessable.delete_async().await;
+    for err in errors {
+        let text = err.to_string();
+        assert!(text.contains("UNPROCESSABLE_ENTITY"), "{text}");
+        assert!(text.contains("records must be an array."), "{text}");
+        assert!(fix_of(&err).contains("records list"), "{}", fix_of(&err));
+    }
+}
 
+#[tokio::test]
+async fn submit_does_not_read_a_result_from_an_error_status() {
+    let server = MockServer::start_async().await;
+    for status in [409, 422] {
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/v2/domains/submit-domain-connect-template");
+                then.status(status).json_body(json!({
+                    "action": "SUBMIT", "outcome": "SUBMITTED", "issues": []
+                }));
+            })
+            .await;
+
+        let err = submit(&client(&server), &template())
+            .await
+            .expect_err("an error status cannot be a success");
+
+        assert!(err.to_string().contains(&status.to_string()), "{err}");
+        mock.delete_async().await;
+    }
+}
+
+#[tokio::test]
+async fn an_outcome_or_state_added_later_is_read_as_text() {
+    let server = MockServer::start_async().await;
     server
         .mock_async(|when, then| {
             when.method(POST)
                 .path("/v2/domains/submit-domain-connect-template");
-            then.status(409).json_body(json!({
-                "action": "SUBMIT", "outcome": "SUBMITTED", "issues": []
+            then.status(200).json_body(json!({
+                "action": "SUBMIT", "outcome": "QUEUED", "operation": "REPLACE", "issues": [],
+                "pullRequest": { "number": 7, "url": "https://example.test/7", "state": "DRAFT" }
             }));
         })
         .await;
-    let err = submit(&client(&server), &template())
-        .await
-        .expect_err("a 409 cannot be a success");
-    assert!(err.to_string().contains("409"), "{err}");
+
+    let result = submit(&client(&server), &template()).await.expect("ok");
+    let data = result_json(Path::new("t.json"), &template(), &result);
+
+    assert_eq!(data["outcome"], "QUEUED");
+    assert_eq!(data["operation"], "REPLACE");
+    assert_eq!(data["pullRequest"]["state"], "DRAFT");
 }
 
 #[tokio::test]
@@ -196,6 +238,7 @@ async fn statuses_keep_their_own_error_codes_and_fixes() {
     for (status, code, fix) in [
         (401, "AUTH_REQUIRED", "gddy auth login"),
         (403, "NETWORK_ERROR", "not allowed to check"),
+        (404, "NOT_FOUND", "Domain Connect template service"),
         (429, "NETWORK_ERROR", "Wait a minute"),
         (503, "NETWORK_ERROR", "server-side"),
     ] {
@@ -288,7 +331,7 @@ fn read_template_reports_a_missing_file_and_a_directory_differently() {
     assert!(err.to_string().contains("Could not read"), "{err}");
 }
 
-fn result(value: Value) -> TemplateActionResult {
+fn result(value: Value) -> TemplateAssessment {
     serde_json::from_value(value).expect("result fixture")
 }
 
@@ -354,7 +397,7 @@ fn a_ready_template_renders_with_no_issue_rows() {
 fn the_submit_view_shows_the_pull_request_link_and_state() {
     let submitted = result(json!({
         "action": "SUBMIT", "outcome": "SUBMITTED", "operation": "ADD", "issues": [],
-        "pr": { "number": 1234, "url": "https://github.com/Domain-Connect/Templates/pull/1234", "state": "FAST_TRACK" }
+        "pullRequest": { "number": 1234, "url": "https://github.com/Domain-Connect/Templates/pull/1234", "state": "OPEN" }
     }));
     let data = result_json(Path::new("acme.com.svc.json"), &template(), &submitted);
 
@@ -365,14 +408,14 @@ fn the_submit_view_shows_the_pull_request_link_and_state() {
         rendered.contains("https://github.com/Domain-Connect/Templates/pull/1234"),
         "{rendered}"
     );
-    assert!(rendered.contains("FAST_TRACK"), "{rendered}");
+    assert!(rendered.contains("OPEN"), "{rendered}");
 }
 
 #[test]
 fn every_view_column_is_a_field_of_the_result() {
     let submitted = result(json!({
         "action": "SUBMIT", "outcome": "SUBMITTED", "operation": "ADD", "issues": [],
-        "pr": { "number": 1, "url": "https://example.test/1", "state": "OPEN" }
+        "pullRequest": { "number": 1, "url": "https://example.test/1", "state": "OPEN" }
     }));
     let data = result_json(Path::new("t.json"), &template(), &submitted);
 

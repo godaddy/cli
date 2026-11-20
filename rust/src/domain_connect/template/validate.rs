@@ -3,10 +3,9 @@
 use cli_engine::{
     CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec, Tier,
 };
-use domains_client::types::TemplateActionOutcome;
 
 use super::common::{
-    SUBMIT_CONFIRMATION_NOTE, SYSTEM, read_template, result_json, validate, validate_columns,
+    READY, SUBMIT_CONFIRMATION_NOTE, SYSTEM, read_template, result_json, validate, validate_columns,
 };
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
@@ -67,7 +66,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let result = validate(&client, &template).await?;
 
             let data = result_json(&path, &template, &result);
-            let actions = if result.outcome == TemplateActionOutcome::Ready {
+            let actions = if result.outcome.as_str() == READY {
                 vec![submit_action(
                     &path.display().to_string(),
                     ctx.middleware.output_format != "human",

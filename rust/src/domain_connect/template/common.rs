@@ -4,10 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use cli_engine::TableColumn;
-use domains_client::types::{
-    TemplateActionOutcome, TemplateActionResult, TemplateSubmissionInput,
-    TemplateValidationCriteria,
-};
+use domains_client::types::{TemplateAssessment, TemplateCriteria};
 use serde_json::{Map, Value, json};
 
 use crate::error::GddyError;
@@ -21,7 +18,14 @@ pub(super) const SUBMIT_CONFIRMATION_NOTE: &str = "AI assistants: submitting pub
      confirmation before running `template submit`. Do not infer it from a \
      request to create or check a template.";
 
-type Template = Map<String, Value>;
+/// The outcomes this version acts on. The service sends the outcome as plain
+/// text and may add values later, so any other value is reported as it came.
+pub(super) const READY: &str = "READY";
+pub(super) const INVALID: &str = "INVALID";
+pub(super) const BLOCKED: &str = "BLOCKED";
+pub(super) const SUBMITTED: &str = "SUBMITTED";
+
+pub(super) type Template = Map<String, Value>;
 
 /// Reads the template file as a JSON object without decoding it into a typed
 /// struct, so every field the user wrote reaches the API as written.
@@ -71,8 +75,8 @@ pub(super) fn read_template(file: &str) -> cli_engine::Result<(PathBuf, Template
 pub(super) async fn validate(
     client: &domains_client::Client,
     template: &Template,
-) -> cli_engine::Result<TemplateActionResult> {
-    let body = TemplateValidationCriteria {
+) -> cli_engine::Result<TemplateAssessment> {
+    let body = TemplateCriteria {
         template: template.clone(),
     };
     match client
@@ -86,13 +90,14 @@ pub(super) async fn validate(
     }
 }
 
-/// `POST /v2/domains/submit-domain-connect-template`. `200` carries a
-/// submitted result; `409` and `422` carry the same shape with the reasons.
+/// `POST /v2/domains/submit-domain-connect-template`. Like validate, always
+/// `200` for a template that can be processed: `outcome` says whether it was
+/// submitted, and a refusal carries its reasons in `issues`.
 pub(super) async fn submit(
     client: &domains_client::Client,
     template: &Template,
-) -> cli_engine::Result<TemplateActionResult> {
-    let body = TemplateSubmissionInput {
+) -> cli_engine::Result<TemplateAssessment> {
+    let body = TemplateCriteria {
         template: template.clone(),
     };
     match client
@@ -102,28 +107,6 @@ pub(super) async fn submit(
         .await
     {
         Ok(response) => Ok(response.into_inner()),
-        Err(domains_client::Error::UnexpectedResponse(response))
-            if matches!(response.status().as_u16(), 409 | 422) =>
-        {
-            let status = response.status().as_u16();
-            let bytes = response
-                .bytes()
-                .await
-                .map_err(|error| network(error.to_string()))?;
-            match serde_json::from_slice::<TemplateActionResult>(&bytes) {
-                // A refusal has to say it is one: a body that claims success
-                // on a 409 or 422 is not a result the caller can act on.
-                Ok(result)
-                    if matches!(
-                        result.outcome,
-                        TemplateActionOutcome::Blocked | TemplateActionOutcome::Invalid
-                    ) =>
-                {
-                    Ok(result)
-                }
-                _ => Err(http_error(status, &String::from_utf8_lossy(&bytes), true)),
-            }
-        }
         Err(error) => Err(api_error(error, true).await),
     }
 }
@@ -166,6 +149,11 @@ fn http_error(status: u16, body: &str, submitting: bool) -> cli_engine::CliCoreE
             "Your account is not allowed to check Domain Connect templates. Run `gddy auth \
              login` to sign in again, then retry.",
         ),
+        404 => error.with_fix(
+            "gddy could not reach the Domain Connect template service. Check the selected \
+             environment with `gddy env get`, or update gddy with `gddy update apply`, then \
+             try again.",
+        ),
         429 => error.with_fix("Too many requests. Wait a minute, then try again."),
         _ => error,
     };
@@ -205,18 +193,14 @@ fn describe_error_body(body: &str) -> String {
 }
 
 /// The JSON a command returns: the API result plus the file it came from.
-pub(super) fn result_json(
-    file: &Path,
-    template: &Template,
-    result: &TemplateActionResult,
-) -> Value {
+pub(super) fn result_json(file: &Path, template: &Template, result: &TemplateAssessment) -> Value {
     let mut out = json!({
         "file": file.display().to_string(),
         "providerId": template.get("providerId").cloned().unwrap_or(Value::Null),
         "serviceId": template.get("serviceId").cloned().unwrap_or(Value::Null),
         "action": result.action.to_string(),
         "outcome": result.outcome.to_string(),
-        "operation": result.operation.map(|operation| operation.to_string()),
+        "operation": result.operation.as_ref().map(ToString::to_string),
         "issues": result.issues.iter().map(|issue| json!({
             "level": issue.level.to_string(),
             "code": issue.code,
@@ -225,11 +209,11 @@ pub(super) fn result_json(
             "fix": issue.fix,
         })).collect::<Vec<_>>(),
     });
-    if let Some(pr) = &result.pr {
+    if let Some(pull_request) = &result.pull_request {
         out["pullRequest"] = json!({
-            "number": pr.number,
-            "url": pr.url,
-            "state": pr.state.map(|state| state.to_string()),
+            "number": pull_request.number,
+            "url": pull_request.url,
+            "state": pull_request.state.as_ref().map(ToString::to_string),
         });
     }
     out
