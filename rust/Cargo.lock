@@ -677,6 +677,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "commerce-client"
+version = "0.2.39"
+dependencies = [
+ "bytes",
+ "generated-client-support",
+ "httpmock",
+ "openapiv3",
+ "prettyplease",
+ "progenitor",
+ "progenitor-client",
+ "reqwest 0.13.4",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "syn 2.0.119",
+ "thiserror 2.0.19",
+ "tokio",
+]
+
+[[package]]
 name = "compact_str"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
