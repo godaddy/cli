@@ -75,7 +75,7 @@ gddy platform app enablement --store-id <storeId>
 - `gddy platform app archive <name>`: irreversible; confirm the name with `list` first.
 - `gddy platform action` and `gddy platform webhook`: browse the platform's action and webhook-event catalogs (used when choosing values for `add action` and `add subscription`).
 
-## See also
+## Related
 
 - `gddy guide platform-settings`: the `settings-form-v1` and `settings-link-v1` presentation shapes in depth.
 - `docs/application-settings.md` in this repo: the same settings content, plus a pointer to `app-registry-api`'s platform-contract docs for the Commerce-side settings surface.
