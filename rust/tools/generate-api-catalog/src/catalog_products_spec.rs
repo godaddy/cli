@@ -43,8 +43,8 @@ pub(crate) fn vendor_sdl(catalog: &CatalogDomain, out_path: &Path) -> Result<()>
         return Ok(());
     };
 
-    let sdl =
-        graphql_sdl::drop_deprecated_nodes(&graphql_sdl::strip_federation_schema_extension(sdl))?;
+    let sdl = graphql_sdl::strip_federation_schema_extension(sdl)?;
+    let sdl = graphql_sdl::drop_deprecated_nodes(&sdl)?;
     graphql_sdl::ensure_query_root(&sdl, DOMAIN)?;
     if let Some(parent) = out_path.parent() {
         std::fs::create_dir_all(parent)
