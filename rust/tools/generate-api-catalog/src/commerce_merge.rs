@@ -10,16 +10,12 @@ use std::{
 use anyhow::{Context, Result};
 use serde_json::{Map, Value};
 
+use crate::spec_normalize;
+
 /// Absolute path prefix the Stores API's operations live under, relative to
 /// the bare API host `base_url` callers pass to the generated client at
 /// runtime.
 const BASE_PATH: &str = "/v2/commerce";
-
-/// Drops string `format`s that map to external crates (chrono/uuid) so the
-/// generated types stay plain `String` — every id in this crate is handled
-/// as a plain string at the call sites already. Mirrors
-/// `domains_merge.rs::EXTERNAL_FORMATS`.
-const EXTERNAL_FORMATS: &[&str] = &["date", "date-time", "uuid", "partial-date-time"];
 
 pub(crate) fn commerce_client_oas3_path() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -78,11 +74,13 @@ fn ensure_refs_resolved(spec: &Value) -> Result<()> {
 /// rejects anything else; this doc uses no 3.1-only constructs), prefixes
 /// every path with [`BASE_PATH`], strips external formats, turns un-exploded
 /// array query parameters into strings (see
-/// [`flatten_unexploded_query_arrays`]), relaxes the response-only schemas to tolerant readers (request-reachable schemas stay
-/// strict), and drops the spec's *documented* non-2xx
-/// response schemas (see [`only_2xx_paths`] — this is a codegen-input trim,
-/// not a runtime error-handling gap: real non-2xx responses are still fully
-/// handled at request time via `commerce_client::Error::status()`).
+/// [`flatten_unexploded_query_arrays`]), relaxes the response-only schemas to
+/// tolerant readers (request-reachable schemas stay strict), and drops the
+/// spec's *documented* non-2xx response schemas. That last step is a
+/// codegen-input trim, not a runtime error-handling gap: every operation here
+/// declares the same error schema, which `typify` would name `Error` and so
+/// collide with `progenitor`'s own `Error<E>`, and real non-2xx responses are
+/// still fully visible at request time via `commerce_client::Error::status()`.
 fn load_and_lift(spec_path: &Path, common_types: Option<&Path>) -> Result<Value> {
     let (mut dereffed, defs) = crate::dereference::load_and_dereference(spec_path, common_types)?;
 
@@ -100,28 +98,17 @@ fn load_and_lift(spec_path: &Path, common_types: Option<&Path>) -> Result<Value>
     for (key, def) in defs {
         schemas.insert(key, def);
     }
-    rewrite_defs_refs(&mut dereffed);
+    spec_normalize::rewrite_defs_refs(&mut dereffed);
 
-    let obj = dereffed
+    dereffed
         .as_object_mut()
-        .context("spec is not a JSON object")?;
-    obj.insert("openapi".to_owned(), Value::String("3.0.3".to_owned()));
-
-    let old_paths = obj
-        .remove("paths")
-        .and_then(|p| p.as_object().cloned())
-        .context("spec missing paths")?;
-    let mut new_paths = Map::new();
-    for (key, item) in old_paths {
-        if !key.starts_with('/') {
-            continue; // drop paths-level extensions
-        }
-        new_paths.insert(format!("{BASE_PATH}{key}"), item);
-    }
-    obj.insert("paths".to_owned(), Value::Object(new_paths));
-
-    only_2xx_paths(obj.get_mut("paths").context("missing paths")?);
-    strip_external_formats(&mut dereffed);
+        .context("spec is not a JSON object")?
+        .insert("openapi".to_owned(), Value::String("3.0.3".to_owned()));
+    spec_normalize::prefix_paths(&mut dereffed, BASE_PATH)?;
+    spec_normalize::retain_2xx_responses(&mut dereffed);
+    // Every id and code field here is a plain string at the call sites, so
+    // drop `minLength`/`maxLength` too, not just external formats and patterns.
+    spec_normalize::strip_external_formats(&mut dereffed, true);
     flatten_unexploded_query_arrays(&mut dereffed);
     let strict = request_reachable_schemas(&dereffed);
     if let Some(schemas) = dereffed
@@ -215,101 +202,6 @@ fn flatten_unexploded_query_arrays(value: &mut Value) {
     }
 }
 
-fn rewrite_defs_refs(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            if let Some(Value::String(r)) = map.get("$ref")
-                && let Some(rest) = r.strip_prefix("#/$defs/")
-            {
-                map.insert(
-                    "$ref".to_owned(),
-                    Value::String(format!("#/components/schemas/{rest}")),
-                );
-            }
-            for v in map.values_mut() {
-                rewrite_defs_refs(v);
-            }
-        }
-        Value::Array(items) => items.iter_mut().for_each(rewrite_defs_refs),
-        _ => {}
-    }
-}
-
-/// Drops `op`'s declared 4xx/5xx/`default` response entries — i.e. removes
-/// them from the OpenAPI *document* `progenitor` reads, not from what the
-/// generated client can actually see at request time. `progenitor` still
-/// reports a real non-2xx response as `Error::UnexpectedResponse` (with the
-/// true status and body), so callers can still map it to a proper
-/// `NOT_FOUND`/`AUTH_REQUIRED`/etc. error — this function only changes what
-/// *type* progenitor generates for the error case, not whether errors are
-/// caught.
-///
-/// The reason to drop them: every operation here declares the *same* error
-/// schema (`#/$defs/error`). Left in, `typify` would try to generate a Rust
-/// type for it named `Error` (schema names get PascalCased) — colliding
-/// with `progenitor`'s own top-level `Error<E>` enum, a hard compile error.
-/// Stripping these responses makes every operation's error type resolve to
-/// `()` instead (see `progenitor_impl::method::extract_responses`'s
-/// fallback to `OperationResponseKind::None` when no error response is
-/// declared), which is also why one error-mapping helper over `Error<()>` can
-/// handle every method uniformly rather than needing per-operation typed
-/// error handling.
-fn filter_2xx_responses(op: &mut Value) {
-    if let Some(responses) = op.get_mut("responses").and_then(Value::as_object_mut) {
-        let codes: Vec<String> = responses.keys().cloned().collect();
-        for code in codes {
-            if !code.starts_with('2') {
-                responses.remove(&code);
-            }
-        }
-    }
-}
-
-/// Applies [`filter_2xx_responses`] to every operation under every path.
-fn only_2xx_paths(paths: &mut Value) {
-    const METHODS: &[&str] = &["get", "post", "put", "patch", "delete"];
-    let Some(paths) = paths.as_object_mut() else {
-        return;
-    };
-    for item in paths.values_mut() {
-        let Some(item) = item.as_object_mut() else {
-            continue;
-        };
-        for method in METHODS {
-            if let Some(op) = item.get_mut(*method) {
-                filter_2xx_responses(op);
-            }
-        }
-    }
-}
-
-/// Drops string `format`s that map to external crates (chrono/uuid) so the
-/// generated types stay plain `String`, and drops `pattern`/`minLength`/
-/// `maxLength` so `typify` doesn't emit a `regress`-validated newtype for
-/// every id/code field (this crate's callers always have a plain `String`
-/// already validated by the CLI's own argument parsing, not a `progenitor`-
-/// generated wrapper type).
-fn strip_external_formats(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            if map.get("type").and_then(Value::as_str) == Some("string") {
-                if matches!(map.get("format").and_then(Value::as_str), Some(f) if EXTERNAL_FORMATS.contains(&f))
-                {
-                    map.remove("format");
-                }
-                map.remove("pattern");
-                map.remove("minLength");
-                map.remove("maxLength");
-            }
-            for v in map.values_mut() {
-                strip_external_formats(v);
-            }
-        }
-        Value::Array(items) => items.iter_mut().for_each(strip_external_formats),
-        _ => {}
-    }
-}
-
 /// Drops `required` and marks array properties nullable so a present-but-null
 /// value deserializes to `None` rather than erroring at *response*
 /// deserialization time — it has no effect on what gets sent in a request.
@@ -334,42 +226,6 @@ fn relax(defn: &mut Value) {
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn defs_refs_are_rewritten_to_components_schemas_at_any_depth() {
-        let mut spec = json!({
-            "a": { "$ref": "#/$defs/Store" },
-            "b": [{ "items": { "$ref": "#/$defs/Address" } }],
-            "c": { "$ref": "#/components/schemas/Already" },
-        });
-        rewrite_defs_refs(&mut spec);
-        assert_eq!(spec["a"]["$ref"], "#/components/schemas/Store");
-        assert_eq!(
-            spec["b"][0]["items"]["$ref"],
-            "#/components/schemas/Address"
-        );
-        assert_eq!(spec["c"]["$ref"], "#/components/schemas/Already");
-    }
-
-    #[test]
-    fn only_2xx_responses_survive() {
-        let mut op = json!({
-            "responses": {
-                "200": { "description": "ok" },
-                "201": { "description": "created" },
-                "404": { "description": "missing" },
-                "default": { "description": "error" }
-            }
-        });
-        filter_2xx_responses(&mut op);
-        let codes: Vec<&str> = op["responses"]
-            .as_object()
-            .expect("responses object")
-            .keys()
-            .map(String::as_str)
-            .collect();
-        assert_eq!(codes, ["200", "201"]);
-    }
 
     /// A schema is strict if a request body reaches it directly or through
     /// nested refs, including through an array and through a cycle; a schema
@@ -498,39 +354,6 @@ mod tests {
             "components": { "schemas": { "Store": { "required": ["id"] } } }
         });
         assert!(request_reachable_schemas(&spec).is_empty());
-    }
-
-    #[test]
-    fn only_2xx_paths_visits_every_method_but_skips_non_operations() {
-        let mut paths = json!({
-            "/stores": {
-                "parameters": [{ "name": "x" }],
-                "get": { "responses": { "200": {}, "500": {} } },
-                "post": { "responses": { "201": {}, "400": {} } }
-            }
-        });
-        only_2xx_paths(&mut paths);
-        assert!(paths["/stores"]["get"]["responses"].get("500").is_none());
-        assert!(paths["/stores"]["post"]["responses"].get("400").is_none());
-        assert_eq!(paths["/stores"]["parameters"][0]["name"], "x");
-    }
-
-    #[test]
-    fn external_formats_and_string_constraints_are_stripped_but_other_formats_stay() {
-        let mut schema = json!({
-            "properties": {
-                "id": { "type": "string", "format": "uuid", "pattern": "^x$", "minLength": 1, "maxLength": 9 },
-                "when": { "type": "string", "format": "date-time" },
-                "email": { "type": "string", "format": "email" },
-                "count": { "type": "integer", "format": "int64" }
-            }
-        });
-        strip_external_formats(&mut schema);
-        let props = &schema["properties"];
-        assert_eq!(props["id"], json!({ "type": "string" }));
-        assert_eq!(props["when"], json!({ "type": "string" }));
-        assert_eq!(props["email"]["format"], "email");
-        assert_eq!(props["count"]["format"], "int64");
     }
 
     #[test]
