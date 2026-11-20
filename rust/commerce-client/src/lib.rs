@@ -37,7 +37,10 @@ impl progenitor_client::ClientHooks<()> for Client {
         request: &mut reqwest::Request,
         _info: &progenitor_client::OperationInfo,
     ) -> Result<(), progenitor_client::Error<E>> {
-        generated_client_support::notify_request(request);
+        // Requests such as `updateGovernmentIds` and `createStore` carry
+        // government IDs, addresses and payment details, so traces get the
+        // method, URL and headers only, never the body.
+        generated_client_support::notify_request_metadata_only(request);
         Ok(())
     }
 
@@ -158,11 +161,22 @@ mod tests {
 
     #[derive(Default)]
     struct RecordingObserver {
+        requests: std::sync::Mutex<Vec<Option<Vec<u8>>>>,
         responses: std::sync::Mutex<Vec<(u16, Vec<u8>)>>,
     }
 
     impl TransportObserver for RecordingObserver {
-        fn on_request(&self, _request: &reqwest::Request) {}
+        fn on_request(&self, request: &reqwest::Request) {
+            self.requests
+                .lock()
+                .expect("lock is never held across a panic")
+                .push(
+                    request
+                        .body()
+                        .and_then(reqwest::Body::as_bytes)
+                        .map(<[u8]>::to_vec),
+                );
+        }
 
         fn on_response(
             &self,
@@ -227,6 +241,84 @@ mod tests {
             vec![(200, generated_client_support::WITHHELD_BODY.to_vec())],
             "the observer should see the status and a placeholder, never the body"
         );
+    }
+
+    /// `updateGovernmentIds` sends government IDs, so a trace must show the
+    /// request's method, URL and headers but never its body, while the server
+    /// still receives the real body.
+    #[tokio::test]
+    async fn mutation_requests_reach_the_server_but_not_the_observer() {
+        let _lock = OBSERVER_TEST_LOCK.lock().await;
+        let _clear = ClearObserver;
+        let observer = std::sync::Arc::new(RecordingObserver::default());
+        set_transport_observer(Some(observer.clone()));
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(PUT)
+                    .path("/v2/commerce/stores/store-1/government-ids")
+                    .body_includes("secret-gov-id");
+                then.status(200).json_body(json!([]));
+            })
+            .await;
+
+        // The decoded result is irrelevant here; only the observation matters.
+        let _ = client_for(&server)
+            .update_government_ids()
+            .store_id("store-1".to_owned())
+            .body(types::GovernmentIdList(vec![types::GovernmentId {
+                created_at: None,
+                government_id: "secret-gov-id".to_owned(),
+                type_: "EIN".to_owned(),
+                updated_at: None,
+            }]))
+            .send()
+            .await;
+
+        mock.assert_async().await;
+        let requests = observer
+            .requests
+            .lock()
+            .expect("lock is never held across a panic");
+        assert_eq!(
+            *requests,
+            vec![Some(
+                generated_client_support::WITHHELD_REQUEST_BODY.to_vec()
+            )],
+            "the observer should see a placeholder, never the request body"
+        );
+    }
+
+    /// progenitor ignores `explode: false` and would send repeated keys for an
+    /// array, so the generator turns the parameter into a string and callers
+    /// pass one comma-separated value.
+    #[tokio::test]
+    async fn include_fields_is_sent_as_one_comma_separated_value() {
+        let _lock = OBSERVER_TEST_LOCK.lock().await;
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/v2/commerce/stores/store-1")
+                    .query_param("includeFields", "address,attributes");
+                then.status(200).json_body(json!({
+                    "id": "store-1",
+                    "businessId": "biz-1",
+                    "displayName": "Shop",
+                    "status": "ACTIVE"
+                }));
+            })
+            .await;
+
+        client_for(&server)
+            .get_store_by_id()
+            .store_id("store-1".to_owned())
+            .include_fields("address,attributes")
+            .send()
+            .await
+            .expect("request succeeds");
+
+        mock.assert_async().await;
     }
 
     #[test]

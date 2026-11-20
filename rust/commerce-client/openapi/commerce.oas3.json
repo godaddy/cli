@@ -51,10 +51,7 @@
         "name": "includeFields",
         "required": false,
         "schema": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
+          "type": "string"
         },
         "style": "form"
       },
@@ -959,10 +956,7 @@
             "name": "includeFields",
             "required": false,
             "schema": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
+              "type": "string"
             },
             "style": "form"
           }
@@ -1126,10 +1120,7 @@
           "name": "includeFields",
           "required": false,
           "schema": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
+            "type": "string"
           },
           "style": "form"
         }
