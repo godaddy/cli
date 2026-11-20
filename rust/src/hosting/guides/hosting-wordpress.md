@@ -12,7 +12,7 @@ The following terms and concepts are relevant to managed WordPress sites:
 
 **Site**: the WordPress app, created with `--app-type MHWP`. Unlike a Node.js app there's no source upload, no build and no deployment, and no PREVIEW environment. The site is provisioned ready to serve, in the United States, and is reachable at `urls.publish` on `app get` after creation completes. The display name you pass as `--name` labels the app in the CLI and in Airo App Builder; it doesn't become the WordPress site title.
 
-**Placeholder page**: what the site shows instead of its content until it's taken live, and again after it's unpublished.
+**Placeholder page**: what the site shows instead of its content until it's taken live or after it's unpublished.
 
 **Published-site slot**: a live site uses one slot on the plan. The free plan has none.
 
@@ -43,13 +43,13 @@ gddy hosting operation get --operation-id <operation-id>
 
 Both return an operation ID to poll. Unpublishing changes nothing inside the site: the content stays in place and visitors see the placeholder page again.
 
-Going live needs a plan with a free published-site slot. If publishing is refused because of the plan, upgrade the plan in Airo App Builder or unpublish another site first. `hosting deployment publish` doesn't apply to WordPress sites.
+Going live needs a plan with a free published-site slot. If publishing is refused because of a lack of available slots, upgrade the plan in Airo App Builder or unpublish another site first. `hosting deployment publish` doesn't apply to WordPress sites.
 
 | Error | Meaning | Next step |
 |---|---|---|
 | Plan has no free slot | The plan allows no more live sites | Upgrade the plan in Airo App Builder, or `hosting app unpublish` another site |
 | Subscription not active | The Airo App Builder subscription is inactive; taking a site offline still works | Reactivate the subscription, then publish again |
-| Change still running | A publish or unpublish for this site hasn't finished, or another change on this subscription is being accepted at this moment; retry shortly | `hosting operation get --operation-id <operation-id>`, then retry |
+| Change still running | A publish or unpublish for this site hasn't finished, or another change on this subscription is being accepted at this moment; retry shortly | Check the operation status with `hosting operation get --operation-id <operation-id>`, then retry after it's completed |
 | Service unavailable | The plan limit couldn't be read | Wait a moment and run the command again |
 
 ## Rename the site

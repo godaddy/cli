@@ -10,9 +10,9 @@ This guide covers the full lifecycle of a hosted Node.js application. Create an 
 
 The following terms and concepts are relevant to deploying a Node.js application:
 
-**App**: the hosted Node.js application. Create it first. Later commands take `--app-id`.
+**App**: the hosted Node.js application. Create it first to get the `--app-id` used for later commands.
 
-**Environments**: each app has PREVIEW (staging) and PUBLISH (production). The CLI calls this `variant`. Uploads land on PREVIEW. `deployment publish` promotes that build to PUBLISH.
+**Environment**: each app has a PREVIEW (staging) and PUBLISH (production) environment. The CLI calls an environment a `variant`. Uploads land on PREVIEW and then can be promoted to PUBLISH once accepted.
 
 **Subscription**: a hosting plan you already bought (resources and billing). Attach the app to one before the first publish. Don't have one? Go to the "Buy a plan" section later in this guide.
 
@@ -51,7 +51,7 @@ When zipping your project, exclude the `node_modules` directory.
 
 For a full list of application requirements and instructions on preparing a `.zip` file for uploading, go to [Node.js app requirements](https://developer.godaddy.com/en/docs/api-users/hosting/app-requirements).
 
-## Upload the source
+## Upload the source code
 
 Deploys code to the app's PREVIEW environment. You can run this again to replace what was uploaded before.
 
