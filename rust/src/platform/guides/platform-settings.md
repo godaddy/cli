@@ -215,7 +215,7 @@ App Registry stores only this allowlist. Settings API strips response properties
 - A link presentation's `label` is non-empty and `openMode` is `"new-window"`.
 - `presentation` and `presentationFile` aren't both set on the same entry.
 
-These checks run as soon as the manifest is touched, not just at release.
+These checks run as soon as the manifest is touched, not just at release. The exception is a presentation that comes from a `presentationFile`. The CLI reads that file at release, so the checks on its contents (field and section keys, options, and a link's `label` and `openMode`) run then.
 
 Deeper semantics stay server-validated: bounds consistency (`maxLength ≥ minLength`), a `defaultValue` actually matching a registered option or satisfying bounds, and `list-group` nesting depth. A rejection there surfaces as a `release` API error, not a local one.
 
