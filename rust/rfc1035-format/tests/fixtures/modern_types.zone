@@ -1,0 +1,13 @@
+; Newer record types, plus GoDaddy's non-standard ALIAS (parsed only when the
+; caller registers it).
+$ORIGIN example.com.
+$TTL 600
+@               IN CAA   0 issue "letsencrypt.org"
+@               IN CAA   0 issuewild ";"
+@               IN CAA   128 iodef "mailto:security@example.com"
+_443._tcp.www   IN TLSA  3 1 1 d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971
+@               IN HTTPS 1 . alpn=h2,h3
+@               IN HTTPS 2 cdn.example.net. alpn="h2" port=8443
+svc             IN SVCB  0 pool.example.net.
+@               IN ALIAS lb.example.net.
+_sip._tcp       IN SRV   10 60 5060 sip.example.com.

@@ -1,0 +1,22 @@
+; A zone as BIND's tools and hand-maintained files commonly write it:
+; $TTL with units, a parenthesised SOA with comments, owner inheritance,
+; relative and absolute names, and `@` in several positions.
+$TTL 1h
+$ORIGIN example.com.
+@       IN  SOA ns1.example.com. hostmaster.example.com. (
+                2026111801 ; serial
+                2h         ; refresh
+                15m        ; retry
+                2w         ; expire
+                5m )       ; negative-caching ttl
+        IN  NS  ns1
+        IN  NS  ns2.example.com.
+        IN  MX  10 mail
+        IN  MX  20 mail2.example.net.
+        IN  TXT "v=spf1 mx include:_spf.example.net -all"
+ns1     IN  A   192.0.2.53
+ns2     IN  A   192.0.2.54
+mail    300 IN  A   192.0.2.25
+www         IN  CNAME @
+ftp         IN  CNAME www
+_dmarc  IN  TXT "v=DMARC1; p=reject; rua=mailto:dmarc@example.com"
