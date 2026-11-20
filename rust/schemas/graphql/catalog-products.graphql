@@ -1,0 +1,3051 @@
+input AddListTreeNodeInput {
+  listId: String!
+  parentNodeId: String
+  position: Int
+  references: [CreateReferenceInput!]
+}
+
+type Address {
+  "The details of the address."
+  addressDetails: AddressDetails
+  "The first line of the address."
+  addressLine1: String!
+  "The second line of the address."
+  addressLine2: String
+  "The third line of the address."
+  addressLine3: String
+  "The first administrative area of the address."
+  adminArea1: String
+  "The second administrative area of the address."
+  adminArea2: String
+  "The third administrative area of the address."
+  adminArea3: String
+  "The fourth administrative area of the address."
+  adminArea4: String
+  "The country code of the address."
+  countryCode: String!
+  "The postal code of the address."
+  postalCode: String
+}
+
+type AddressDetails {
+  "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address."
+  addressType: String
+  "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number."
+  buildingName: String
+  "The delivery service. Post office box, bag number, or post office name"
+  deliveryService: String
+  "The latitude and longitude of the address."
+  geoCoordinates: GeoCoordinates
+  "The street name. Just `Drury` in `Drury Lane`."
+  streetName: String
+  "The street number."
+  streetNumber: String
+  "The street type. For example, avenue, boulevard, road, or expressway."
+  streetType: String
+  "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment."
+  subBuilding: String
+}
+
+input AddressDetailsInput {
+  addressType: String
+  buildingName: String
+  deliveryService: String
+  geoCoordinates: GeoCoordinatesInput
+  streetName: String
+  streetNumber: String
+  streetType: String
+  subBuilding: String
+}
+
+input AssociateAttributeValueInput {
+  label: String!
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  position: Int
+}
+
+input AssociateAttributeValueToSKUInput {
+  attributeName: String!
+  valueName: String!
+}
+
+"A SKU is comprised of a combination of multiple attributes"
+type Attribute {
+  "The creation date of the Attribute."
+  createdAt: DateTime!
+  "A description of the Attribute."
+  description: String
+  "HTML description for the Attribute. Will be used to display rich text content to customers."
+  htmlDescription: String
+  "The UUID of the Attribute."
+  id: ID!
+  "The display label of the Attribute. E.g. 'Color', 'Size', etc."
+  label: String!
+  metafields(after: String, before: String, first: Int, "The key of the metafield. Requires namespace to be provided." key: String, last: Int, "The namespace of the metafield. Required when key is provided." namespace: String): AttributeMetafieldsConnection
+  "A unique name of the Attribute. E.g. 'color', 'size', etc."
+  name: String!
+  "The position of the attribute."
+  position: Int
+  "A SKU group is a grouping of related SKUs. It provides information about all the SKUs that are sold together on storefronts or devices."
+  skuGroup: SKUGroup
+  "The update date of the Attribute."
+  updatedAt: DateTime!
+  "Attribute values of Attribute."
+  values(after: String, before: String, first: Int, id: AttributeValueIdsFilter, last: Int, orderBy: AttributeValueOrderBy, paginationType: PaginationType = CURSOR, skuId: SKUIdFilter): AttributeValuesConnection
+}
+
+input AttributeIdFilter {
+  eq: String
+  in: [String!]
+}
+
+input AttributeIdsFilter {
+  in: [String!]
+}
+
+type AttributeMetafieldsConnection {
+  edges: [AttributeMetafieldsEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type AttributeMetafieldsEdge {
+  cursor: String!
+  node: Metafield
+}
+
+input AttributeOrderBy {
+  createdAt: OrderByDirectionEnum
+  id: OrderByDirectionEnum
+  label: OrderByDirectionEnum
+  name: OrderByDirectionEnum
+  position: OrderByDirectionEnum
+  skuGroupId: OrderByDirectionEnum
+  updatedAt: OrderByDirectionEnum
+}
+
+"Value for an Attribute."
+type AttributeValue {
+  "The attribute that this value belongs to."
+  attribute: Attribute
+  "The creation date of the Attribute Value."
+  createdAt: DateTime!
+  "The UUID of the Attribute Value."
+  id: ID!
+  "The display label of the Attribute Value. E.g. 'Red', 'Blue', etc."
+  label: String!
+  metafields(after: String, before: String, first: Int, "The key of the metafield. Requires namespace to be provided." key: String, last: Int, "The namespace of the metafield. Required when key is provided." namespace: String): AttributeValueMetafieldsConnection
+  "A unique name of the Attribute Value. E.g. 'red', 'blue', etc."
+  name: String!
+  "The position of the attribute value."
+  position: Int
+  "The last update date of the Attribute Value."
+  updatedAt: DateTime!
+}
+
+input AttributeValueIdsFilter {
+  in: [String!]
+}
+
+type AttributeValueMetafieldsConnection {
+  edges: [AttributeValueMetafieldsEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type AttributeValueMetafieldsEdge {
+  cursor: String!
+  node: Metafield
+}
+
+input AttributeValueOrderBy {
+  attributeId: OrderByDirectionEnum
+  createdAt: OrderByDirectionEnum
+  id: OrderByDirectionEnum
+  name: OrderByDirectionEnum
+  position: OrderByDirectionEnum
+  updatedAt: OrderByDirectionEnum
+}
+
+type AttributeValuesConnection {
+  edges: [AttributeValuesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type AttributeValuesConnectionEdge {
+  cursor: String!
+  node: AttributeValue
+}
+
+"Configuration for cascade archiving related entities."
+input CascadeArchiveInput {
+  "Whether to cascade archive SKUs when archiving the SKU Group." skus: Boolean
+}
+
+input CreateAddressInput {
+  addressDetails: AddressDetailsInput
+  addressLine1: String!
+  addressLine2: String
+  addressLine3: String
+  adminArea1: String
+  adminArea2: String
+  adminArea3: String
+  adminArea4: String
+  countryCode: String!
+  postalCode: String
+}
+
+input CreateAttributeValueInput {
+  attributeId: String!
+  label: String!
+  metafields: [CreateMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  position: Int
+}
+
+"Input for creating a new file."
+input CreateFileInput {
+  contentType: String!
+  description: String
+  filename: String!
+  sizeBytes: Float!
+  storageUrl: String!
+}
+
+input CreateInventoryAdjustmentInput {
+  "The change in inventory quantity. Positive for additions, negative for removals." delta: Int!
+  locationId: String!
+  metafields: [CreateMetafieldInput!]
+  "The date and time when the inventory adjustment occurred." occurredAt: DateTime
+  "The name of an inventory adjustment reason to associate with this adjustment. Use the exact reason name (e.g. \"g-damage\" for global presets, or a store-scoped name)." reasonName: String
+  references: [CreateReferenceInput!]
+  skuId: String!
+  "The type of inventory adjustment, one of `AVAILABLE`, `COMMITTED`, `BACKORDERED`." type: String!
+}
+
+input CreateListTreeNodeInput {
+  listId: String!
+  position: Int
+  references: [CreateReferenceInput!]
+}
+
+input CreateMediaObjectInput {
+  label: String
+  metafields: [CreateMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  position: Int
+  "The type of the media. Currently accepted values on write: `VIDEO`, `IMAGE`, `AUDIO`. `PHOTO` is not accepted on create or update." type: String!
+  url: String!
+}
+
+input CreateMetafieldInput {
+  key: String!
+  namespace: String!
+  "Metafield type. Currently accepted values (lowercase): `boolean`, `string`, `stringMultiLine`, `number`, `numberDecimal`, `date`, `dateTime`, `json`, `measurement`, `url`, `reference`, `money`, `list.string`, `list.number`, `list.numberDecimal`, `list.measurement`, `list.date`, `list.url`." type: String!
+  value: String!
+}
+
+input CreateOptionInput {
+  description: String
+  label: String!
+  metafields: [CreateMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  position: Int
+  prices: [CreateOptionPriceInput!]
+  "The type of the Option, one of `TEXT`, `NUMBER`, `LIST`. Option Values are only available on the 'LIST' type." type: String!
+  validation: CreateOptionValidationInput
+  values: [CreateOptionValueInput!]
+}
+
+input CreateOptionPriceInput {
+  compareAtValue: SimpleMoneyInput
+  value: SimpleMoneyInput!
+}
+
+input CreateOptionValidationInput {
+  max: Int
+  min: Int
+}
+
+input CreateOptionValueInput {
+  label: String!
+  metafields: [CreateMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  position: Int
+  prices: [CreateOptionValuePriceInput!]
+}
+
+input CreateOptionValuePriceInput {
+  compareAtValue: SimpleMoneyInput
+  value: SimpleMoneyInput!
+}
+
+input CreateReferenceInput {
+  origin: String!
+  value: String!
+}
+
+input CreateSKUGroupAttributeInput {
+  description: String
+  label: String!
+  metafields: [CreateMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  position: Int
+  values: [AssociateAttributeValueInput!]
+}
+
+input CreateSKUGroupSKUInput {
+  backorderLimit: Int
+  code: String
+  description: String
+  disableInventoryTracking: Boolean
+  disablePriceOverrides: Boolean
+  disableShipping: Boolean
+  eanCode: String
+  gtinCode: String
+  htmlDescription: String
+  inventoryQuantities: [CreateSKUInventoryInput!]
+  isbnCode: String
+  label: String!
+  mediaObjects: [CreateMediaObjectInput!]
+  metafields: [CreateMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  prices: [CreateSKUPriceInput!]
+  references: [CreateReferenceInput!]
+  shortLabel: String
+  "The status of the SKU, one of `DRAFT`, `ACTIVE`, `ARCHIVED`." status: String
+  unitCost: SimpleMoneyInput
+  "The unit of the weight, one of `KG`, `GR`, `LB`, `OZ`." unitOfWeight: String
+  upcCode: String
+  weight: Float
+}
+
+input CreateSKUInput {
+  attributeValueIds: [String!]
+  attributeValues: [AssociateAttributeValueToSKUInput!]
+  backorderLimit: Int
+  code: String
+  description: String
+  disableInventoryTracking: Boolean
+  disablePriceOverrides: Boolean
+  disableShipping: Boolean
+  eanCode: String
+  gtinCode: String
+  htmlDescription: String
+  inventoryQuantities: [CreateSKUInventoryInput!]
+  isbnCode: String
+  label: String!
+  mediaObjects: [CreateMediaObjectInput!]
+  metafields: [CreateMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  prices: [CreateSKUPriceInput!]
+  references: [CreateReferenceInput!]
+  shortLabel: String
+  skuGroupId: String
+  "The status of the SKU, one of `DRAFT`, `ACTIVE`, `ARCHIVED`." status: String
+  unitCost: SimpleMoneyInput
+  "The status of the SKU, one of `KG`, `GR`, `LB`, `OZ`." unitOfWeight: String
+  upcCode: String
+  weight: Float
+}
+
+input CreateSKUInventoryInput {
+  locationId: String!
+  quantity: Int!
+}
+
+input CreateSKUPriceInput {
+  compareAtValue: SimpleMoneyInput
+  value: SimpleMoneyInput!
+}
+
+"Filters items based on the date they were created."
+input CreatedAtFilter {
+  gt: String
+  lt: String
+}
+
+"Filters items by currency code. Can be used to filter for an exact match or for multiple values."
+input CurrencyCodeFilter {
+  "Filters items where the currency code equals the specified 3-letter ISO currency code." eq: String
+  "Filters items where the currency code matches any of the specified 3-letter ISO currency codes." in: [String!]
+}
+
+"A date-time string at UTC, such as 2007-12-03T10:15:30Z, compliant with the `date-time` format outlined in section 5.6 of the RFC 3339 profile of the ISO 8601 standard for representation of dates and times using the Gregorian calendar."
+scalar DateTime
+
+"A file represents a stored digital asset such as an image, document, or downloadable content."
+type File {
+  "The MIME type of the file."
+  contentType: String!
+  "The timestamp when the file was created."
+  createdAt: DateTime!
+  "An optional description of the file."
+  description: String
+  "The name of the file including extension."
+  filename: String!
+  "The globally unique identifier of the file."
+  id: ID!
+  "The size of the file in bytes. Typed as Float to support files larger than 2GB."
+  sizeBytes: Float!
+  "The current status of the file."
+  status: FileStatus!
+  "The URL where the file is stored."
+  storageUrl: String!
+  "The timestamp when the file was last updated."
+  updatedAt: DateTime!
+}
+
+input FileIdsFilter {
+  in: [String!]
+}
+
+input FileOrderBy {
+  createdAt: OrderByDirectionEnum
+  filename: OrderByDirectionEnum
+  id: OrderByDirectionEnum
+  updatedAt: OrderByDirectionEnum
+}
+
+"The status of a file."
+enum FileStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+"Filter for the status of the File, one of `ACTIVE`, `ARCHIVED`."
+input FileStatusFilter {
+  eq: String
+  in: [String!]
+}
+
+"Filter for the storage URL of the File."
+input FileStorageUrlFilter {
+  eq: String
+  in: [String!]
+}
+
+"The geographic latitude and longitude coordinates."
+type GeoCoordinates {
+  "The latitude of the geo coordinates."
+  latitude: Float!
+  "The longitude of the geo coordinates."
+  longitude: Float!
+}
+
+input GeoCoordinatesInput {
+  latitude: Float
+  longitude: Float
+}
+
+"Filters items based on whether they have a compareAtValue (on sale) in the requested currency. A compareAtValue > 0 is considered a valid sale price; zero or negative values are treated as not on sale."
+input HasCompareAtFilter {
+  "The three-letter currency code of prices to match." currencyCode: String!
+  "When true, returns items with at least one price that has a compareAtValue > 0 (on sale) in the requested currency. When false, returns items that have at least one price in the requested currency but none with a compareAtValue > 0 (available at regular price in that currency)." exists: Boolean!
+}
+
+"An immutable entity that represents a change in state of a quantity of SKU at a particular time and location."
+type InventoryAdjustment {
+  "The creation date of the inventory adjustment."
+  createdAt: DateTime
+  "The change in quantity of a SKU at a location."
+  delta: Int
+  "The globally-unique ID of the inventory adjustment object."
+  id: ID
+  "The Location associated with the Inventory Adjustment."
+  location: Location
+  metafields(after: String, before: String, first: Int, "The key of the metafield. Requires namespace to be provided." key: String, last: Int, "The namespace of the metafield. Required when key is provided." namespace: String): InventoryAdjustmentMetafieldsConnection
+  "The date when the inventory adjustment occurred."
+  occurredAt: DateTime
+  "The reason associated with this inventory adjustment."
+  reason: InventoryAdjustmentReason
+  "A reference to the resource in an external service. This can be useful for integrating the resource to any external service."
+  references(after: String, before: String, first: Int, last: Int, origin: ReferenceOriginFilter, paginationType: PaginationType = CURSOR): InventoryAdjustmentReferencesConnection
+  "The SKU associated with the Inventory Adjustment."
+  sku: SKU
+  "The adjustment type of the inventory being adjusted, one of `AVAILABLE`, `COMMITTED`, `BACKORDERED`."
+  type: String!
+}
+
+input InventoryAdjustmentIdsFilter {
+  in: [String!]
+}
+
+type InventoryAdjustmentMetafieldsConnection {
+  edges: [InventoryAdjustmentMetafieldsEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type InventoryAdjustmentMetafieldsEdge {
+  cursor: String!
+  node: Metafield
+}
+
+input InventoryAdjustmentOrderBy {
+  createdAt: OrderByDirectionEnum
+  id: OrderByDirectionEnum
+}
+
+"A reason that can be associated with an inventory adjustment to explain why it occurred. Global preset reasons are prefixed with \"g-\" (e.g. g-damage, g-shrinkage). Store-scoped reasons use plain kebab-case names."
+type InventoryAdjustmentReason {
+  "The date the reason was created."
+  createdAt: DateTime!
+  "The globally-unique ID of the inventory adjustment reason."
+  id: ID!
+  "Whether this is a global preset reason. Global reasons are shared across all stores and cannot be modified or archived."
+  isGlobal: Boolean!
+  "The human-readable display label of the reason."
+  label: String!
+  "The unique kebab-case name of the reason. Global preset names are prefixed with \"g-\" (e.g. g-damage). Store-scoped names must not use the \"g-\" prefix."
+  name: String!
+  "The status of the reason, one of ACTIVE, ARCHIVED."
+  status: String!
+  "The date the reason was last updated."
+  updatedAt: DateTime!
+}
+
+"Filters inventory adjustment reasons by name."
+input InventoryAdjustmentReasonNameFilter {
+  eq: String
+  in: [String!]
+}
+
+input InventoryAdjustmentReasonOrderBy {
+  id: OrderByDirectionEnum
+}
+
+"Filter for the status of the Inventory Adjustment Reason, one of `ACTIVE`, `ARCHIVED`."
+input InventoryAdjustmentReasonStatusFilter {
+  eq: String
+  in: [String!]
+}
+
+type InventoryAdjustmentReferencesConnection {
+  edges: [InventoryAdjustmentReferencesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type InventoryAdjustmentReferencesConnectionEdge {
+  cursor: String!
+  node: Reference
+}
+
+"Filter for the type of inventory adjustment, one of `AVAILABLE`, `COMMITTED`, `BACKORDERED`."
+input InventoryAdjustmentTypeFilter {
+  eq: String
+  in: [String!]
+}
+
+"Represents the quantity of a SKU in a specific state at a particular time and location."
+type InventoryCount {
+  "The timestamp of when the inventory count was created."
+  createdAt: DateTime!
+  "The globally-unique ID of the inventory count object."
+  id: ID!
+  "The Location associated with the Inventory Count."
+  location: Location
+  "The on-hand inventory count (available + committed) for this SKU and location."
+  onHand: Int
+  "The count of the inventory."
+  quantity: Int
+  "The SKU associated with the Inventory Count."
+  sku: SKU
+  "The type of inventory count, one of `AVAILABLE`, `COMMITTED`, `BACKORDERED`."
+  type: String!
+  "The timestamp of when the inventory count was updated."
+  updatedAt: DateTime!
+}
+
+input InventoryCountIdsFilter {
+  in: [String!]
+}
+
+input InventoryCountOrderBy {
+  createdAt: OrderByDirectionEnum
+  id: OrderByDirectionEnum
+  updatedAt: OrderByDirectionEnum
+}
+
+"Filter inventory counts by the status of the associated SKU, one of `DRAFT`, `ACTIVE`, `ARCHIVED`."
+input InventoryCountSKUStatusFilter {
+  eq: String
+  in: [String!]
+}
+
+"Filter for the type of inventory count, one of `AVAILABLE`, `COMMITTED`, `BACKORDERED`."
+input InventoryCountTypeFilter {
+  eq: String
+  in: [String!]
+}
+
+"Filters items by label. Can be used to either filter for an exact match or for a partial match."
+input LabelFilter {
+  "Filters items where the label contains the specified string, case-insensitive." contains: String
+  eq: String
+}
+
+"A list is a group of SKU groups that are generally organized by similar characteristics."
+type List {
+  "The date and time of when the List was created."
+  createdAt: DateTime!
+  "A single-line textual description of the List."
+  description: String
+  "HTML description for the List. Will be used to display rich text content to customers."
+  htmlDescription: String
+  "The globally-unique ID of the List."
+  id: ID!
+  "The display label of the List."
+  label: String!
+  "Media can be images, videos, or files"
+  mediaObjects(after: String, before: String, first: Int, last: Int, paginationType: PaginationType = CURSOR): ListMediaObjectsConnection
+  metafields(after: String, before: String, first: Int, "The key of the metafield. Requires namespace to be provided." key: String, last: Int, "The namespace of the metafield. Required when key is provided." namespace: String): ListMetafieldsConnection
+  "A unique name for the List."
+  name: String!
+  "A reference to the resource in an external service. This can be useful for integrating the resource to any external service."
+  references(after: String, before: String, first: Int, last: Int, origin: ReferenceOriginFilter, paginationType: PaginationType = CURSOR): ListReferencesConnection
+  "A SKU Group is a grouping of related SKUs. It provides information about all of the SKUs that are sold together on storefronts or devices."
+  skuGroups(after: String, before: String, first: Int, hasCompareAt: HasCompareAtFilter, last: Int, orderBy: SKUGroupOrderBy, paginationType: PaginationType = CURSOR, priceRange: PriceRangeFilter, status: SKUGroupStatusFilter): ListSkuGroupsConnection
+  "The status of the list, one of `ACTIVE`, `DRAFT`, `ARCHIVED`."
+  status: String
+  "The date and time of when the List was updated."
+  updatedAt: DateTime!
+}
+
+input ListIdFilter {
+  eq: String
+  in: [String!]
+  isNull: Boolean
+  ne: String
+}
+
+input ListIdsFilter {
+  in: [String!]
+}
+
+type ListMediaObjectsConnection {
+  edges: [ListMediaObjectsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ListMediaObjectsConnectionEdge {
+  cursor: String!
+  node: Media
+}
+
+type ListMetafieldsConnection {
+  edges: [ListMetafieldsEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ListMetafieldsEdge {
+  cursor: String!
+  node: Metafield
+}
+
+type ListOption {
+  "The `compareAt` price range of the option, tracks the min and max `compareAt` price of all the option values under this option."
+  compareAtPriceRange: PriceRange
+  "The timestamp of when the Option was created."
+  createdAt: DateTime!
+  "A description of the Option."
+  description: String
+  "The UUID of the Option"
+  id: ID!
+  "The display label of the Option"
+  label: String!
+  metafields(after: String, before: String, first: Int, "The key of the metafield. Requires namespace to be provided." key: String, last: Int, "The namespace of the metafield. Required when key is provided." namespace: String): OptionMetafieldsConnection
+  "A unique name of the Option."
+  name: String!
+  "The price range of the option, tracks the min and max price of all the option values under this option."
+  priceRange: PriceRange
+  "Represents the additional cost of a List Option. When empty, it indicates this option allows for flexible pricing."
+  prices(after: String, before: String, "Filter prices by currency code." currencyCode: CurrencyCodeFilter, first: Int, last: Int, paginationType: PaginationType = CURSOR): ListOptionPricesConnection
+  "Whether the option is shareable across multiple SKU Groups (a global modifier)."
+  shareable: Boolean!
+  "The IDs of all SKU groups this option is associated with."
+  skuGroupIds: [String!]!
+  "The type of the option, one of `TEXT`, `NUMBER`, `LIST`, Option Values are available for the 'LIST' type."
+  type: String
+  "The timestamp of when the Option was updated."
+  updatedAt: DateTime!
+  "Provide validations on how the option can be applied to a SKU. If `TEXT` option then `min` and `max` apply to the number of characters. If `NUMBER` then `min` and `max` apply to the actual number value. If `LIST` then `min` and `max` apply to the number of values that can be selected."
+  validation: OptionValidation
+  "Represents the additional cost of a List Option. Each value can have one or more prices."
+  values(after: String, before: String, createdAt: CreatedAtFilter, first: Int, id: OptionValueIdsFilter, last: Int, orderBy: OptionValueOrderBy, paginationType: PaginationType = CURSOR, updatedAt: UpdatedAtFilter): ListOptionValuesConnection
+}
+
+type ListOptionPricesConnection {
+  edges: [ListOptionPricesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ListOptionPricesConnectionEdge {
+  cursor: String!
+  node: OptionPrice
+}
+
+type ListOptionValuesConnection {
+  edges: [ListOptionValuesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ListOptionValuesConnectionEdge {
+  cursor: String!
+  node: OptionValue
+}
+
+input ListOrderBy {
+  createdAt: OrderByDirectionEnum
+  id: OrderByDirectionEnum
+  label: OrderByDirectionEnum
+  name: OrderByDirectionEnum
+  updatedAt: OrderByDirectionEnum
+}
+
+type ListReferencesConnection {
+  edges: [ListReferencesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ListReferencesConnectionEdge {
+  cursor: String!
+  node: Reference
+}
+
+type ListSKUGroupsConnection {
+  edges: [ListSKUGroupsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ListSKUGroupsConnectionEdge {
+  cursor: String!
+  node: SKUGroup
+}
+
+type ListSkuGroupsConnection {
+  edges: [ListSkuGroupsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ListSkuGroupsConnectionEdge {
+  cursor: String!
+  node: SKUGroup
+}
+
+"Filter for the status of the List, one of `ACTIVE`, `DRAFT`, `ARCHIVED`."
+input ListStatusFilter {
+  eq: String
+  in: [String!]
+}
+
+"A List tree holds the hierarchical information of a group of lists."
+type ListTree {
+  "The timestamp of when the list tree was activated."
+  activatedAt: DateTime
+  "The timestamp of when the list tree was archived."
+  archivedAt: DateTime
+  "The creation date of the list tree."
+  createdAt: DateTime
+  "The description of the list tree."
+  description: String
+  "HTML description for the List Tree. Will be used to display rich text content to customers."
+  htmlDescription: String
+  "The globally-unique ID of the list tree."
+  id: ID
+  "The display label of the list tree."
+  label: String!
+  "List tree node is associated to a single List and a node can be a parent node to provide the hierarchy of list trees."
+  listTreeNodes(after: String, before: String, first: Int, hasParent: Boolean, last: Int, "Filters nodes by their associated list via eq, in, and ne. isNull never matches, since every node belongs to a list." listId: ListIdFilter, listStatus: ListTreeNodeListStatusFilter = {in: ["ACTIVE", "DRAFT"]}, orderBy: ListTreeNodeOrderBy, paginationType: PaginationType = CURSOR, parentNodeId: ListTreeNodeParentNodeIdFilter): ListTreeListTreeNodesConnection
+  metafields(after: String, before: String, first: Int, "The key of the metafield. Requires namespace to be provided." key: String, last: Int, "The namespace of the metafield. Required when key is provided." namespace: String): ListTreeMetafieldsConnection
+  "A unique name of the list tree."
+  name: String
+  "A reference to the resource in an external service. This can be useful for integrating the resource to any external service."
+  references(after: String, before: String, first: Int, last: Int, origin: ReferenceOriginFilter, paginationType: PaginationType = CURSOR): ListTreeReferencesConnection
+  "The status of the list tree, one of `ACTIVE`, `ARCHIVED`, `DRAFT`."
+  status: String
+  "The last update date of the list tree."
+  updatedAt: DateTime
+}
+
+input ListTreeIdFilter {
+  eq: String
+}
+
+input ListTreeIdsFilter {
+  in: [String!]
+}
+
+type ListTreeListTreeNodesConnection {
+  edges: [ListTreeListTreeNodesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ListTreeListTreeNodesConnectionEdge {
+  cursor: String!
+  node: ListTreeNode
+}
+
+type ListTreeMetafieldsConnection {
+  edges: [ListTreeMetafieldsEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ListTreeMetafieldsEdge {
+  cursor: String!
+  node: Metafield
+}
+
+"List tree node is associated to a single List and a node can be a parent node to provide the hierarchy of list trees."
+type ListTreeNode {
+  "The creation date of the list node."
+  createdAt: DateTime
+  "The globally-unique ID of the list node."
+  id: ID
+  "The list associated with the node."
+  list: List
+  "The List Tree associated with the node."
+  listTree: ListTree
+  "The children nodes of the list node."
+  listTreeNodes(after: String, before: String, first: Int, last: Int, listStatus: ListTreeNodeListStatusFilter = {in: ["ACTIVE", "DRAFT"]}, orderBy: ListTreeNodeOrderBy, paginationType: PaginationType = CURSOR): ListTreeNodeListTreeNodesConnection
+  "The parent node of the list node."
+  parentListTreeNode: ListTreeNode
+  "The position of the node in the list."
+  position: Int
+  "A reference to the resource in an external service. This can be useful for integrating the resource to any external service."
+  references(after: String, before: String, first: Int, last: Int, origin: ReferenceOriginFilter, paginationType: PaginationType = CURSOR): ListTreeNodeReferencesConnection
+  "The last update date of the list node."
+  updatedAt: DateTime
+}
+
+input ListTreeNodeIdsFilter {
+  in: [String!]
+}
+
+"Filter for the status of the List, one of `ACTIVE`, `DRAFT`, `ARCHIVED`."
+input ListTreeNodeListStatusFilter {
+  eq: String
+  in: [String!]
+}
+
+type ListTreeNodeListTreeNodesConnection {
+  edges: [ListTreeNodeListTreeNodesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ListTreeNodeListTreeNodesConnectionEdge {
+  cursor: String!
+  node: ListTreeNode
+}
+
+"Filter for the status of the List Tree, one of `ACTIVE`, `ARCHIVED`, `DRAFT`."
+input ListTreeNodeListTreeStatusFilter {
+  eq: String
+  in: [String!]
+}
+
+input ListTreeNodeOrderBy {
+  createdAt: OrderByDirectionEnum
+  id: OrderByDirectionEnum
+  position: OrderByDirectionEnum
+  updatedAt: OrderByDirectionEnum
+}
+
+input ListTreeNodeParentNodeIdFilter {
+  eq: String
+}
+
+type ListTreeNodeReferencesConnection {
+  edges: [ListTreeNodeReferencesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ListTreeNodeReferencesConnectionEdge {
+  cursor: String!
+  node: Reference
+}
+
+input ListTreeOrderBy {
+  createdAt: OrderByDirectionEnum
+  id: OrderByDirectionEnum
+  name: OrderByDirectionEnum
+  updatedAt: OrderByDirectionEnum
+}
+
+type ListTreeReferencesConnection {
+  edges: [ListTreeReferencesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ListTreeReferencesConnectionEdge {
+  cursor: String!
+  node: Reference
+}
+
+"Filter for the status of the List Tree, one of `ACTIVE`, `ARCHIVED`, `DRAFT`."
+input ListTreeStatusFilter {
+  eq: String
+  in: [String!]
+}
+
+"A location represents the physical location of an inventory."
+type Location {
+  "The address of the Location."
+  address: Address
+  "The timestamp of when the Location was created."
+  createdAt: DateTime!
+  "The globally-unique ID of the Location."
+  id: ID!
+  "An immutable entity that represents a change in state of a quantity of SKU at a particular time and location. Each adjustment will either have a positive, negative, or neutral impact on the count of available SKUs in a location."
+  inventoryAdjustments(after: String, before: String, first: Int, last: Int, orderBy: InventoryAdjustmentOrderBy, paginationType: PaginationType = CURSOR): LocationInventoryAdjustmentsConnection
+  "The quantity of a SKU in a specific state at a particular time and location."
+  inventoryCounts(after: String, before: String, first: Int, last: Int, locationStatus: LocationStatusFilter, orderBy: InventoryCountOrderBy, paginationType: PaginationType = CURSOR, skuId: SKUIdFilter, skuStatus: InventoryCountSKUStatusFilter, type: InventoryCountTypeFilter): LocationInventoryCountsConnection
+  "The display name of the Location."
+  label: String!
+  metafields(after: String, before: String, first: Int, "The key of the metafield. Requires namespace to be provided." key: String, last: Int, "The namespace of the metafield. Required when key is provided." namespace: String): LocationMetafieldsConnection
+  "A unique and human-friendly name of the Location."
+  name: String!
+  "A reference to the resource in an external service. This can be useful for integrating the resource to any external service."
+  references(after: String, before: String, first: Int, last: Int, origin: ReferenceOriginFilter, paginationType: PaginationType = CURSOR): LocationReferencesConnection
+  "The SKUs are purchasable items in the catalog."
+  skus(after: String, attributeValues: SKUAttributeValueFilter, before: String, code: SKUCodeFilter, createdAt: CreatedAtFilter, eanCode: SKUEanCodeFilter, first: Int, gtinCode: SKUGtinCodeFilter, isbnCode: SKUIsbnCodeFilter, label: LabelFilter, last: Int, name: NameFilter, orderBy: SKUOrderBy, paginationType: PaginationType = CURSOR, """
+    A string filter in the ODATA format. ex: "label eq 'shirt' and contains(code, '123')".
+
+
+    Supported columns: `label`, `code`
+
+    Supported operators: `eq`, `ne`, `lt`, `gt`, `and`, `or`
+
+    Supported functions: `contains`
+  """ queryFilter: String, referenceValue: ReferenceValueFilter, skuGroupId: SKUGroupIdFilter, status: SKUStatusFilter, upcCode: SKUUpcCodeFilter, updatedAt: UpdatedAtFilter): LocationSkusConnection
+  "The status of the location, one of `ACTIVE`, `INACTIVE`, `ARCHIVED`."
+  status: String!
+  "The timestamp of when the Location was updated."
+  updatedAt: DateTime!
+}
+
+input LocationIdFilter {
+  eq: String
+}
+
+input LocationIdsFilter {
+  in: [String!]
+}
+
+type LocationInventoryAdjustmentsConnection {
+  edges: [LocationInventoryAdjustmentsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type LocationInventoryAdjustmentsConnectionEdge {
+  cursor: String!
+  node: InventoryAdjustment
+}
+
+type LocationInventoryCountsConnection {
+  edges: [LocationInventoryCountsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type LocationInventoryCountsConnectionEdge {
+  cursor: String!
+  node: InventoryCount
+}
+
+type LocationMetafieldsConnection {
+  edges: [LocationMetafieldsEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type LocationMetafieldsEdge {
+  cursor: String!
+  node: Metafield
+}
+
+input LocationOrderBy {
+  createdAt: OrderByDirectionEnum
+  id: OrderByDirectionEnum
+  name: OrderByDirectionEnum
+  updatedAt: OrderByDirectionEnum
+}
+
+type LocationReferencesConnection {
+  edges: [LocationReferencesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type LocationReferencesConnectionEdge {
+  cursor: String!
+  node: Reference
+}
+
+type LocationSKUsConnection {
+  edges: [LocationSKUsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type LocationSKUsConnectionEdge {
+  cursor: String!
+  node: SKU
+}
+
+type LocationSkusConnection {
+  edges: [LocationSkusConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type LocationSkusConnectionEdge {
+  cursor: String!
+  node: SKU
+}
+
+"Filter for the status of the Location, one of `ACTIVE`, `INACTIVE`, `ARCHIVED`."
+input LocationStatusFilter {
+  eq: String
+  in: [String!]
+}
+
+"Represents a media object, including photos and videos."
+type Media {
+  "The globally-unique ID of the media."
+  id: ID!
+  "An optional label for the media."
+  label: String
+  metafields(after: String, before: String, first: Int, "The key of the metafield. Requires namespace to be provided." key: String, last: Int, "The namespace of the metafield. Required when key is provided." namespace: String): MediaMetafieldsConnection
+  "A unique name of the media."
+  name: String
+  "The position of the media."
+  position: Int
+  "The type of the media. Currently: `VIDEO`, `IMAGE`, `AUDIO`. Legacy objects may still have `PHOTO`."
+  type: String
+  "The URL of the media."
+  url: String!
+}
+
+type MediaMetafieldsConnection {
+  edges: [MediaMetafieldsEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type MediaMetafieldsEdge {
+  cursor: String!
+  node: Metafield
+}
+
+"Custom data"
+type Metafield {
+  createdAt: String
+  id: ID
+  key: String
+  namespace: String
+  resourceId: ID
+  "Metafield type. Currently accepted values (lowercase): `boolean`, `string`, `stringMultiLine`, `number`, `numberDecimal`, `date`, `dateTime`, `json`, `measurement`, `url`, `reference`, `money`, `list.string`, `list.number`, `list.numberDecimal`, `list.measurement`, `list.date`, `list.url`."
+  type: String
+  updatedAt: String
+  value: String
+}
+
+type Mutation {
+  "Add Attribute Value(s) to an existing SKU."
+  addAttributeValuesToSku(id: String!, input: MutationAddAttributeValuesToSkuInput!): SKU
+  "Add Attributes to an existing SKU group."
+  addAttributesToSkuGroup(id: String!, input: MutationAddAttributesToSkuGroupInput!): SKUGroup
+  "Add channels to an existing SKU group."
+  addChannelsToSkuGroup(id: String!, input: MutationAddChannelsToSkuGroupInput!): SKUGroup
+  "Add a new node to a list tree."
+  addListTreeNodesToListTree(id: String!, input: MutationAddListTreeNodesToListTreeInput!): ListTree
+  "Add a new node to a list tree node."
+  addListTreeNodesToParentListTreeNode(id: String!, input: MutationAddListTreeNodesToParentListTreeNodeInput!): ListTreeNode
+  "Add media objects to an existing List."
+  addMediaObjectsToList(id: String!, input: MutationAddMediaObjectsToListInput!): List
+  "Add media objects to an existing SKU"
+  addMediaObjectsToSku(id: String!, input: MutationAddMediaObjectsToSkuInput!): SKU
+  "Add media objects to an existing SKU group."
+  addMediaObjectsToSkuGroup(id: String!, input: MutationAddMediaObjectsToSkuGroupInput!): SKUGroup
+  "Add options to an existing SKU group."
+  addOptionsToSkuGroup(id: String!, input: MutationAddOptionsToSkuGroupInput!): SKUGroup
+  "Add references to an existing List."
+  addReferencesToList(id: String!, input: MutationAddReferencesToListInput!): List
+  "Add references to an existing List Tree."
+  addReferencesToListTree(id: String!, input: MutationAddReferencesToListTreeInput!): ListTree
+  "Add references to an existing List Tree Node"
+  addReferencesToListTreeNode(id: String!, input: MutationAddReferencesToListTreeNodeInput!): ListTreeNode
+  "Add references to an existing location."
+  addReferencesToLocation(id: String!, input: MutationAddReferencesToLocationInput!): Location
+  "Add references to an existing SKU."
+  addReferencesToSku(id: String!, input: MutationAddReferencesToSkuInput!): SKU
+  "Add references to an existing SKU group."
+  addReferencesToSkuGroup(id: String!, input: MutationAddReferencesToSkuGroupInput!): SKUGroup
+  "Add a single SKU Group to multiple lists"
+  addSkuGroupToLists(id: String!, input: MutationAddSkuGroupToListsInput!): SKUGroup
+  "Add SKU Groups to an existing list."
+  addSkuGroupsToList(id: String!, input: MutationAddSkuGroupsToListInput!): List
+  "Add SKUs to an existing location."
+  addSkusToLocation(id: String!, input: MutationAddSkusToLocationInput!): Location
+  "Add SKUs to an existing SKU group."
+  addSkusToSkuGroup(id: String!, input: MutationAddSkusToSkuGroupInput!): SKUGroup
+  "Adjust inventory by a positive or negative delta. Positive deltas stock inventory, negative deltas reduce inventory."
+  adjustInventory(input: MutationAdjustInventoryInput!): [InventoryAdjustment!]
+  "Archive a file."
+  archiveFile(id: String!): File
+  "Archive a store-scoped inventory adjustment reason. Global reasons cannot be archived."
+  archiveInventoryAdjustmentReason(input: MutationArchiveInventoryAdjustmentReasonInput!): InventoryAdjustmentReason
+  "Archive a list."
+  archiveList(id: String!): List
+  "Archive a list tree."
+  archiveListTree(id: String!): ListTree
+  "Archive a location."
+  archiveLocation(id: String!): Location
+  "Archive an existing SKU."
+  archiveSku(id: String!): SKU
+  "Archive an existing SKU Group."
+  archiveSkuGroup(cascadeArchive: CascadeArchiveInput, id: String!): SKUGroup
+  "Archive multiple existing SKUs. Limit 25 SKUs."
+  archiveSkus(ids: [String!]!): [SKU!]
+  "Commit new inventory. If there are not enough available inventory, they will be moved to backordered if allowed. Documentation: https://godaddy-corp.atlassian.net/wiki/spaces/COMCORE/pages/3758600912/Inventory+Helper+Mutations#2.-commitInventory"
+  commitInventory(input: MutationCommitInventoryInput!): [InventoryAdjustment!]
+  "Create a new attribute."
+  createAttribute(input: MutationCreateAttributeInput!): Attribute
+  "Create a new attribute value."
+  createAttributeValue(input: CreateAttributeValueInput!): AttributeValue
+  "Create new attribute values."
+  createAttributeValues(input: [CreateAttributeValueInput!]!): [AttributeValue!]
+  "Create a new file."
+  createFile(input: CreateFileInput!): File
+  "Create a new inventory adjustment."
+  createInventoryAdjustment(input: CreateInventoryAdjustmentInput!): InventoryAdjustment
+  "Create a new store-scoped inventory adjustment reason. Name must be kebab-case and must not start with \"g-\" (reserved for global presets). Once created, the name is immutable."
+  createInventoryAdjustmentReason(input: MutationCreateInventoryAdjustmentReasonInput!): InventoryAdjustmentReason
+  "Create multiple inventory adjustments in a single operation."
+  createInventoryAdjustments(input: [CreateInventoryAdjustmentInput!]!): [InventoryAdjustment!]
+  "Create a new list."
+  createList(input: MutationCreateListInput!): List
+  "Create a new list tree."
+  createListTree(input: MutationCreateListTreeInput!): ListTree
+  "Create a new location."
+  createLocation(input: MutationCreateLocationInput!): Location
+  "Create a new option."
+  createOption(input: MutationCreateOptionInput!): Option
+  "Create a flat price for the option. This will be ignore if a price is present on the option values."
+  createOptionPrice(input: MutationCreateOptionPriceInput!): OptionPrice
+  "Create a new option value."
+  createOptionValue(input: MutationCreateOptionValueInput!): OptionValue
+  "Create a price."
+  createOptionValuePrice(input: MutationCreateOptionValuePriceInput!): OptionValuePrice
+  "Create multiple new Option Values in a single transaction."
+  createOptionValues(input: [MutationCreateOptionValueInput!]!): [OptionValue!]
+  "Create a new SKU."
+  createSku(input: CreateSKUInput!): SKU
+  "Create a new SKU Group."
+  createSkuGroup(input: MutationCreateSkuGroupInput!): SKUGroup
+  "Create a price."
+  createSkuPrice(input: MutationCreateSkuPriceInput!): SKUPrice
+  "Create multiple new SKUs in a single transaction. Limit 25 SKUs."
+  createSkus(input: [CreateSKUInput!]!): [SKU!]
+  "WARNING: This mutation hard deletes an existing SKU Group and all its associated records."
+  deleteSkuGroupById(id: String!): SKUGroup
+  "Reduce inventory by first reducing available, then moving committed to backordered. If insufficient inventory exists, additional available inventory is automatically added to fulfill the reduction. This mutation does not respect backorder limits."
+  reduceInventory(input: MutationReduceInventoryInput!): [InventoryAdjustment!]
+  "Release inventory from committed and/or backordered. Releases from committed first, then backordered. Errors if the requested quantity exceeds committed + backordered. Documentation: https://godaddy-corp.atlassian.net/wiki/spaces/COMCORE/pages/3758600912/Inventory+Helper+Mutations#3.-releaseInventory"
+  releaseInventory(input: MutationReleaseInventoryInput!): [InventoryAdjustment!]
+  "Remove Attribute Value(s) from an existing Attribute."
+  removeAttributeValuesFromAttribute(id: String!, input: MutationRemoveAttributeValuesFromAttributeInput!): Attribute
+  "Remove Attribute Value(s) from an existing SKU."
+  removeAttributeValuesFromSku(id: String!, input: MutationRemoveAttributeValuesFromSkuInput!): SKU
+  "Remove Attributes from an existing SKU group."
+  removeAttributesFromSkuGroup(id: String!, input: MutationRemoveAttributesFromSkuGroupInput!): SKUGroup
+  "Remove channel associations from an existing SKU group."
+  removeChannelsFromSkuGroup(id: String!, input: MutationRemoveChannelsFromSkuGroupInput!): SKUGroup
+  "Remove nodes from a list tree."
+  removeListTreeNodesFromListTree(id: String!, input: MutationRemoveListTreeNodesFromListTreeInput!): ListTree
+  "Remove nodes from a list tree node."
+  removeListTreeNodesFromParentListTreeNode(id: String!, input: MutationRemoveListTreeNodesFromParentListTreeNodeInput!): ListTreeNode
+  "Remove media objects from an existing List."
+  removeMediaObjectsFromList(id: String!, input: MutationRemoveMediaObjectsFromListInput!): List
+  "Remove media objects from an existing SKU"
+  removeMediaObjectsFromSku(id: String!, input: MutationRemoveMediaObjectsFromSkuInput!): SKU
+  "Remove media objects from an existing SKU group."
+  removeMediaObjectsFromSkuGroup(id: String!, input: MutationRemoveMediaObjectsFromSkuGroupInput!): SKUGroup
+  "Remove metafields from an existing Attribute."
+  removeMetafieldsFromAttribute(id: String!, input: MutationRemoveMetafieldsFromAttributeInput!): Attribute
+  "Remove metafields from an existing Attribute Value."
+  removeMetafieldsFromAttributeValue(id: String!, input: MutationRemoveMetafieldsFromAttributeValueInput!): AttributeValue
+  "Remove metafields from an existing List."
+  removeMetafieldsFromList(id: String!, input: MutationRemoveMetafieldsFromListInput!): List
+  "Remove metafields from an existing List Tree."
+  removeMetafieldsFromListTree(id: String!, input: MutationRemoveMetafieldsFromListTreeInput!): ListTree
+  "Remove metafields from an existing Location."
+  removeMetafieldsFromLocation(id: String!, input: MutationRemoveMetafieldsFromLocationInput!): Location
+  "Remove metafields from an existing Option."
+  removeMetafieldsFromOption(id: String!, input: MutationRemoveMetafieldsFromOptionInput!): Option
+  "Remove metafields from an existing Option Value."
+  removeMetafieldsFromOptionValue(id: String!, input: MutationRemoveMetafieldsFromOptionValueInput!): OptionValue
+  "Remove metafields from an existing SKU."
+  removeMetafieldsFromSku(id: String!, input: MutationRemoveMetafieldsFromSkuInput!): SKU
+  "Remove metafields from an existing SKU Group."
+  removeMetafieldsFromSkuGroup(id: String!, input: MutationRemoveMetafieldsFromSkuGroupInput!): SKUGroup
+  "Remove an existing option."
+  removeOption(id: String!): Null
+  "Remove an existing option value."
+  removeOptionValue(id: String!): Null
+  "Remove values from an existing Option."
+  removeOptionValuesFromListOption(id: String!, input: MutationRemoveOptionValuesFromListOptionInput!): ListOption
+  "Remove Options from an existing SKU group."
+  removeOptionsFromSkuGroup(id: String!, input: MutationRemoveOptionsFromSkuGroupInput!): SKUGroup
+  "Remove prices from an existing Option."
+  removePricesFromOption(id: String!, input: MutationRemovePricesFromOptionInput!): Option
+  "Remove prices from an existing OptionValue."
+  removePricesFromOptionValue(id: String!, input: MutationRemovePricesFromOptionValueInput!): OptionValue
+  "Remove prices from an existing SKU."
+  removePricesFromSku(id: String!, input: MutationRemovePricesFromSkuInput!): SKU
+  "Remove references from an existing List."
+  removeReferencesFromList(id: String!, input: MutationRemoveReferencesFromListInput!): List
+  "Remove references from an existing List Tree"
+  removeReferencesFromListTree(id: String!, input: MutationRemoveReferencesFromListTreeInput!): ListTree
+  "Remove references from an existing List Tree Node"
+  removeReferencesFromListTreeNode(id: String!, input: MutationRemoveReferencesFromListTreeNodeInput!): ListTreeNode
+  "Remove references from an existing location."
+  removeReferencesFromLocation(id: String!, input: MutationRemoveReferencesFromLocationInput!): Location
+  "Remove references from an existing SKU."
+  removeReferencesFromSku(id: String!, input: MutationRemoveReferencesFromSkuInput!): SKU
+  "Remove references from an existing SKU group."
+  removeReferencesFromSkuGroup(id: String!, input: MutationRemoveReferencesFromSkuGroupInput!): SKUGroup
+  "Remove a single SKU Group from multiple lists"
+  removeSkuGroupFromLists(id: String!, input: MutationRemoveSkuGroupFromListsInput!): SKUGroup
+  "Remove SKU Groups from an existing list."
+  removeSkuGroupsFromList(id: String!, input: MutationRemoveSkuGroupsFromListInput!): List
+  "Remove SKU from an existing location."
+  removeSkusFromLocation(id: String!, input: MutationRemoveSkusFromLocationInput!): Location
+  "Remove SKUs from an existing SKU group."
+  removeSkusFromSkuGroup(id: String!, input: MutationRemoveSkusFromSkuGroupInput!): SKUGroup
+  "Restock inventory from committed. If there are not enough committed inventory, this mutation will error."
+  restockFromCommittedInventory(input: MutationRestockFromCommittedInventoryInput!): [InventoryAdjustment!]
+  "Set the channel association mode for a SKU Group."
+  setSkuGroupChannelAssociationMode("SKU Group ID" id: String!, input: MutationSetSkuGroupChannelAssociationModeInput!): SKUGroup
+  "Stock new inventory. If there are backordered inventory, they will be moved to committed. It does not validate aganist backorder limit. Any extra inventory will be added to available. Documentation: https://godaddy-corp.atlassian.net/wiki/spaces/COMCORE/pages/3758600912/Inventory+Helper+Mutations#1.-stockInventory"
+  stockInventory(input: MutationStockInventoryInput!): [InventoryAdjustment!]
+  "Update an existing attribute."
+  updateAttribute(id: String!, input: MutationUpdateAttributeInput!): Attribute
+  "Update an existing attribute value."
+  updateAttributeValue(id: String!, input: MutationUpdateAttributeValueInput!): AttributeValue
+  "Update an existing file."
+  updateFile(id: String!, input: UpdateFileInput!): File
+  "Update the label of a store-scoped inventory adjustment reason. Global preset reasons cannot be updated."
+  updateInventoryAdjustmentReason(input: MutationUpdateInventoryAdjustmentReasonInput!): InventoryAdjustmentReason
+  "Update an existing list."
+  updateList(id: String!, input: MutationUpdateListInput!): List
+  "Add media objects or update existing media objects to existing List."
+  updateListMediaObjects(id: String!, input: MutationUpdateListMediaObjectsInput!): List
+  "Update an existing list tree."
+  updateListTree(id: String!, input: MutationUpdateListTreeInput!): ListTree
+  "Update an existing list tree node."
+  updateListTreeNode(id: String!, input: MutationUpdateListTreeNodeInput!): ListTreeNode
+  "Update an existing location."
+  updateLocation(id: String!, input: MutationUpdateLocationInput!): Location
+  "Update an existing option."
+  updateOption(id: String!, input: MutationUpdateOptionInput!): Option
+  "Update an existing price object for an option."
+  updateOptionPrice(id: String!, input: MutationUpdateOptionPriceInput!): OptionPrice
+  "Update the currency code for an existing option price. This updates the currency code for both value and compareAtValue."
+  updateOptionPriceCurrencyCode(id: String!, input: MutationUpdateOptionPriceCurrencyCodeInput!): OptionPrice
+  "Update an existing option value."
+  updateOptionValue(id: String!, input: MutationUpdateOptionValueInput!): OptionValue
+  "Update an existing price object."
+  updateOptionValuePrice(id: String!, input: MutationUpdateOptionValuePriceInput!): OptionValuePrice
+  "Update the currency code for an existing option value price. This updates the currency code for both value and compareAtValue."
+  updateOptionValuePriceCurrencyCode(id: String!, input: MutationUpdateOptionValuePriceCurrencyCodeInput!): OptionValuePrice
+  "Update an existing SKU."
+  updateSku(id: String!, input: MutationUpdateSkuInput!): SKU
+  "Update an existing SKU Group."
+  updateSkuGroup(id: String!, input: MutationUpdateSkuGroupInput!): SKUGroup
+  "Add media objects or update existing media objects to existing SKU Group."
+  updateSkuGroupMediaObjects(id: String!, input: MutationUpdateSkuGroupMediaObjectsInput!): SKUGroup
+  "Reorder options within a SKU group by updating the position of each option's association."
+  updateSkuGroupOptionPositions(id: String!, input: MutationUpdateSkuGroupOptionPositionsInput!): SKUGroup
+  "Add media objects or update existing media objects to existing SKU."
+  updateSkuMediaObjects(id: String!, input: MutationUpdateSkuMediaObjectsInput!): SKU
+  "Update an existing price object."
+  updateSkuPrice(id: String!, input: MutationUpdateSkuPriceInput!): SKUPrice
+  "Update the currency code for an existing price. This updates the currency code for both value and compareAtValue."
+  updateSkuPriceCurrencyCode(id: String!, input: MutationUpdateSkuPriceCurrencyCodeInput!): SKUPrice
+}
+
+input MutationAddAttributeValuesToSKUInput {
+  attributeValueIds: [String!]!
+}
+
+input MutationAddAttributeValuesToSkuInput {
+  attributeValueIds: [String!]!
+}
+
+input MutationAddAttributesToSKUGroupInput {
+  attributes: [CreateSKUGroupAttributeInput!]!
+}
+
+input MutationAddAttributesToSkuGroupInput {
+  attributes: [CreateSKUGroupAttributeInput!]!
+}
+
+input MutationAddChannelsToSKUGroupInput {
+  """
+    The channels to add to the SKU group.
+    				These are pointers to the Channels API, Catalog API
+    				does not create the channel resources.
+  """ channels: [SKUGroupChannelAddInput!]!
+}
+
+input MutationAddChannelsToSkuGroupInput {
+  """
+    The channels to add to the SKU group.
+    				These are pointers to the Channels API, Catalog API
+    				does not create the channel resources.
+  """ channels: [SKUGroupChannelAddInput!]!
+}
+
+input MutationAddListTreeNodesToListTreeInput {
+  listTreeNodes: [AddListTreeNodeInput!]!
+}
+
+input MutationAddListTreeNodesToParentListTreeNodeInput {
+  listTreeNodes: [AddListTreeNodeInput!]!
+}
+
+input MutationAddMediaObjectsToListInput {
+  mediaObjects: [CreateMediaObjectInput!]!
+}
+
+input MutationAddMediaObjectsToSKUGroupInput {
+  mediaObjects: [CreateMediaObjectInput!]!
+}
+
+input MutationAddMediaObjectsToSKUInput {
+  mediaObjects: [CreateMediaObjectInput!]!
+}
+
+input MutationAddMediaObjectsToSkuGroupInput {
+  mediaObjects: [CreateMediaObjectInput!]!
+}
+
+input MutationAddMediaObjectsToSkuInput {
+  mediaObjects: [CreateMediaObjectInput!]!
+}
+
+input MutationAddOptionsToSKUGroupInput {
+  "UUIDs of existing options to associate with this SKU group." optionIds: [String!]
+  options: [CreateOptionInput!]
+}
+
+input MutationAddOptionsToSkuGroupInput {
+  "UUIDs of existing options to associate with this SKU group." optionIds: [String!]
+  options: [CreateOptionInput!]
+}
+
+input MutationAddReferencesToListInput {
+  references: [CreateReferenceInput!]!
+}
+
+input MutationAddReferencesToListTreeInput {
+  references: [CreateReferenceInput!]!
+}
+
+input MutationAddReferencesToListTreeNodeInput {
+  references: [CreateReferenceInput!]!
+}
+
+input MutationAddReferencesToLocationInput {
+  references: [CreateReferenceInput!]!
+}
+
+input MutationAddReferencesToSKUGroupInput {
+  references: [CreateReferenceInput!]!
+}
+
+input MutationAddReferencesToSKUInput {
+  references: [CreateReferenceInput!]!
+}
+
+input MutationAddReferencesToSkuGroupInput {
+  references: [CreateReferenceInput!]!
+}
+
+input MutationAddReferencesToSkuInput {
+  references: [CreateReferenceInput!]!
+}
+
+input MutationAddSKUGroupToListsInput {
+  listIds: [String!]!
+}
+
+input MutationAddSKUGroupsToListInput {
+  skuGroupIds: [String!]!
+}
+
+input MutationAddSKUsToLocationInput {
+  skuIds: [String!]!
+}
+
+input MutationAddSKUsToSKUGroupInput {
+  skuIds: [String!]!
+}
+
+input MutationAddSkuGroupToListsInput {
+  listIds: [String!]!
+}
+
+input MutationAddSkuGroupsToListInput {
+  skuGroupIds: [String!]!
+}
+
+input MutationAddSkusToLocationInput {
+  skuIds: [String!]!
+}
+
+input MutationAddSkusToSkuGroupInput {
+  skuIds: [String!]!
+}
+
+input MutationAdjustInventoryInput {
+  delta: Int!
+  locationId: ID!
+  reasonName: String
+  references: [CreateReferenceInput!]
+  skuId: ID!
+}
+
+input MutationArchiveInventoryAdjustmentReasonInput {
+  id: ID!
+}
+
+input MutationCommitInventoryInput {
+  allowBackorders: Boolean
+  locationId: ID!
+  quantity: Int!
+  reasonName: String
+  references: [CreateReferenceInput!]
+  skuId: ID!
+}
+
+input MutationCreateAttributeInput {
+  description: String
+  htmlDescription: String
+  label: String!
+  metafields: [CreateMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  position: Int
+  skuGroupId: ID!
+  values: [AssociateAttributeValueInput!]
+}
+
+input MutationCreateInventoryAdjustmentReasonInput {
+  label: String!
+  "Must be kebab-case: lowercase alphanumeric segments separated by single dashes. Must not start with \"g-\" (reserved for global presets)." name: String!
+}
+
+input MutationCreateListInput {
+  description: String
+  htmlDescription: String
+  label: String!
+  mediaObjects: [CreateMediaObjectInput!]
+  metafields: [CreateMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  references: [CreateReferenceInput!]
+  "The status of the list, one of `ACTIVE`, `DRAFT`, `ARCHIVED`." status: String
+}
+
+input MutationCreateListTreeInput {
+  description: String
+  htmlDescription: String
+  label: String!
+  listTreeNodes: [CreateListTreeNodeInput!]
+  metafields: [CreateMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  references: [CreateReferenceInput!]
+  "The status of the list tree, one of `ACTIVE`, `ARCHIVED`, `DRAFT`." status: String
+}
+
+input MutationCreateLocationInput {
+  address: CreateAddressInput!
+  label: String!
+  metafields: [CreateMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  references: [CreateReferenceInput!]
+  "The status of the location, one of `ACTIVE`, `INACTIVE`, `ARCHIVED`." status: String
+}
+
+input MutationCreateOptionInput {
+  description: String
+  htmlDescription: String
+  label: String!
+  metafields: [CreateMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  position: Int
+  prices: [CreateOptionPriceInput!]
+  "Whether this option is shareable across multiple SKU Groups." shareable: Boolean
+  "The UUIDs of the SKU Groups to associate the Option with." skuGroupIds: [String!]
+  "The type of the Option, one of `TEXT`, `NUMBER`, `LIST`. Option Values are only available on the 'LIST' type." type: String!
+  validation: CreateOptionValidationInput
+  values: [CreateOptionValueInput!]
+}
+
+input MutationCreateOptionPriceInput {
+  compareAtValue: SimpleMoneyInput
+  optionId: String!
+  value: SimpleMoneyInput!
+}
+
+input MutationCreateOptionValueInput {
+  label: String!
+  metafields: [CreateMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  optionId: String!
+  position: Int
+  prices: [CreateOptionValuePriceInput!]
+}
+
+input MutationCreateOptionValuePriceInput {
+  compareAtValue: SimpleMoneyInput
+  optionValueId: String!
+  value: SimpleMoneyInput!
+}
+
+input MutationCreateSKUGroupInput {
+  attributes: [CreateSKUGroupAttributeInput!]
+  channels: [SKUGroupChannelAddInput!]
+  description: String
+  htmlDescription: String
+  label: String!
+  mediaObjects: [CreateMediaObjectInput!]
+  metafields: [CreateMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  options: [CreateOptionInput!]
+  references: [CreateReferenceInput!]
+  skus: [CreateSKUGroupSKUInput!]
+  "The status of the SKU, one of `DRAFT`, `ACTIVE`, `ARCHIVED`." status: String
+  type: String!
+}
+
+input MutationCreateSKUPriceInput {
+  compareAtValue: SimpleMoneyInput
+  skuId: ID!
+  value: SimpleMoneyInput!
+}
+
+input MutationCreateSkuGroupInput {
+  attributes: [CreateSKUGroupAttributeInput!]
+  channels: [SKUGroupChannelAddInput!]
+  description: String
+  htmlDescription: String
+  label: String!
+  mediaObjects: [CreateMediaObjectInput!]
+  metafields: [CreateMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  options: [CreateOptionInput!]
+  references: [CreateReferenceInput!]
+  skus: [CreateSKUGroupSKUInput!]
+  "The status of the SKU, one of `DRAFT`, `ACTIVE`, `ARCHIVED`." status: String
+  type: String!
+}
+
+input MutationCreateSkuPriceInput {
+  compareAtValue: SimpleMoneyInput
+  skuId: ID!
+  value: SimpleMoneyInput!
+}
+
+input MutationReduceInventoryInput {
+  locationId: ID!
+  quantity: Int!
+  reasonName: String
+  references: [CreateReferenceInput!]
+  skuId: ID!
+}
+
+input MutationReleaseInventoryInput {
+  locationId: ID!
+  quantity: Int!
+  reasonName: String
+  references: [CreateReferenceInput!]
+  skuId: ID!
+}
+
+input MutationRemoveAttributeValuesFromAttributeInput {
+  attributeValueIds: [String!]!
+}
+
+input MutationRemoveAttributeValuesFromSKUInput {
+  attributeValueIds: [String!]!
+}
+
+input MutationRemoveAttributeValuesFromSkuInput {
+  attributeValueIds: [String!]!
+}
+
+input MutationRemoveAttributesFromSKUGroupInput {
+  attributeIds: [String!]!
+}
+
+input MutationRemoveAttributesFromSkuGroupInput {
+  attributeIds: [String!]!
+}
+
+input MutationRemoveChannelsFromSKUGroupInput {
+  channelIds: [String!]!
+}
+
+input MutationRemoveChannelsFromSkuGroupInput {
+  channelIds: [String!]!
+}
+
+input MutationRemoveListTreeNodesFromListTreeInput {
+  listTreeNodeIds: [String!]!
+}
+
+input MutationRemoveListTreeNodesFromParentListTreeNodeInput {
+  listTreeNodeIds: [String!]!
+}
+
+input MutationRemoveMediaObjectsFromListInput {
+  mediaObjectIds: [String!]!
+}
+
+input MutationRemoveMediaObjectsFromSKUGroupInput {
+  mediaObjectIds: [String!]!
+}
+
+input MutationRemoveMediaObjectsFromSKUInput {
+  mediaObjectIds: [String!]!
+}
+
+input MutationRemoveMediaObjectsFromSkuGroupInput {
+  mediaObjectIds: [String!]!
+}
+
+input MutationRemoveMediaObjectsFromSkuInput {
+  mediaObjectIds: [String!]!
+}
+
+input MutationRemoveMetafieldsFromAttributeInput {
+  metafields: [RemoveMetafieldInput!]!
+}
+
+input MutationRemoveMetafieldsFromAttributeValueInput {
+  metafields: [RemoveMetafieldInput!]!
+}
+
+input MutationRemoveMetafieldsFromListInput {
+  metafields: [RemoveMetafieldInput!]!
+}
+
+input MutationRemoveMetafieldsFromListTreeInput {
+  metafields: [RemoveMetafieldInput!]!
+}
+
+input MutationRemoveMetafieldsFromLocationInput {
+  metafields: [RemoveMetafieldInput!]!
+}
+
+input MutationRemoveMetafieldsFromOptionInput {
+  metafields: [RemoveMetafieldInput!]!
+}
+
+input MutationRemoveMetafieldsFromOptionValueInput {
+  metafields: [RemoveMetafieldInput!]!
+}
+
+input MutationRemoveMetafieldsFromSkuGroupInput {
+  metafields: [RemoveMetafieldInput!]!
+}
+
+input MutationRemoveMetafieldsFromSkuInput {
+  metafields: [RemoveMetafieldInput!]!
+}
+
+input MutationRemoveOptionValuesFromListOptionInput {
+  valueIds: [String!]!
+}
+
+input MutationRemoveOptionsFromSKUGroupInput {
+  optionIds: [String!]!
+}
+
+input MutationRemoveOptionsFromSkuGroupInput {
+  optionIds: [String!]!
+}
+
+input MutationRemovePricesFromOptionInput {
+  priceIds: [String!]!
+}
+
+input MutationRemovePricesFromOptionValueInput {
+  priceIds: [String!]!
+}
+
+input MutationRemovePricesFromSKUInput {
+  priceIds: [String!]!
+}
+
+input MutationRemovePricesFromSkuInput {
+  priceIds: [String!]!
+}
+
+input MutationRemoveReferencesFromListInput {
+  referenceIds: [String!]!
+}
+
+input MutationRemoveReferencesFromListTreeInput {
+  referenceIds: [String!]!
+}
+
+input MutationRemoveReferencesFromListTreeNodeInput {
+  referenceIds: [String!]!
+}
+
+input MutationRemoveReferencesFromLocationInput {
+  referenceIds: [String!]!
+}
+
+input MutationRemoveReferencesFromSKUGroupInput {
+  referenceIds: [String!]!
+}
+
+input MutationRemoveReferencesFromSKUInput {
+  referenceIds: [String!]!
+}
+
+input MutationRemoveReferencesFromSkuGroupInput {
+  referenceIds: [String!]!
+}
+
+input MutationRemoveReferencesFromSkuInput {
+  referenceIds: [String!]!
+}
+
+input MutationRemoveSKUGroupFromListsInput {
+  listIds: [String!]!
+}
+
+input MutationRemoveSKUGroupsFromListInput {
+  skuGroupIds: [String!]!
+}
+
+input MutationRemoveSKUsFromLocationInput {
+  skuIds: [String!]!
+}
+
+input MutationRemoveSKUsFromSKUGroupInput {
+  skuIds: [String!]!
+}
+
+input MutationRemoveSkuGroupFromListsInput {
+  listIds: [String!]!
+}
+
+input MutationRemoveSkuGroupsFromListInput {
+  skuGroupIds: [String!]!
+}
+
+input MutationRemoveSkusFromLocationInput {
+  skuIds: [String!]!
+}
+
+input MutationRemoveSkusFromSkuGroupInput {
+  skuIds: [String!]!
+}
+
+input MutationRestockFromCommittedInventoryInput {
+  locationId: ID!
+  quantity: Int!
+  reasonName: String
+  references: [CreateReferenceInput!]
+  skuId: ID!
+}
+
+input MutationSetSkuGroupChannelAssociationModeInput {
+  """
+    The channel association mode for this SKU Group. Can be ALL (uses active channels registered to the store) or
+    					SELECTIVE (uses custom channel associations).
+  """ mode: String!
+}
+
+input MutationStockInventoryInput {
+  locationId: ID!
+  quantity: Int!
+  reasonName: String
+  references: [CreateReferenceInput!]
+  skuId: ID!
+}
+
+input MutationUpdateAttributeInput {
+  description: String
+  htmlDescription: String
+  label: String
+  metafields: [UpsertMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  position: Int
+}
+
+input MutationUpdateAttributeValueInput {
+  label: String
+  metafields: [UpsertMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  position: Int
+}
+
+input MutationUpdateInventoryAdjustmentReasonInput {
+  id: ID!
+  label: String
+}
+
+input MutationUpdateListInput {
+  description: String
+  htmlDescription: String
+  label: String
+  metafields: [UpsertMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  "The status of the list, one of `ACTIVE`, `DRAFT`, `ARCHIVED`." status: String
+}
+
+input MutationUpdateListMediaObjectsInput {
+  mediaObjects: [UpdateMediaObjectInput!]!
+}
+
+input MutationUpdateListTreeInput {
+  description: String
+  htmlDescription: String
+  label: String
+  metafields: [UpsertMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  "The status of the list tree, one of `ACTIVE`, `ARCHIVED`, `DRAFT`." status: String
+}
+
+input MutationUpdateListTreeNodeInput {
+  listId: String
+  listTreeId: String
+  parentNodeId: String
+  position: Int
+}
+
+input MutationUpdateLocationInput {
+  address: UpdateAddressInput
+  label: String
+  metafields: [UpsertMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  "The status of the location, one of `ACTIVE`, `INACTIVE`, `ARCHIVED`." status: String
+}
+
+input MutationUpdateOptionInput {
+  description: String
+  htmlDescription: String
+  label: String
+  metafields: [UpsertMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  position: Int
+  shareable: Boolean
+  "The type of the Option, one of `TEXT`, `NUMBER`, `LIST`. Option Values are only available on the 'LIST' type." type: String
+  validation: CreateOptionValidationInput
+}
+
+input MutationUpdateOptionPriceCurrencyCodeInput {
+  currencyCode: String!
+}
+
+input MutationUpdateOptionPriceInput {
+  compareAtValue: SimpleMoneyInput
+  value: SimpleMoneyInput
+}
+
+input MutationUpdateOptionValueInput {
+  label: String
+  metafields: [UpsertMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  position: Int
+}
+
+input MutationUpdateOptionValuePriceCurrencyCodeInput {
+  currencyCode: String!
+}
+
+input MutationUpdateOptionValuePriceInput {
+  compareAtValue: SimpleMoneyInput
+  value: SimpleMoneyInput
+}
+
+input MutationUpdateSKUGroupInput {
+  description: String
+  label: String
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  "The status of the SKU, one of `DRAFT`, `ACTIVE`, `ARCHIVED`." status: String
+}
+
+input MutationUpdateSKUInput {
+  backorderLimit: Int
+  code: String
+  description: String
+  disableInventoryTracking: Boolean
+  disablePriceOverrides: Boolean
+  disableShipping: Boolean
+  eanCode: String
+  gtinCode: String
+  htmlDescription: String
+  isbnCode: String
+  label: String
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  "The status of the SKU, one of `DRAFT`, `ACTIVE`, `ARCHIVED`." status: String
+  unitCost: SimpleMoneyInput
+  "The unit of weight, one of `KG`, `GR`, `LB`, `OZ`." unitOfWeight: String
+  upcCode: String
+  weight: Float
+}
+
+input MutationUpdateSKUPriceInput {
+  compareAtValue: SimpleMoneyInput
+  "Update the currency code for this price. When provided, updates the currency code while keeping the numeric value unchanged." currencyCode: String
+  value: SimpleMoneyInput
+}
+
+input MutationUpdateSkuGroupInput {
+  description: String
+  htmlDescription: String
+  label: String
+  metafields: [UpsertMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  "The status of the SKU, one of `DRAFT`, `ACTIVE`, `ARCHIVED`." status: String
+}
+
+input MutationUpdateSkuGroupMediaObjectsInput {
+  mediaObjects: [UpdateMediaObjectInput!]!
+}
+
+input MutationUpdateSkuGroupOptionPositionsInput {
+  positions: [UpdateSKUGroupOptionPositionInput!]!
+}
+
+input MutationUpdateSkuInput {
+  backorderLimit: Int
+  code: String
+  description: String
+  disableInventoryTracking: Boolean
+  disablePriceOverrides: Boolean
+  disableShipping: Boolean
+  eanCode: String
+  gtinCode: String
+  htmlDescription: String
+  isbnCode: String
+  label: String
+  metafields: [UpsertMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  "The status of the SKU, one of `DRAFT`, `ACTIVE`, `ARCHIVED`." status: String
+  unitCost: SimpleMoneyInput
+  "The unit of weight, one of `KG`, `GR`, `LB`, `OZ`." unitOfWeight: String
+  upcCode: String
+  weight: Float
+}
+
+input MutationUpdateSkuMediaObjectsInput {
+  mediaObjects: [UpdateMediaObjectInput!]!
+}
+
+input MutationUpdateSkuPriceCurrencyCodeInput {
+  currencyCode: String!
+}
+
+input MutationUpdateSkuPriceInput {
+  compareAtValue: SimpleMoneyInput
+  value: SimpleMoneyInput
+}
+
+"Filters items where the name is equal to the specified string or in an array of strings."
+input NameFilter {
+  "Filters items where the name contains the specified string, case-insensitive." contains: String
+  eq: String
+  "Filters items where the name matches any of the specified names." in: [String!]
+}
+
+scalar Null
+
+type NumericOption {
+  "The timestamp of when the Option was created."
+  createdAt: DateTime!
+  "A description of the Option."
+  description: String
+  "The UUID of the Option"
+  id: ID!
+  "The display label of the Option"
+  label: String!
+  metafields(after: String, before: String, first: Int, "The key of the metafield. Requires namespace to be provided." key: String, last: Int, "The namespace of the metafield. Required when key is provided." namespace: String): OptionMetafieldsConnection
+  "A unique name of the Option."
+  name: String!
+  "Represents the additional cost of a Numeric Option. When empty, it indicates this option allows for flexible pricing."
+  prices(after: String, before: String, "Filter prices by currency code." currencyCode: CurrencyCodeFilter, first: Int, last: Int, paginationType: PaginationType = CURSOR): NumericOptionPricesConnection
+  "Whether the option is shareable across multiple SKU Groups (a global modifier)."
+  shareable: Boolean!
+  "The IDs of all SKU groups this option is associated with."
+  skuGroupIds: [String!]!
+  "The type of the option, one of `TEXT`, `NUMBER`, `LIST`, Option Values are available for the 'LIST' type."
+  type: String
+  "The timestamp of when the Option was updated."
+  updatedAt: DateTime!
+  "Provide validations on how the option can be applied to a SKU. If `TEXT` option then `min` and `max` apply to the number of characters. If `NUMBER` then `min` and `max` apply to the actual number value. If `LIST` then `min` and `max` apply to the number of values that can be selected."
+  validation: OptionValidation
+}
+
+type NumericOptionPricesConnection {
+  edges: [NumericOptionPricesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type NumericOptionPricesConnectionEdge {
+  cursor: String!
+  node: OptionPrice
+}
+
+union Option = ListOption | NumericOption | TextOption
+
+input OptionIdFilter {
+  eq: String
+  in: [String!]
+}
+
+input OptionIdsFilter {
+  in: [String!]
+}
+
+type OptionMetafieldsConnection {
+  edges: [OptionMetafieldsEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type OptionMetafieldsEdge {
+  cursor: String!
+  node: Metafield
+}
+
+input OptionOrderBy {
+  createdAt: OrderByDirectionEnum
+  id: OrderByDirectionEnum
+  label: OrderByDirectionEnum
+  name: OrderByDirectionEnum
+  position: OrderByDirectionEnum
+  price: OrderByDirectionEnum
+  updatedAt: OrderByDirectionEnum
+}
+
+"Represents the additional cost of an option added to a SKU group (e.g 'Toppings' option for a coffee drink)."
+type OptionPrice {
+  "The compare-at value of the price."
+  compareAtValue: SimpleMoney
+  "The timestamp of when the price was created."
+  createdAt: DateTime!
+  "The globally-unique ID of the price."
+  id: ID!
+  "The option that this price belongs to."
+  option: Option
+  "The last update timestamp of the price."
+  updatedAt: DateTime!
+  "The value of the price."
+  value: SimpleMoney!
+}
+
+input OptionPriceIdsFilter {
+  in: [String!]
+}
+
+input OptionPriceOrderBy {
+  id: OrderByDirectionEnum
+  updatedAt: OrderByDirectionEnum
+}
+
+"Provide validations on how the option can be applied to a SKU. If `TEXT` option then `min` and `max` apply to the number of characters. If `NUMBER` then `min` and `max` apply to the actual number value. If `LIST` then `min` and `max` apply to the number of values that can be selected."
+type OptionValidation {
+  "The maximum number that can be applied to the option."
+  max: Int
+  "The minimum number that can be applied to the option."
+  min: Int
+}
+
+type OptionValue {
+  "The timestamp of when the Option Value was created."
+  createdAt: DateTime!
+  "The UUID of the Option Value."
+  id: ID!
+  "The display label of the Option Value."
+  label: String!
+  metafields(after: String, before: String, first: Int, "The key of the metafield. Requires namespace to be provided." key: String, last: Int, "The namespace of the metafield. Required when key is provided." namespace: String): OptionValueMetafieldsConnection
+  "A unique name of the Option Value."
+  name: String!
+  "The option that this value belongs to."
+  option: ListOption
+  "The position of the option value."
+  position: Int
+  "These are all the prices the Option Value can be sold at. The price can be different based the channel where it is listed or if there is a promotion running."
+  prices(after: String, before: String, "Filter prices by currency code." currencyCode: CurrencyCodeFilter, first: Int, last: Int, paginationType: PaginationType = CURSOR): OptionValuePricesConnection
+  "The timestamp of when the Option Value was updated."
+  updatedAt: DateTime!
+}
+
+input OptionValueIdFilter {
+  eq: String
+}
+
+input OptionValueIdsFilter {
+  in: [String!]
+}
+
+type OptionValueMetafieldsConnection {
+  edges: [OptionValueMetafieldsEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type OptionValueMetafieldsEdge {
+  cursor: String!
+  node: Metafield
+}
+
+input OptionValueOrderBy {
+  createdAt: OrderByDirectionEnum
+  id: OrderByDirectionEnum
+  name: OrderByDirectionEnum
+  position: OrderByDirectionEnum
+  price: OrderByDirectionEnum
+  updatedAt: OrderByDirectionEnum
+}
+
+"Represents the additional cost of the option value added to a SKU (e.g the option value 'Caramel Drizzle' could have a different cost to other 'Topping' options)."
+type OptionValuePrice {
+  "The compare-at value of the price."
+  compareAtValue: SimpleMoney
+  "The timestamp of when the price was created."
+  createdAt: DateTime!
+  "The globally-unique ID of the price."
+  id: ID!
+  "The option value that this price belongs to."
+  optionValue: OptionValue
+  "The last update timestamp of the price."
+  updatedAt: DateTime!
+  "The value of the price."
+  value: SimpleMoney!
+}
+
+input OptionValuePriceIdsFilter {
+  in: [String!]
+}
+
+input OptionValuePriceOrderBy {
+  id: OrderByDirectionEnum
+  updatedAt: OrderByDirectionEnum
+}
+
+type OptionValuePricesConnection {
+  edges: [OptionValuePricesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type OptionValuePricesConnectionEdge {
+  cursor: String!
+  node: OptionValuePrice
+}
+
+"The direction in which to order items."
+enum OrderByDirectionEnum {
+  ASC
+  DESC
+}
+
+type PageInfo {
+  endCursor: String
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+}
+
+enum PaginationType {
+  CURSOR
+  OFFSET
+}
+
+"Defines a range of prices."
+type PriceRange {
+  "Maximum price."
+  max: Float
+  "Minimum price."
+  min: Float
+}
+
+"Filters items that have at least one price in the requested currency and inclusive price range."
+input PriceRangeFilter {
+  "The three-letter currency code of prices to match." currencyCode: String!
+  "The inclusive maximum price in integer minor units, the same convention as `SimpleMoneyInput.value`. At least one of min or max is required; the server returns a validation error if both are omitted." max: Float
+  "The inclusive minimum price in integer minor units, the same convention as `SimpleMoneyInput.value`. At least one of min or max is required; the server returns a validation error if both are omitted." min: Float
+}
+
+type Query {
+  _service: _Service!
+  attribute(id: String!): Attribute
+  attributeValue(id: String!): AttributeValue
+  attributeValues(after: String, attributeId: AttributeIdFilter, before: String, createdAt: CreatedAtFilter, first: Int, id: AttributeValueIdsFilter, last: Int, name: NameFilter, orderBy: AttributeValueOrderBy, paginationType: PaginationType = CURSOR, skuId: SKUIdFilter, updatedAt: UpdatedAtFilter): QueryAttributeValuesConnection
+  attributes(after: String, before: String, createdAt: CreatedAtFilter, first: Int, id: AttributeIdsFilter, last: Int, name: NameFilter, orderBy: AttributeOrderBy, paginationType: PaginationType = CURSOR, skuGroupId: SKUGroupIdFilter, skuGroupStatus: SKUGroupStatusFilter, updatedAt: UpdatedAtFilter): QueryAttributesConnection
+  "Special list tree to hold the main categories of the store. It cannot be updated or archived."
+  categoriesListTree: ListTree
+  "Retrieve a file by its ID."
+  file(id: String!): File
+  files(after: String, before: String, createdAt: CreatedAtFilter, first: Int, id: FileIdsFilter, last: Int, orderBy: FileOrderBy, paginationType: PaginationType = CURSOR, status: FileStatusFilter, storageUrl: FileStorageUrlFilter, updatedAt: UpdatedAtFilter): QueryFilesConnection
+  inventoryAdjustment(id: String!): InventoryAdjustment
+  "List inventory adjustment reasons available to the current store. Includes both store-scoped and global preset reasons."
+  inventoryAdjustmentReasons(after: String, before: String, first: Int, last: Int, name: NameFilter, orderBy: InventoryAdjustmentReasonOrderBy, paginationType: PaginationType = CURSOR, status: InventoryAdjustmentReasonStatusFilter): QueryInventoryAdjustmentReasonsConnection
+  inventoryAdjustments(after: String, before: String, createdAt: CreatedAtFilter, first: Int, id: InventoryAdjustmentIdsFilter, last: Int, locationId: LocationIdFilter, orderBy: InventoryAdjustmentOrderBy, paginationType: PaginationType = CURSOR, reasonName: InventoryAdjustmentReasonNameFilter, referenceValue: ReferenceValueFilter, skuId: SKUIdFilter, type: InventoryAdjustmentTypeFilter): QueryInventoryAdjustmentsConnection
+  inventoryCount(locationId: String!, skuId: String!, type: String): [InventoryCount!]
+  inventoryCounts(after: String, before: String, createdAt: CreatedAtFilter, first: Int, id: InventoryCountIdsFilter, last: Int, locationId: LocationIdFilter, locationStatus: LocationStatusFilter, orderBy: InventoryCountOrderBy, paginationType: PaginationType = CURSOR, skuId: SKUIdFilter, skuStatus: InventoryCountSKUStatusFilter, type: InventoryCountTypeFilter, updatedAt: UpdatedAtFilter): QueryInventoryCountsConnection
+  list(id: String!): List
+  listTree(id: String!): ListTree
+  listTreeNode(id: String!): ListTreeNode
+  listTreeNodes(after: String, before: String, createdAt: CreatedAtFilter, first: Int, hasParent: Boolean, id: ListTreeNodeIdsFilter, last: Int, "Filters nodes by their associated list via eq, in, and ne. isNull never matches, since every node belongs to a list." listId: ListIdFilter, listStatus: ListTreeNodeListStatusFilter = {in: ["ACTIVE", "DRAFT"]}, listTreeId: ListTreeIdFilter, listTreeStatus: ListTreeNodeListTreeStatusFilter, orderBy: ListTreeNodeOrderBy, paginationType: PaginationType = CURSOR, parentNodeId: ListTreeNodeParentNodeIdFilter, referenceValue: ReferenceValueFilter, updatedAt: UpdatedAtFilter): QueryListTreeNodesConnection
+  "List trees. Excludes the special categories list tree."
+  listTrees(after: String, before: String, createdAt: CreatedAtFilter, first: Int, id: ListTreeIdsFilter, last: Int, name: NameFilter, orderBy: ListTreeOrderBy, paginationType: PaginationType = CURSOR, referenceValue: ReferenceValueFilter, status: ListTreeStatusFilter, updatedAt: UpdatedAtFilter): QueryListTreesConnection
+  lists(after: String, before: String, createdAt: CreatedAtFilter, first: Int, id: ListIdsFilter, last: Int, name: NameFilter, orderBy: ListOrderBy, paginationType: PaginationType = CURSOR, referenceValue: ReferenceValueFilter, skuGroupId: SKUGroupIdFilter, status: ListStatusFilter, updatedAt: UpdatedAtFilter): QueryListsConnection
+  location(id: String!): Location
+  locations(after: String, before: String, createdAt: CreatedAtFilter, first: Int, id: LocationIdsFilter, last: Int, name: NameFilter, orderBy: LocationOrderBy, paginationType: PaginationType = CURSOR, referenceValue: ReferenceValueFilter, skuId: SKUIdFilter, status: LocationStatusFilter, updatedAt: UpdatedAtFilter): QueryLocationsConnection
+  "Query all option prices."
+  optionPrices(after: String, before: String, "Filter prices by currency code." currencyCode: CurrencyCodeFilter, first: Int, "Filter prices by whether compareAtValue exists (true) or not (false)." hasCompareAtValue: Boolean, id: OptionPriceIdsFilter, last: Int, optionId: OptionIdFilter, orderBy: OptionPriceOrderBy, paginationType: PaginationType = CURSOR, updatedAt: UpdatedAtFilter): QueryOptionPricesConnection
+  "Query all option value prices."
+  optionValuePrices(after: String, before: String, "Filter prices by currency code." currencyCode: CurrencyCodeFilter, first: Int, "Filter prices by whether compareAtValue exists (true) or not (false)." hasCompareAtValue: Boolean, id: OptionValuePriceIdsFilter, last: Int, optionValueId: OptionValueIdFilter, orderBy: OptionValuePriceOrderBy, paginationType: PaginationType = CURSOR, updatedAt: UpdatedAtFilter): QueryOptionValuePricesConnection
+  optionValues(after: String, before: String, createdAt: CreatedAtFilter, first: Int, id: OptionValueIdsFilter, last: Int, optionId: OptionIdFilter, orderBy: OptionValueOrderBy, paginationType: PaginationType = CURSOR, updatedAt: UpdatedAtFilter): QueryOptionValuesConnection
+  options(after: String, "Returns shareable options that are not already associated with the specified SKU group. Use this to find options that can be added to a SKU group. Cannot be combined with skuGroupId or skuGroupStatus filters." assignableToSkuGroupId: String, before: String, createdAt: CreatedAtFilter, first: Int, id: OptionIdsFilter, label: LabelFilter, last: Int, name: NameFilter, orderBy: OptionOrderBy, paginationType: PaginationType = CURSOR, "Filter options by their shareable status. When true, returns only shareable options; when false, returns only non-shareable options." shareable: Boolean, skuGroupId: SKUGroupIdFilter, skuGroupStatus: SKUGroupStatusFilter, updatedAt: UpdatedAtFilter): QueryOptionsConnection
+  sku(id: String!): SKU
+  skuGroup(id: String!): SKUGroup
+  skuGroups(after: String, before: String, channelId: SKUGroupChannelIdFilter, createdAt: CreatedAtFilter, first: Int, hasCompareAt: HasCompareAtFilter, "When true, returns only SKU groups with at least one SKU. When false, returns only SKU groups with zero SKUs." hasSKUs: Boolean, id: SKUGroupIdsFilter, label: LabelFilter, last: Int, "Filters SKU groups by list membership: eq is in this list, in is in any of these lists, isNull is in no list, and ne is not in this list." listId: ListIdFilter, name: NameFilter, orderBy: SKUGroupOrderBy, paginationType: PaginationType = CURSOR, priceRange: PriceRangeFilter, referenceValue: ReferenceValueFilter, status: SKUGroupStatusFilter, type: SKUGroupTypeFilter, updatedAt: UpdatedAtFilter): QuerySkuGroupsConnection
+  "Query all SKU prices."
+  skuPrices(after: String, before: String, "Filter prices by currency code." currencyCode: CurrencyCodeFilter, first: Int, "Filter prices by whether compareAtValue exists (true) or not (false)." hasCompareAtValue: Boolean, id: SKUPriceIdsFilter, last: Int, orderBy: SKUPriceOrderBy, paginationType: PaginationType = CURSOR, skuId: SKUIdFilter, "Filter prices by the status of the parent SKU (ACTIVE, DRAFT, ARCHIVED)." skuStatus: SKUStatusFilter, updatedAt: UpdatedAtFilter): QuerySkuPricesConnection
+  skus(after: String, attributeValues: SKUAttributeValueFilter, before: String, code: SKUCodeFilter, createdAt: CreatedAtFilter, eanCode: SKUEanCodeFilter, first: Int, gtinCode: SKUGtinCodeFilter, id: SKUIdsFilter, isbnCode: SKUIsbnCodeFilter, label: LabelFilter, last: Int, locationId: LocationIdFilter, name: NameFilter, orderBy: SKUOrderBy, paginationType: PaginationType = CURSOR, """
+    A string filter in the ODATA format. ex: "label eq 'shirt' and contains(code, '123')".
+
+
+    Supported columns: `label`, `code`
+
+    Supported operators: `eq`, `ne`, `lt`, `gt`, `and`, `or`
+
+    Supported functions: `contains`
+  """ queryFilter: String, referenceValue: ReferenceValueFilter, skuGroupId: SKUGroupIdFilter, "Filter SKUs by their SKU group's status. SKUs without a SKU group will be excluded when this filter is present." skuGroupStatus: SKUGroupStatusFilter, status: SKUStatusFilter, upcCode: SKUUpcCodeFilter, updatedAt: UpdatedAtFilter): QuerySkusConnection
+}
+
+type QueryAttributeValuesConnection {
+  edges: [QueryAttributeValuesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QueryAttributeValuesConnectionEdge {
+  cursor: String!
+  node: AttributeValue
+}
+
+type QueryAttributesConnection {
+  edges: [QueryAttributesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QueryAttributesConnectionEdge {
+  cursor: String!
+  node: Attribute
+}
+
+type QueryFilesConnection {
+  edges: [QueryFilesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QueryFilesConnectionEdge {
+  cursor: String!
+  node: File
+}
+
+type QueryInventoryAdjustmentReasonsConnection {
+  edges: [QueryInventoryAdjustmentReasonsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QueryInventoryAdjustmentReasonsConnectionEdge {
+  cursor: String!
+  node: InventoryAdjustmentReason
+}
+
+type QueryInventoryAdjustmentsConnection {
+  edges: [QueryInventoryAdjustmentsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QueryInventoryAdjustmentsConnectionEdge {
+  cursor: String!
+  node: InventoryAdjustment
+}
+
+type QueryInventoryCountsConnection {
+  edges: [QueryInventoryCountsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QueryInventoryCountsConnectionEdge {
+  cursor: String!
+  node: InventoryCount
+}
+
+type QueryListTreeNodesConnection {
+  edges: [QueryListTreeNodesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QueryListTreeNodesConnectionEdge {
+  cursor: String!
+  node: ListTreeNode
+}
+
+type QueryListTreesConnection {
+  edges: [QueryListTreesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QueryListTreesConnectionEdge {
+  cursor: String!
+  node: ListTree
+}
+
+type QueryListsConnection {
+  edges: [QueryListsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QueryListsConnectionEdge {
+  cursor: String!
+  node: List
+}
+
+type QueryLocationsConnection {
+  edges: [QueryLocationsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QueryLocationsConnectionEdge {
+  cursor: String!
+  node: Location
+}
+
+type QueryOptionPricesConnection {
+  edges: [QueryOptionPricesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QueryOptionPricesConnectionEdge {
+  cursor: String!
+  node: OptionPrice
+}
+
+type QueryOptionValuePricesConnection {
+  edges: [QueryOptionValuePricesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QueryOptionValuePricesConnectionEdge {
+  cursor: String!
+  node: OptionValuePrice
+}
+
+type QueryOptionValuesConnection {
+  edges: [QueryOptionValuesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QueryOptionValuesConnectionEdge {
+  cursor: String!
+  node: OptionValue
+}
+
+type QueryOptionsConnection {
+  edges: [QueryOptionsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QueryOptionsConnectionEdge {
+  cursor: String!
+  node: Option
+}
+
+type QuerySKUGroupsConnection {
+  edges: [QuerySKUGroupsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QuerySKUGroupsConnectionEdge {
+  cursor: String!
+  node: SKUGroup
+}
+
+type QuerySKUsConnection {
+  edges: [QuerySKUsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QuerySKUsConnectionEdge {
+  cursor: String!
+  node: SKU
+}
+
+type QuerySkuGroupsConnection {
+  edges: [QuerySkuGroupsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QuerySkuGroupsConnectionEdge {
+  cursor: String!
+  node: SKUGroup
+}
+
+type QuerySkuPricesConnection {
+  edges: [QuerySkuPricesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QuerySkuPricesConnectionEdge {
+  cursor: String!
+  node: SKUPrice
+}
+
+type QuerySkusConnection {
+  edges: [QuerySkusConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type QuerySkusConnectionEdge {
+  cursor: String!
+  node: SKU
+}
+
+"A reference to the resource in an external service."
+type Reference {
+  "The globally-unique ID of the reference."
+  id: ID
+  "The origin or location of the reference. Ex. OLS or POYNT"
+  origin: String
+  "The identifier of the resource in an external service"
+  value: String
+}
+
+input ReferenceOriginFilter {
+  eq: String
+  in: [String!]
+}
+
+input ReferenceValueFilter {
+  eq: String
+  in: [String!]
+}
+
+input RemoveMetafieldInput {
+  key: String!
+  namespace: String!
+}
+
+"A SKU represents a stock keeping unit (SKU) in the catalog."
+type SKU {
+  "The timestamp of when the SKU was archived."
+  archivedAt: DateTime
+  "Attribute values of SKU."
+  attributeValues(after: String, before: String, first: Int, last: Int, orderBy: AttributeValueOrderBy, paginationType: PaginationType = CURSOR): SKUAttributeValuesConnection
+  "Attributes are properties or characteristics of the SKU. For example, color or size."
+  attributes(after: String, before: String, first: Int, id: AttributeIdsFilter, last: Int, orderBy: AttributeOrderBy, paginationType: PaginationType = CURSOR): SKUAttributesConnection
+  "The number of backorders allowed for the SKU. If set to 0, backorders are not allowed. If set to null, backorders are allowed without limit."
+  backorderLimit: Int
+  "The unique code for the SKU."
+  code: String!
+  "The timestamp of when the SKU was created."
+  createdAt: DateTime!
+  "The description of the SKU."
+  description: String
+  "Flag to mark whether stock should be tracked for the SKU."
+  disableInventoryTracking: Boolean
+  "Flag to mark whether or not a custom price can be provided."
+  disablePriceOverrides: Boolean
+  "Flag to mark whether the SKU should be shipped or not."
+  disableShipping: Boolean
+  "The EAN code for the SKU."
+  eanCode: String
+  "The GTIN code for the SKU."
+  gtinCode: String
+  "HTML description for the SKU. Will be used to display rich text content to customers."
+  htmlDescription: String
+  "The globally-unique ID of the SKU."
+  id: ID!
+  "An immutable entity that represents a change in state of a quantity of SKU at a particular time and location. Each adjustment will either have a positive, negative, or neutral impact on the count of available SKUs in a location."
+  inventoryAdjustments(after: String, before: String, first: Int, last: Int, orderBy: InventoryAdjustmentOrderBy, paginationType: PaginationType = CURSOR): SKUInventoryAdjustmentsConnection
+  "The quantity of a SKU in a specific state at a particular time and location."
+  inventoryCounts(after: String, before: String, first: Int, last: Int, locationId: LocationIdFilter, locationStatus: LocationStatusFilter, orderBy: InventoryCountOrderBy, paginationType: PaginationType = CURSOR, skuStatus: InventoryCountSKUStatusFilter, type: InventoryCountTypeFilter): SKUInventoryCountsConnection
+  "The ISBN code for the SKU."
+  isbnCode: String
+  "The display label of the SKU."
+  label: String!
+  "The locations where the SKU is available."
+  locations(after: String, before: String, first: Int, last: Int, orderBy: LocationOrderBy, paginationType: PaginationType = CURSOR, status: LocationStatusFilter): SKULocationsConnection
+  "Media stored under this SKU."
+  mediaObjects(after: String, before: String, first: Int, last: Int, paginationType: PaginationType = CURSOR): SKUMediaObjectsConnection
+  metafields(after: String, before: String, first: Int, "The key of the metafield. Requires namespace to be provided." key: String, last: Int, "The namespace of the metafield. Required when key is provided." namespace: String): SKUMetafieldsConnection
+  "A unique name for the SKU."
+  name: String!
+  "These are all the prices the SKU can be sold at. The price can be different based the channel where it is listed or if there is a promotion running."
+  prices(after: String, before: String, "Filter prices by currency code." currencyCode: CurrencyCodeFilter, first: Int, last: Int): SKUPricesConnection
+  "A reference to the resource in an external service. This can be useful for integrating the resource to any external service."
+  references(after: String, before: String, first: Int, last: Int, origin: ReferenceOriginFilter, paginationType: PaginationType = CURSOR): SKUReferencesConnection
+  "A SKU group is a grouping of related SKUs. It provides information about all the SKUs that are sold together on storefronts or devices."
+  skuGroup: SKUGroup
+  "The status of the SKU, one of `DRAFT`, `ACTIVE`, `ARCHIVED`."
+  status: String
+  "The cost of the SKU per unit. This is a money object that includes the value and currency code."
+  unitCost: SimpleMoney
+  "The unit of weight, one of `KG`, `GR`, `LB`, `OZ`."
+  unitOfWeight: String
+  "The UPC code for the SKU."
+  upcCode: String
+  "The timestamp of when the SKU was updated."
+  updatedAt: DateTime!
+  "The weight of the SKU."
+  weight: Float
+}
+
+input SKUAttributeValueFilter {
+  "Filters SKUs that have all of the specified attribute value names, e.g. [\"red\", \"large\"]." has: [String!]
+}
+
+type SKUAttributeValuesConnection {
+  edges: [SKUAttributeValuesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKUAttributeValuesConnectionEdge {
+  cursor: String!
+  node: AttributeValue
+}
+
+type SKUAttributesConnection {
+  edges: [SKUAttributesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKUAttributesConnectionEdge {
+  cursor: String!
+  node: Attribute
+}
+
+input SKUCodeFilter {
+  "Filters SKUs where the code contains the specified string, case-insensitive." contains: String
+  eq: String
+  "Filters SKUs where the code matches any of the specified codes." in: [String!]
+}
+
+input SKUEanCodeFilter {
+  eq: String
+  in: [String!]
+}
+
+type SKUGroup {
+  "The timestamp of when the SKU was activated."
+  activatedAt: DateTime
+  "The timestamp of when the SKU was archived."
+  archivedAt: DateTime
+  "Attributes of SKU Group."
+  attributes(after: String, before: String, first: Int, id: AttributeIdsFilter, last: Int, orderBy: AttributeOrderBy, paginationType: PaginationType = CURSOR): SKUGroupAttributesConnection
+  """
+    The channel association mode for this SKU Group. Can be ALL (uses active channels registered to the store) or
+    				SELECTIVE (uses custom channel associations).
+  """
+  channelAssociationMode: String
+  "An association to a channel that exists in the Channel API."
+  channels(after: String, before: String, first: Int, last: Int): SKUGroupChannelsConnection
+  "The compare-at price range of the SKU group, showing min and max compare-at prices of SKUs in the group."
+  compareAtPriceRange("Filter SKUs by status. Defaults to ACTIVE and DRAFT, excluding ARCHIVED SKUs." status: SKUStatusFilter = {in: ["ACTIVE", "DRAFT"]}): PriceRange
+  "The timestamp of when the SKU was created."
+  createdAt: DateTime!
+  "The merchant defined description of the group."
+  description: String
+  "HTML description for the SKU group. Will be used to display rich text content to customers."
+  htmlDescription: String
+  "The globally-unique ID of the group."
+  id: ID!
+  "The display label of the group."
+  label: String!
+  "A list is a group of SKU groups that are generally organized by similar characteristics."
+  lists(after: String, before: String, first: Int, "Filters the returned lists by id via eq, in, and ne. isNull is not applicable here and is ignored." id: ListIdFilter, last: Int, orderBy: ListOrderBy, paginationType: PaginationType = CURSOR, status: ListStatusFilter): SKUGroupListsConnection
+  "Media objects stored under the SKU Group."
+  mediaObjects(after: String, before: String, first: Int, last: Int, paginationType: PaginationType = CURSOR): SKUGroupMediaObjectsConnection
+  metafields(after: String, before: String, first: Int, "The key of the metafield. Requires namespace to be provided." key: String, last: Int, "The namespace of the metafield. Required when key is provided." namespace: String): SKUGroupMetafieldsConnection
+  "A unique human-friendly identifier for the group."
+  name: String!
+  "An option is a add-on that can be added on to a SKU group."
+  options(after: String, before: String, first: Int, last: Int, orderBy: OptionOrderBy, paginationType: PaginationType = CURSOR): SKUGroupOptionsConnection
+  "The price range of the SKU group, showing min and max prices of SKUs in the group."
+  priceRange("Filter SKUs by status. Defaults to ACTIVE and DRAFT, excluding ARCHIVED SKUs." status: SKUStatusFilter = {in: ["ACTIVE", "DRAFT"]}): PriceRange
+  "A reference to the resource in an external service. This can be useful for integrating the resource to any external service."
+  references(after: String, before: String, first: Int, last: Int, origin: ReferenceOriginFilter, paginationType: PaginationType = CURSOR): SKUGroupReferencesConnection
+  "The count of all SKUs associated with the SKU Group. Can be filtered by status. The default statuses are ACTIVE and DRAFT."
+  skuCount(status: SKUStatusFilter = {in: ["ACTIVE", "DRAFT"]}): Int
+  "A SKU represents a stock keeping unit (SKU) in the catalog."
+  skus(after: String, attributeValues: SKUAttributeValueFilter, before: String, code: SKUCodeFilter, createdAt: CreatedAtFilter, eanCode: SKUEanCodeFilter, first: Int, gtinCode: SKUGtinCodeFilter, isbnCode: SKUIsbnCodeFilter, label: LabelFilter, last: Int, locationId: LocationIdFilter, name: NameFilter, orderBy: SKUOrderBy, paginationType: PaginationType = CURSOR, """
+    A string filter in the ODATA format. ex: "label eq 'shirt' and contains(code, '123')".
+
+
+    Supported columns: `label`, `code`
+
+    Supported operators: `eq`, `ne`, `lt`, `gt`, `and`, `or`
+
+    Supported functions: `contains`
+  """ queryFilter: String, referenceValue: ReferenceValueFilter, status: SKUStatusFilter, upcCode: SKUUpcCodeFilter, updatedAt: UpdatedAtFilter): SKUGroupSkusConnection
+  "The status of the SKU Group, one of `DRAFT`, `ACTIVE`, `ARCHIVED`."
+  status: String!
+  "The type of the SKU Group, typically PHYSICAL or DIGITAL, but can also be a custom type."
+  type: String!
+  "The timestamp of when the SKU was updated."
+  updatedAt: DateTime!
+}
+
+type SKUGroupAttributesConnection {
+  edges: [SKUGroupAttributesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKUGroupAttributesConnectionEdge {
+  cursor: String!
+  node: Attribute
+}
+
+"A SKU Group Channel represents an association with the application by which your SKUs are sold. Can be a platform, marketplace, POS, and more."
+type SKUGroupChannel {
+  "The globally-unique ID of the channel."
+  channelId: ID!
+  "The timestamp of when the channel association was created."
+  createdAt: DateTime!
+  "The globally-unique ID of the channel association."
+  id: ID!
+  "The status of the channel association. One of `ACTIVE`, `INACTIVE`"
+  status: String!
+  "The timestamp of when the channel association was updated."
+  updatedAt: DateTime!
+}
+
+input SKUGroupChannelAddInput {
+  channelId: String!
+}
+
+input SKUGroupChannelIdFilter {
+  eq: String
+  in: [String!]
+}
+
+type SKUGroupChannelsConnection {
+  edges: [SKUGroupChannelsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKUGroupChannelsConnectionEdge {
+  cursor: String!
+  node: SKUGroupChannel
+}
+
+input SKUGroupIdFilter {
+  eq: String
+  in: [String!]
+}
+
+input SKUGroupIdsFilter {
+  eq: String
+  in: [String!]
+}
+
+type SKUGroupListsConnection {
+  edges: [SKUGroupListsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKUGroupListsConnectionEdge {
+  cursor: String!
+  node: List
+}
+
+type SKUGroupMediaObjectsConnection {
+  edges: [SKUGroupMediaObjectsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKUGroupMediaObjectsConnectionEdge {
+  cursor: String!
+  node: Media
+}
+
+type SKUGroupMetafieldsConnection {
+  edges: [SKUGroupMetafieldsEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKUGroupMetafieldsEdge {
+  cursor: String!
+  node: Metafield
+}
+
+type SKUGroupOptionsConnection {
+  edges: [SKUGroupOptionsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKUGroupOptionsConnectionEdge {
+  cursor: String!
+  node: Option
+}
+
+input SKUGroupOrderBy {
+  createdAt: OrderByDirectionEnum
+  id: OrderByDirectionEnum
+  label: OrderByDirectionEnum
+  lowestPrice: OrderByDirectionEnum
+  name: OrderByDirectionEnum
+  saleCount: OrderByDirectionEnum
+  updatedAt: OrderByDirectionEnum
+}
+
+type SKUGroupReferencesConnection {
+  edges: [SKUGroupReferencesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKUGroupReferencesConnectionEdge {
+  cursor: String!
+  node: Reference
+}
+
+type SKUGroupSKUsConnection {
+  edges: [SKUGroupSKUsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKUGroupSKUsConnectionEdge {
+  cursor: String!
+  node: SKU
+}
+
+type SKUGroupSkusConnection {
+  edges: [SKUGroupSkusConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKUGroupSkusConnectionEdge {
+  cursor: String!
+  node: SKU
+}
+
+"Filter for the status of the SKU Group, one of `DRAFT`, `ACTIVE`, `ARCHIVED`."
+input SKUGroupStatusFilter {
+  eq: String
+  in: [String!]
+}
+
+"Filter for the type of the SKU Group, typically PHYSICAL or DIGITAL, but can also be a custom type."
+input SKUGroupTypeFilter {
+  eq: String
+  in: [String!]
+}
+
+input SKUGtinCodeFilter {
+  eq: String
+  in: [String!]
+}
+
+input SKUIdFilter {
+  eq: String
+  in: [String!]
+}
+
+input SKUIdsFilter {
+  in: [String!]
+}
+
+type SKUInventoryAdjustmentsConnection {
+  edges: [SKUInventoryAdjustmentsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKUInventoryAdjustmentsConnectionEdge {
+  cursor: String!
+  node: InventoryAdjustment
+}
+
+type SKUInventoryCountsConnection {
+  edges: [SKUInventoryCountsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKUInventoryCountsConnectionEdge {
+  cursor: String!
+  node: InventoryCount
+}
+
+input SKUIsbnCodeFilter {
+  eq: String
+  in: [String!]
+}
+
+type SKULocationsConnection {
+  edges: [SKULocationsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKULocationsConnectionEdge {
+  cursor: String!
+  node: Location
+}
+
+type SKUMediaObjectsConnection {
+  edges: [SKUMediaObjectsConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKUMediaObjectsConnectionEdge {
+  cursor: String!
+  node: Media
+}
+
+type SKUMetafieldsConnection {
+  edges: [SKUMetafieldsEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKUMetafieldsEdge {
+  cursor: String!
+  node: Metafield
+}
+
+input SKUOrderBy {
+  createdAt: OrderByDirectionEnum
+  id: OrderByDirectionEnum
+  label: OrderByDirectionEnum
+  name: OrderByDirectionEnum
+  price: OrderByDirectionEnum
+  updatedAt: OrderByDirectionEnum
+}
+
+"Represents the cost of a SKU"
+type SKUPrice {
+  "The compare-at value of the price."
+  compareAtValue: SimpleMoney
+  "The timestamp of when the price was created."
+  createdAt: DateTime!
+  "The globally-unique ID of the price."
+  id: ID!
+  "A SKU represents a stock keeping unit (SKU) in the catalog."
+  sku: SKU
+  "The last update timestamp of the price."
+  updatedAt: DateTime!
+  "The value of the price."
+  value: SimpleMoney!
+}
+
+input SKUPriceIdsFilter {
+  in: [String!]
+}
+
+input SKUPriceOrderBy {
+  id: OrderByDirectionEnum
+  updatedAt: OrderByDirectionEnum
+}
+
+type SKUPricesConnection {
+  edges: [SKUPricesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKUPricesConnectionEdge {
+  cursor: String!
+  node: SKUPrice
+}
+
+type SKUReferencesConnection {
+  edges: [SKUReferencesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SKUReferencesConnectionEdge {
+  cursor: String!
+  node: Reference
+}
+
+"Filter for the status of the SKU, one of `DRAFT`, `ACTIVE`, `ARCHIVED`."
+input SKUStatusFilter {
+  eq: String
+  in: [String!]
+}
+
+input SKUUpcCodeFilter {
+  eq: String
+  in: [String!]
+}
+
+"The currency and amount for a financial transaction, such as a balance or payment due. Use for value representations with default transactable-value precision."
+type SimpleMoney {
+  "A three-character ISO-4217 currency code."
+  currencyCode: String!
+  "The integer value, which might be: An integer for currencies like JPY that are not typically fractional; or, a decimal fraction for currencies that are subdivided into hundredths, like USD; or, subdivided into thousandths, like TND. For the required number of decimal places for a currency code, see ISO-4217 Currency Codes. This field is typed as Float to be able to support values larger than GraphQL's 32-bit Integer."
+  value: Float!
+}
+
+"The currency and amount for a financial transaction, such as a balance or payment due. Use for value representations with default transactable-value precision."
+input SimpleMoneyInput {
+  currencyCode: String!
+  "Integer minor units as a JSON number with no fractional part (for example `1999` for $19.99 USD). Decimals such as `19.99` are rejected. Typed as Float so values can exceed GraphQL's 32-bit Integer. JPY uses the integral amount; USD is hundredths; TND is thousandths." value: Float!
+}
+
+type TextOption {
+  "The timestamp of when the Option was created."
+  createdAt: DateTime!
+  "A description of the Option."
+  description: String
+  "HTML description for the Option. Will be used to display rich text content to customers."
+  htmlDescription: String
+  "The UUID of the Option"
+  id: ID!
+  "The display label of the Option"
+  label: String!
+  metafields(after: String, before: String, first: Int, "The key of the metafield. Requires namespace to be provided." key: String, last: Int, "The namespace of the metafield. Required when key is provided." namespace: String): OptionMetafieldsConnection
+  "A unique name of the Option."
+  name: String!
+  "Represents the additional cost of a Text Option. When empty, it indicates this option allows for flexible pricing."
+  prices(after: String, before: String, "Filter prices by currency code." currencyCode: CurrencyCodeFilter, first: Int, last: Int, paginationType: PaginationType = CURSOR): TextOptionPricesConnection
+  "Whether the option is shareable across multiple SKU Groups (a global modifier)."
+  shareable: Boolean!
+  "The IDs of all SKU groups this option is associated with."
+  skuGroupIds: [String!]!
+  "The type of the option, one of `TEXT`, `NUMBER`, `LIST`, Option Values are available for the 'LIST' type."
+  type: String
+  "The timestamp of when the Option was updated."
+  updatedAt: DateTime!
+  "Provide validations on how the option can be applied to a SKU. If `TEXT` option then `min` and `max` apply to the number of characters. If `NUMBER` then `min` and `max` apply to the actual number value. If `LIST` then `min` and `max` apply to the number of values that can be selected."
+  validation: OptionValidation
+}
+
+type TextOptionPricesConnection {
+  edges: [TextOptionPricesConnectionEdge]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type TextOptionPricesConnectionEdge {
+  cursor: String!
+  node: OptionPrice
+}
+
+input UpdateAddressInput {
+  addressDetails: AddressDetailsInput
+  addressLine1: String
+  addressLine2: String
+  addressLine3: String
+  adminArea1: String
+  adminArea2: String
+  adminArea3: String
+  adminArea4: String
+  countryCode: String
+  postalCode: String
+}
+
+"Input for updating an existing file."
+input UpdateFileInput {
+  contentType: String
+  description: String
+  filename: String
+}
+
+input UpdateMediaObjectInput {
+  id: String!
+  label: String
+  metafields: [UpsertMetafieldInput!]
+  "Must be lowercase, alphanumeric, 1–255 characters, and may contain \"-\" or \"_\"." name: String
+  position: Int
+  "The type of the media. Currently accepted values on write: `VIDEO`, `IMAGE`, `AUDIO`. `PHOTO` is not accepted on create or update." type: String
+  url: String
+}
+
+"A single option and its new position within a SKU group."
+input UpdateSKUGroupOptionPositionInput {
+  optionId: String!
+  position: Int!
+}
+
+"Filters items based on the date they were last updated."
+input UpdatedAtFilter {
+  gt: String
+  lt: String
+}
+
+input UpsertMetafieldInput {
+  key: String!
+  namespace: String!
+  "Metafield type. Currently accepted values (lowercase): `boolean`, `string`, `stringMultiLine`, `number`, `numberDecimal`, `date`, `dateTime`, `json`, `measurement`, `url`, `reference`, `money`, `list.string`, `list.number`, `list.numberDecimal`, `list.measurement`, `list.date`, `list.url`." type: String!
+  value: String!
+}
+
+type _Service {
+  "The sdl representing the federated service capabilities. Includes federation directives, removes federation types, and includes rest of full schema after schema directives have been applied"
+  sdl: String
+}

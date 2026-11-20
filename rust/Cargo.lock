@@ -1467,6 +1467,7 @@ dependencies = [
  "async-graphql-value",
  "base64",
  "chrono",
+ "graphql-parser",
  "indexmap",
  "reqwest 0.12.28",
  "serde",
