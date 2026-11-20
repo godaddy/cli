@@ -1,15 +1,14 @@
 use cli_engine::{Cli, CliConfig, Stage};
 
-pub(crate) fn cli(mhwp: bool) -> Cli {
-    let mut config = CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
-        .with_min_stage(Stage::Beta)
-        // Unregistered provider: commands that pass parsing stop at auth.
-        .with_default_auth_provider("godaddy")
-        .with_module(crate::hosting::module());
-    if mhwp {
-        config = config.with_feature_override("hosting-mhwp", Stage::Ga);
-    }
-    Cli::new(config)
+/// The hosting module at the release build's default stage.
+pub(crate) fn cli() -> Cli {
+    Cli::new(
+        CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+            .with_min_stage(Stage::Ga)
+            // Unregistered provider: commands that pass parsing stop at auth.
+            .with_default_auth_provider("godaddy")
+            .with_module(crate::hosting::module()),
+    )
 }
 
 /// Runs `gddy hosting <args>` and returns the rendered output.
@@ -31,7 +30,7 @@ pub(crate) async fn run_guide(cli: &Cli, topic: Option<&str>) -> String {
 
 #[tokio::test]
 async fn required_flags_are_marked_in_help_and_enforced() {
-    let cli = cli(false);
+    let cli = cli();
     let cases: [(&[&str], &str); 3] = [
         (&["app", "list"], "--app-type"),
         (&["app", "create", "--name", "x"], "--app-type"),

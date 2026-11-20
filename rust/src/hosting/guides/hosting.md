@@ -19,6 +19,7 @@ summary: Start here for GoDaddy hosting, including what the hosting products sha
 | Product | `--app-type` | Guide |
 |---|---|---|
 | Node.js app: upload your source, preview it, then publish | `NODEJS` | `gddy guide hosting-nodejs` |
+| Managed WordPress site: edit it in WordPress, no build or deploy | `MHWP` | `gddy guide hosting-wordpress` |
 
 ## Commands for any product
 
@@ -27,6 +28,7 @@ summary: Start here for GoDaddy hosting, including what the hosting products sha
 | `hosting app list --app-type <type>` | List your apps of one product |
 | `hosting app get --app-id <app-id>` | An app's details, including its URLs |
 | `hosting app status --app-id <app-id>` | Runtime status of an app |
+| `hosting app publish --app-id <app-id>` | Take an app live: deploy a Node.js app's latest source, or switch a WordPress site on |
 | `hosting operation get --operation-id <operation-id>` | Poll a change that takes a while |
 
 ## See also

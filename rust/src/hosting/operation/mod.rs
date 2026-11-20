@@ -2,11 +2,11 @@ mod get;
 
 use cli_engine::{GroupSpec, RuntimeGroupSpec};
 
-pub(super) fn group(mhwp: bool) -> RuntimeGroupSpec {
+pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
         GroupSpec::new("operation", "Poll async operations")
             .with_alias("operations")
             .with_long("Commands for monitoring asynchronous hosting operations."),
     )
-    .with_command(get::command(mhwp))
+    .with_command(get::command())
 }
