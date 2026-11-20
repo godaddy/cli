@@ -169,6 +169,84 @@ fn an_empty_target_or_bad_certificate_is_refused_before_any_plan_is_built() {
 }
 
 #[test]
+fn an_owner_that_is_not_a_valid_name_stops_the_plan_before_replace_could_delete_anything() {
+    let existing = [have("r1", "A", "keep", "192.0.2.9", 600)];
+    let long_label = "a".repeat(64);
+    // Four 60-byte labels are 244 bytes on the wire; with `example.com.` that is 257,
+    // over the 255 a name may take. Three would still fit.
+    let too_long = ["a", "b", "c", "d"].map(|c| c.repeat(60)).join(".");
+    for bad in [
+        "bad..name",
+        ".lead",
+        "",
+        long_label.as_str(),
+        too_long.as_str(),
+    ] {
+        let mut input = vec![want(6, "A", bad, "192.0.2.1", 600)];
+        assert!(
+            validate(&mut input).is_empty(),
+            "{bad:?}: the shape check needs the domain"
+        );
+        for replace in [false, true] {
+            let errors =
+                build_plan("example.com", input.clone(), &existing, replace).expect_err(bad);
+            assert_eq!(errors.len(), 1, "{bad:?}: {errors:?}");
+            assert!(errors[0].starts_with("line 6: "), "{errors:?}");
+            assert!(errors[0].contains("example.com"), "{errors:?}");
+        }
+    }
+    for good in [
+        "www",
+        "@",
+        "_dmarc",
+        "*",
+        "a.b",
+        "xn--caf-dma",
+        "_sip._tcp.chat",
+    ] {
+        let mut input = vec![want(1, "A", good, "192.0.2.1", 600)];
+        assert!(validate(&mut input).is_empty(), "{good}");
+        assert!(
+            build_plan("example.com", input, &[], true).is_ok(),
+            "{good} is a valid owner"
+        );
+    }
+}
+
+#[test]
+fn a_unicode_target_is_compared_as_the_punycode_target_the_api_holds() {
+    let existing = [have("r1", "CNAME", "blog", "xn--caf-dma.example.net.", 600)];
+    for target in [
+        "café.example.net.",
+        "CAFÉ.Example.NET.",
+        "xn--caf-dma.example.net.",
+    ] {
+        let mut input = vec![want(1, "CNAME", "blog", target, 600)];
+        assert!(validate(&mut input).is_empty(), "{target}");
+        assert_eq!(input[0].value, "xn--caf-dma.example.net.", "{target}");
+        let p = plan(input, &existing, false);
+        let g = group(&p, "CNAME", "blog");
+        assert_eq!(kinds(g), ["unchanged"], "{target}");
+        assert!(
+            g.blocked.is_empty(),
+            "{target}: not a second CNAME to refuse"
+        );
+    }
+}
+
+#[test]
+fn the_root_target_and_a_trailing_dot_survive_target_normalization() {
+    let mut https = want(1, "HTTPS", "@", ".", 600);
+    https.opts.priority = Some(1);
+    let mut mx = want(2, "MX", "@", "Mail.Example.COM.", 600);
+    mx.opts.priority = Some(10);
+    let mut input = [https, mx];
+    assert!(validate(&mut input).is_empty());
+    assert_eq!(input[0].value, ".");
+    assert_eq!(input[1].value, "mail.example.com.");
+}
+
+#[test]
 fn a_bad_address_stops_the_import_before_replace_could_delete_anything() {
     // Validation runs on every record before a plan is built, so with --replace a
     // record the API would refuse cannot take unrelated existing records with it.

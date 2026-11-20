@@ -64,6 +64,29 @@ fn a_name_outside_the_domain_is_rejected_with_a_hint() {
 }
 
 #[test]
+fn a_unicode_target_is_read_as_unicode_in_every_record_that_has_one() {
+    assert_eq!(
+        one("blog 600 CNAME café.example.net.\n").value,
+        "café.example.net."
+    );
+    assert_eq!(
+        one("@ 600 MX 10 café.example.net.\n").value,
+        "café.example.net."
+    );
+    assert_eq!(
+        one("_sip._tcp 600 SRV 1 1 5060 café.example.net.\n").value,
+        "café.example.net."
+    );
+    assert_eq!(
+        one("@ 600 HTTPS 1 café.example.net.\n").value,
+        "café.example.net."
+    );
+    // Targets that are plain ASCII, relative ones and the root are as they were.
+    assert_eq!(one("blog 600 CNAME web\n").value, "web.example.com.");
+    assert_eq!(one("@ 600 HTTPS 1 .\n").value, ".");
+}
+
+#[test]
 fn a_unicode_owner_name_is_read_as_unicode_so_it_can_become_punycode() {
     let d = one("café 600 A 192.0.2.1\n");
     assert_eq!(

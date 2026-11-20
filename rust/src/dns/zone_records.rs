@@ -94,6 +94,19 @@ fn parse_options(origin: Name) -> ParseOptions {
         .with_default_ttl(u32::try_from(DEFAULT_TTL).unwrap_or(3600))
 }
 
+/// `name` as the text a record's value holds: a label with non-ASCII characters
+/// comes back as those characters (`café.example.net.`), not as the `\DDD` byte
+/// escapes the crate writes, so it can be converted to punycode like any other name.
+fn name_text(name: &Name) -> String {
+    if name.labels().iter().all(|label| label.is_ascii()) {
+        return name.to_string();
+    }
+    name.labels()
+        .iter()
+        .map(|label| format!("{}.", String::from_utf8_lossy(label)))
+        .collect()
+}
+
 /// `name` relative to `origin`, as the text a `--name` flag would take: `@`, `www`,
 /// `_sip._tcp.chat`. A name with non-ASCII labels comes back in Unicode, not as the
 /// `\DDD` byte escapes the crate writes, so that it can be converted to punycode
@@ -172,13 +185,13 @@ fn from_rdata(
     let (record_type, name, value) = match &record.data {
         RData::A(ip) => ("A", relative.to_owned(), ip.to_string()),
         RData::Aaaa(ip) => ("AAAA", relative.to_owned(), ip.to_string()),
-        RData::Cname(target) => ("CNAME", relative.to_owned(), target.to_string()),
+        RData::Cname(target) => ("CNAME", relative.to_owned(), name_text(target)),
         RData::Mx {
             preference,
             exchange,
         } => {
             opts.priority = Some(i64::from(*preference));
-            ("MX", relative.to_owned(), exchange.to_string())
+            ("MX", relative.to_owned(), name_text(exchange))
         }
         RData::Txt(parts) => (
             "TXT",
@@ -197,7 +210,7 @@ fn from_rdata(
             opts.port = Some(i64::from(*port));
             opts.service = Some(service);
             opts.protocol = Some(protocol);
-            ("SRV", name, target.to_string())
+            ("SRV", name, name_text(target))
         }
         RData::Caa { flags, tag, value } => {
             opts.flag = Some(i64::from(*flags));
@@ -233,7 +246,7 @@ fn from_rdata(
             (
                 record.data.type_name(),
                 relative.to_owned(),
-                svcb.target.to_string(),
+                name_text(&svcb.target),
             )
         }
         other => {

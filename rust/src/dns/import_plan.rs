@@ -6,6 +6,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 use domains_client::types;
+use rfc1035_format::Name;
 
 use super::add::{add_blocker, at_owner};
 use super::records::{
@@ -86,6 +87,15 @@ fn check(d: &mut Desired) -> Result<(), String> {
             decode_hex(&d.value)?;
         }
         _ => {}
+    }
+    // A target in Unicode (`café.example.net.`, as a zone file may spell it) is the
+    // punycode target the API holds, so compare it in that form. The root `.` and a
+    // trailing dot are kept.
+    if matches!(
+        record_type.as_str(),
+        "CNAME" | "MX" | "SRV" | "HTTPS" | "SVCB"
+    ) {
+        d.value = crate::idn::parse_name_arg(&d.value)?;
     }
     // `dns list` shows a name in Unicode and the API holds it as punycode, so
     // compare in the form the API uses, as a name typed on the command line is.
@@ -241,6 +251,31 @@ pub(super) fn build_plan(
             "some records of {domain} were returned without an ID, so they cannot be compared \
              safely; run `gddy dns list {domain}` and try again"
         )]);
+    }
+
+    // The whole owner has to be a name the zone can hold: no empty label, no label
+    // over 63 bytes, nothing longer than a DNS name may be. This needs the domain, so
+    // it is checked here, still before anything is planned or deleted.
+    let owner_errors: Vec<String> = desired
+        .iter()
+        .filter_map(|d| {
+            let owner = d.owner();
+            if owner == "@" {
+                return None;
+            }
+            Name::parse(&format!("{owner}.{domain}."), None)
+                .err()
+                .map(|e| {
+                    format!(
+                        "{}: `{owner}` is not a valid name in {domain}: {}",
+                        d.at,
+                        e.message()
+                    )
+                })
+        })
+        .collect();
+    if !owner_errors.is_empty() {
+        return Err(owner_errors);
     }
 
     let mut warnings = Vec::new();
