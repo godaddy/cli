@@ -4,7 +4,7 @@ summary: How to register an application-settings form via godaddy.toml (settings
 
 # Application settings
 
-An application-settings capability lets a GoDaddy Platform Application (GPA) contribute a form to a Commerce-owned settings surface (for example `tax-center`). Merchants fill it out, and the GPA's own `load`, `save`, and `validate` endpoints own the data. `app-registry-api` stores and validates only the registration and presentation metadata. It never sees merchant values. This guide covers the `gddy platform app` side of registering one. For the platform contract itself (lifecycle endpoints, signing, `settings-api` composition), go to `app-registry-api`'s `docs/GPA-SETTINGS-REGISTRATION.md` and `docs/SETTINGS.md`.
+An application-settings capability lets a GoDaddy Platform Application (GPA) contribute a form to a Commerce-owned settings surface (for example `tax-center`). Merchants fill it out, and the GPA's own `load`, `save`, and `validate` endpoints own the data. `app-registry-api` stores and validates only the registration and presentation metadata. It never sees merchant values. This guide covers the `gddy platform app` side of registering one.
 
 ## Add a settings form to an application
 
@@ -172,7 +172,7 @@ label = "Configure PayPal"
 openMode = "new-window"
 ```
 
-A link presentation requires the `read` and `open` capabilities and can also declare `delete` and `config`. Form-only capabilities (`write`, `validate`, and `test`) and duplicates are rejected. `open` is rejected on a form presentation. `label` must be non-empty. `openMode` only accepts `"new-window"` for now. `--presentation-file` also accepts a link's full API object (`type: "link"`, `schemaVersion: "settings-link-v1"`, `label`, `openMode`). Go to `app-registry-api`'s `docs/SETTINGS.md` for the full lifecycle contract this registers into. App Registry never stores a merchant-specific launch URL. It publishes the placement and lets Settings API request one through the GPA's `open` route when a merchant invokes it.
+A link presentation requires the `read` and `open` capabilities and can also declare `delete` and `config`. Form-only capabilities (`write`, `validate`, and `test`) and duplicates are rejected. `open` is rejected on a form presentation. `label` must be non-empty. `openMode` only accepts `"new-window"` for now. `--presentation-file` also accepts a link's full API object (`type: "link"`, `schemaVersion: "settings-link-v1"`, `label`, `openMode`). App Registry never stores a merchant-specific launch URL. It publishes the placement and lets Settings API request one through the GPA's `open` route when a merchant invokes it.
 
 ### Public config (`gpa-settings-config-v1`)
 
