@@ -1,6 +1,5 @@
 use clap::ValueEnum;
-use clap::builder::{PossibleValuesParser, TypedValueParser};
-use cli_engine::{CliCoreError, CommandContext, CommandSpec, FlagPolicy, Stage};
+use cli_engine::{CliCoreError, CommandContext};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -290,61 +289,12 @@ pub fn is_mhwp_app_id(app_id: &str) -> bool {
     HostingAppType::of_id(app_id) == Some(HostingAppType::Mhwp)
 }
 
-/// Feature flag for the MHWP app type. Separate from `hosting` so MHWP
-/// can stay hidden until its backend is live.
-const MHWP_FLAG: &str = "hosting-mhwp";
-
-pub fn mhwp_enabled(policy: &FlagPolicy) -> bool {
-    policy.visible(Some(MHWP_FLAG), Stage::Experimental)
-}
-
-/// App types to list in help text.
-pub const fn supported_app_types(mhwp: bool) -> &'static str {
-    if mhwp { "NODEJS, MHWP" } else { "NODEJS" }
-}
-
 /// Markdown for `gddy guide hosting`, the index of the per-product guides.
-///
-/// No guide may name a command the binary does not register, so the WordPress
-/// product row and the `app publish` command row join the guide only while the
-/// MHWP flag is on.
-pub fn hosting_guide(mhwp: bool) -> String {
-    if !mhwp {
-        return HOSTING_GUIDE.to_owned();
-    }
-    HOSTING_GUIDE
-        .replacen(NODEJS_ROW, &format!("{NODEJS_ROW}\n{WORDPRESS_ROW}"), 1)
-        .replacen(STATUS_ROW, &format!("{STATUS_ROW}\n{PUBLISH_ROW}"), 1)
-}
-
+pub const HOSTING_GUIDE: &str = include_str!("guides/hosting.md");
 /// Markdown for `gddy guide hosting-nodejs`.
 pub const NODEJS_GUIDE: &str = include_str!("guides/hosting-nodejs.md");
-/// Markdown for `gddy guide hosting-wordpress`; registered only while the
-/// MHWP flag is on.
+/// Markdown for `gddy guide hosting-wordpress`.
 pub const WORDPRESS_GUIDE: &str = include_str!("guides/hosting-wordpress.md");
-
-const HOSTING_GUIDE: &str = include_str!("guides/hosting.md");
-const NODEJS_ROW: &str = "| Node.js app: upload your source, preview it, then publish \
-     | `NODEJS` | `gddy guide hosting-nodejs` |";
-const WORDPRESS_ROW: &str = "| Managed WordPress site: edit it in WordPress, no build or \
-     deploy | `MHWP` | `gddy guide hosting-wordpress` |";
-const STATUS_ROW: &str = "| `hosting app status --app-id <app-id>` | Runtime status of an app |";
-const PUBLISH_ROW: &str = "| `hosting app publish --app-id <app-id>` | Take an app live: \
-     deploy a Node.js app's latest source, or switch a WordPress site on |";
-
-/// Like `CommandSpec::from_args`, but `--app-type` accepts MHWP only
-/// while its feature flag is on.
-pub fn app_type_command<T: clap::Args>(name: &str, short: &str, mhwp: bool) -> CommandSpec {
-    let mut spec = CommandSpec::from_args::<T>(name, short);
-    if !mhwp {
-        for arg in spec.args.iter_mut().filter(|a| a.get_id() == "app_type") {
-            *arg = arg.clone().value_parser(
-                PossibleValuesParser::new(["NODEJS"]).map(|_| HostingAppType::Nodejs),
-            );
-        }
-    }
-    spec
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum HostingProduct {
@@ -416,20 +366,6 @@ mod tests {
     }
 
     #[test]
-    fn mhwp_is_off_until_experimental_or_overridden() {
-        assert!(!mhwp_enabled(&FlagPolicy::new()));
-        assert!(!mhwp_enabled(
-            &FlagPolicy::new().with_min_stage(Stage::Beta)
-        ));
-        assert!(mhwp_enabled(
-            &FlagPolicy::new().with_min_stage(Stage::Experimental)
-        ));
-        assert!(mhwp_enabled(
-            &FlagPolicy::new().with_override(MHWP_FLAG, Stage::Ga)
-        ));
-    }
-
-    #[test]
     fn is_mhwp_app_id_matches_the_prefix_case_insensitively() {
         for id in ["MHWP-a1b2c3d4e5", "mhwp-a1b2c3d4e5", "Mhwp-x"] {
             assert!(is_mhwp_app_id(id), "{id}");
@@ -492,12 +428,6 @@ mod tests {
         assert_eq!(strip_id_prefix("MHW", "MHWP-"), None);
         // The fifth byte falls inside `é`, so there is no prefix to compare.
         assert_eq!(strip_id_prefix("MHWP\u{e9}", "MHWP-"), None);
-    }
-
-    #[test]
-    fn supported_app_types_lists_mhwp_only_when_enabled() {
-        assert_eq!(supported_app_types(false), "NODEJS");
-        assert_eq!(supported_app_types(true), "NODEJS, MHWP");
     }
 
     #[test]

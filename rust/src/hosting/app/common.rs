@@ -420,7 +420,7 @@ mod tests {
 
     #[tokio::test]
     async fn ids_are_checked_before_authentication() {
-        let cli = cli(true);
+        let cli = cli();
         // Valid for publish: parses, then stops at auth (no provider in tests).
         for id in ["NODEJS-aBcDeFgHiJ", "MHWP-a1b2c3d4e5"] {
             let out = run_hosting(&cli, &["app", "publish", "--app-id", id]).await;

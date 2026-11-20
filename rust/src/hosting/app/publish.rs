@@ -57,52 +57,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn publish_and_unpublish_exist_only_while_mhwp_is_on() {
-        let off = cli(false);
-        let help = run_hosting(&off, &["app", "--help"]).await;
-        assert!(!help.contains("publish"), "{help}");
-        let missing = run_hosting(&off, &["app", "publish", "--app-id", "MHWP-a1b2c3d4e5"]).await;
-        assert!(missing.contains("unknown command \"publish\""), "{missing}");
-
-        let on = cli(true);
-        let help = run_hosting(&on, &["app", "--help"]).await;
-        assert!(
-            help.contains("publish") && help.contains("unpublish"),
-            "{help}"
-        );
-        let help = run_hosting(&on, &["app", "publish", "--help"]).await;
-        assert!(help.contains("placeholder page"), "{help}");
-        assert!(help.contains("--app-id"), "{help}");
-        let help = run_hosting(&on, &["app", "unpublish", "--help"]).await;
-        assert!(help.contains("placeholder page"), "{help}");
-        // Parses, then stops at auth: no provider is registered in tests.
-        let parsed = run_hosting(&on, &["app", "publish", "--app-id", "MHWP-a1b2c3d4e5"]).await;
-        assert!(parsed.contains("no provider registered"), "{parsed}");
+    async fn publish_and_unpublish_are_registered() {
+        let cli = cli();
+        let help = run_hosting(&cli, &["app", "--help"]).await;
+        assert!(help.contains("Take an app live"), "{help}");
+        assert!(help.contains("Take a WordPress site offline"), "{help}");
+        for command in ["publish", "unpublish"] {
+            let help = run_hosting(&cli, &["app", command, "--help"]).await;
+            assert!(help.contains("placeholder page"), "{command}: {help}");
+            assert!(help.contains("--app-id"), "{command}: {help}");
+            // Parses, then stops at auth: no provider is registered in tests.
+            let parsed = run_hosting(&cli, &["app", command, "--app-id", "MHWP-a1b2c3d4e5"]).await;
+            assert!(
+                parsed.contains("no provider registered"),
+                "{command}: {parsed}"
+            );
+        }
     }
 
     #[tokio::test]
-    async fn help_text_names_publish_only_while_mhwp_is_on() {
-        let off = cli(false);
-        let on = cli(true);
-        // `hosting deployment publish` is a Node.js command and stays in every mode, so
-        // the check is for the WordPress commands themselves.
-        let help = run_hosting(&off, &["--help"]).await;
-        assert!(
-            !help.contains("unpublish") && !help.contains("app publish"),
-            "{help}"
-        );
-        let help = run_hosting(&on, &["--help"]).await;
+    async fn the_hosting_help_names_publish_and_unpublish() {
+        let help = run_hosting(&cli(), &["--help"]).await;
         assert!(help.contains("publish/unpublish"), "{help}");
-        // Polling an operation reads the same whichever products are on.
-        for args in [
-            &["operation", "--help"][..],
-            &["operation", "get", "--help"],
-        ] {
-            assert_eq!(
-                run_hosting(&off, args).await,
-                run_hosting(&on, args).await,
-                "{args:?}"
-            );
-        }
+        assert!(help.contains("First-time setup (Node.js)"), "{help}");
+        assert!(help.contains("gddy guide hosting-wordpress"), "{help}");
     }
 }
