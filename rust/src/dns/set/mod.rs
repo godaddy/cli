@@ -6,22 +6,28 @@ use crate::domain::make_client;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_DNS_UPDATE;
 
-use super::failure::DnsFailure;
 use super::records::{
     RecordOptions, RecordWriteArgs, ZONE_AND_NAME, change_columns, fetch_records, v3_records,
     validate_applicable_fields, validate_caa_fields, validate_record_name, validate_svcb_fields,
     validate_tlsa_fields, verified_result,
 };
 
+mod apply;
 mod outcome;
 mod plan;
 mod verify;
 mod write;
 
-use outcome::{SetOutcome, dry_run_set_preview, record_label, summarize_set_outcomes};
-use plan::{SetAction, plan_set};
+use apply::{PlanTarget, apply_plan};
+use outcome::{dry_run_set_preview, summarize_set_outcomes};
+use plan::plan_set;
+
+// What `dns import` reuses: it makes its own plans, one per type and name, and
+// applies and previews them the way `set` does.
+pub(in crate::dns) use apply::{PlanTarget as ApplyTarget, apply_plan as apply_set_plan};
+pub(in crate::dns) use outcome::{SetOutcome, preview_entries};
+pub(in crate::dns) use plan::{SetAction, plan_set as plan_set_actions};
 use verify::verify_final_state;
-use write::{WriteRequest, apply_replace, write_with_conflict_handling};
 
 // `dns set` reconciles over the API's per-record ops; it reports how many records it
 // replaced, left unchanged, created, and deleted to reach the desired set, and the
@@ -167,89 +173,16 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 return Ok(CommandResult::new(preview).with_dry_run());
             }
 
-            let stored = |record_id: &str| {
-                existing
-                    .iter()
-                    .find(|r| r.record_id.as_deref() == Some(record_id))
+            let target = PlanTarget {
+                domain: domain.as_str(),
+                name: name.as_str(),
+                record_type: record_type.as_str(),
+                existing: &existing,
+                opts: &opts,
+                replace_conflicting,
+                debug,
             };
-            let mut outcomes = Vec::new();
-            for action in plan {
-                match action {
-                    SetAction::Replace {
-                        record_id,
-                        data: value,
-                        desired: at,
-                    } => {
-                        let req = WriteRequest {
-                            domain: domain.as_str(),
-                            name: name.as_str(),
-                            record_type: record_type.as_str(),
-                            value: &value,
-                            opts: &opts[at],
-                            replace_conflicting,
-                            replacing: None,
-                            debug,
-                        };
-                        let old = stored(&record_id);
-                        let mut written =
-                            apply_replace(&client, &req, &record_id, old.map(|r| r.ttl)).await;
-                        // The last outcome is the replace itself; any before it
-                        // removed a conflicting record.
-                        if let Some(last) = written.last_mut() {
-                            last.record_id = Some(record_id.clone());
-                            last.old = old.cloned();
-                        }
-                        outcomes.extend(written);
-                    }
-                    SetAction::Unchanged {
-                        data: value,
-                        record_id,
-                        ..
-                    } => {
-                        let old = stored(&record_id);
-                        let mut outcome = SetOutcome::new("unchanged", value, None);
-                        outcome.record_id = Some(record_id);
-                        outcome.old = old.cloned();
-                        outcome.new = old.cloned();
-                        outcomes.push(outcome);
-                    }
-                    SetAction::Create {
-                        data: value,
-                        desired: at,
-                    } => {
-                        let req = WriteRequest {
-                            domain: domain.as_str(),
-                            name: name.as_str(),
-                            record_type: record_type.as_str(),
-                            value: &value,
-                            opts: &opts[at],
-                            replace_conflicting,
-                            replacing: None,
-                            debug,
-                        };
-                        outcomes.extend(write_with_conflict_handling(&client, &req).await);
-                    }
-                    SetAction::Delete { record_id } => {
-                        let res = client
-                            .delete_dns_record()
-                            .zone(domain.as_str())
-                            .record_id(record_id.as_str())
-                            .send()
-                            .await;
-                        let err = match res {
-                            Ok(_) => None,
-                            Err(e) => {
-                                Some(DnsFailure::from_error("deleting DNS record", debug, e).await)
-                            }
-                        };
-                        let detail = record_label(&existing, &record_type, &record_id);
-                        let mut outcome = SetOutcome::new("deleted", detail, err);
-                        outcome.old = stored(&record_id).cloned();
-                        outcome.record_id = Some(record_id);
-                        outcomes.push(outcome);
-                    }
-                }
-            }
+            let outcomes = apply_plan(&client, &target, plan).await;
 
             let summary = summarize_set_outcomes(&domain, &record_type, &name, &outcomes)
                 .map_err(super::mutate_failed)?;

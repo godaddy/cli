@@ -356,10 +356,9 @@ pub(super) fn opts() -> RecordOptions {
 }
 
 #[test]
-fn parse_write_type_arg_accepts_writable_incl_caa_alias_rejects_ns_soa() {
+fn parse_write_type_arg_accepts_writable_incl_caa_rejects_ns_soa_and_alias() {
     assert_eq!(parse_write_type_arg("aaaa").expect("valid"), "AAAA");
     assert_eq!(parse_write_type_arg("caa").expect("valid"), "CAA");
-    assert_eq!(parse_write_type_arg("Alias").expect("valid"), "ALIAS");
     assert_eq!(parse_write_type_arg("https").expect("valid"), "HTTPS");
     assert_eq!(parse_write_type_arg("svcb").expect("valid"), "SVCB");
     assert_eq!(parse_write_type_arg("tlsa").expect("valid"), "TLSA");
@@ -370,6 +369,10 @@ fn parse_write_type_arg_accepts_writable_incl_caa_alias_rejects_ns_soa() {
     }
     let err = parse_write_type_arg("bogus").expect_err("should reject");
     assert!(err.contains("invalid record type"), "got: {err}");
+    // The API refuses to create one (test and prod), so it is refused here, before a login.
+    let err = parse_write_type_arg("Alias").expect_err("the API has no ALIAS");
+    assert!(err.contains("invalid record type"), "got: {err}");
+    assert!(!err.contains("ALIAS,"), "not offered as an option: {err}");
 }
 
 #[test]
@@ -862,8 +865,6 @@ fn same_content_follows_how_the_api_stores_each_field() {
     };
     // Hostnames: case and a trailing dot are not differences.
     assert!(same("CNAME", "Example.COM", "example.com."));
-    assert!(same("ALIAS", "Example.COM", "example.com."));
-    assert!(same("ALIAS", "Example.COM", "example.com."));
     assert!(same("MX", "Mail.Example.com", "mail.example.com."));
     // CAA data and TLSA hex are case-insensitive.
     assert!(same("CAA", "Letsencrypt.org", "letsencrypt.org"));

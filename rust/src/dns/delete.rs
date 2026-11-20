@@ -150,7 +150,7 @@ struct DeleteArgs {
     #[arg(value_name = "DOMAIN", value_parser = crate::idn::parse_name_arg)]
     domain: String,
 
-    /// Record type (A, AAAA, ALIAS, CAA, CNAME, HTTPS, MX, SRV, SVCB, TLSA, TXT).
+    /// Record type (A, AAAA, CAA, CNAME, HTTPS, MX, SRV, SVCB, TLSA, TXT).
     #[arg(long = "type", value_name = "TYPE", value_parser = parse_write_type_arg)]
     record_type: String,
 

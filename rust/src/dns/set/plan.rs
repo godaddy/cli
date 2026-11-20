@@ -7,7 +7,7 @@ use crate::dns::records::{record_value, same_content};
 
 /// One reconcile action for `dns set` over the API's per-record endpoints.
 #[derive(Debug, PartialEq)]
-pub(super) enum SetAction {
+pub(in crate::dns) enum SetAction {
     /// Replace the existing record (`record_id`) in place with the desired
     /// `--data` value. `desired` is that value's position among the `--data`
     /// values, which is also where its own options sit (priority, tag, …).
@@ -34,7 +34,7 @@ pub(super) enum SetAction {
 /// `Delete` the surplus existing, `Create` the surplus desired. Pure so the
 /// plan — the least-destructive way to emulate a set-replace over per-record v3
 /// ops — is unit-testable.
-pub(super) fn plan_set(
+pub(in crate::dns) fn plan_set(
     existing: &[types::DnsRecord],
     desired: &[types::DnsRecord],
     ttl: Option<i64>,

@@ -1565,6 +1565,7 @@ dependencies = [
  "progenitor-client",
  "regex",
  "reqwest 0.13.4",
+ "rfc1035-format",
  "schemars 1.2.2",
  "self-replace",
  "semver",
@@ -3579,6 +3580,10 @@ dependencies = [
  "wasm-streams",
  "web-sys",
 ]
+
+[[package]]
+name = "rfc1035-format"
+version = "0.2.39"
 
 [[package]]
 name = "ring"
