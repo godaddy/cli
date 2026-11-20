@@ -122,6 +122,7 @@ fn import_view_columns() -> Vec<TableColumn> {
         TableColumn::new("id", "ID"),
         TableColumn::new("name", "Name"),
         TableColumn::new("status", "Status"),
+        TableColumn::new("distributionType", "Distribution Type"),
         TableColumn::new("clientId", "Client ID"),
         TableColumn::new("url", "URL").no_truncate(true),
         TableColumn::new("proxyUrl", "Proxy URL").no_truncate(true),
@@ -330,6 +331,7 @@ pub(super) async fn run(
         "id": app.id,
         "name": name,
         "status": app.status,
+        "distributionType": app.distribution_type,
         "clientId": config.client_id,
         "url": url,
         "proxyUrl": proxy_url,
@@ -390,7 +392,7 @@ mod tests {
         ApplicationWithLatestReleaseApplicationReleases,
         ApplicationWithLatestReleaseApplicationReleasesEdges,
         ApplicationWithLatestReleaseApplicationReleasesEdgesNode,
-        ApplicationWithLatestReleaseApplicationReleasesEdgesNodeSubscriptions,
+        ApplicationWithLatestReleaseApplicationReleasesEdgesNodeSubscriptions, DistributionType,
     };
     use serde_json::json;
 
@@ -486,6 +488,7 @@ mod tests {
             name: "my-app".to_owned(),
             description: None,
             status: ApplicationStatus::ACTIVE,
+            distribution_type: DistributionType::PUBLIC,
             url: None,
             proxy_url: None,
             authorization_scopes: vec![],

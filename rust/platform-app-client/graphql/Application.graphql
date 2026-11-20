@@ -5,6 +5,7 @@ query Application($name: String!) {
     name
     description
     status
+    distributionType
     url
     proxyUrl
   }

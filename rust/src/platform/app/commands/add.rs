@@ -431,6 +431,7 @@ mod tests {
             name: "my-app".to_owned(),
             description: None,
             status: platform_app_client::application::ApplicationStatus::ACTIVE,
+            distribution_type: platform_app_client::application::DistributionType::PUBLIC,
             url: None,
             proxy_url: None,
         };
@@ -456,7 +457,8 @@ mod tests {
                             "id": "app-registry-id",
                             "label": "My App",
                             "name": "my-app",
-                            "status": "ACTIVE"
+                            "status": "ACTIVE",
+                            "distributionType": "PUBLIC"
                         }
                     }
                 }));
@@ -472,7 +474,8 @@ mod tests {
                     "success": true,
                     "data": {
                         "id": "550e8400-e29b-41d4-a716-446655440001",
-                        "status": "ACTIVE"
+                        "status": "ACTIVE",
+                        "distributionType": "PUBLIC"
                     }
                 }));
             })
@@ -564,7 +567,7 @@ mod tests {
                 when.method(Method::POST)
                     .path("/v1/apps/app-registry-subgraph");
                 then.status(200).json_body(json!({
-                    "data": { "application": { "id": "app-registry-id", "label": "My App", "name": "my-app", "status": "ACTIVE" } }
+                    "data": { "application": { "id": "app-registry-id", "label": "My App", "name": "my-app", "status": "ACTIVE", "distributionType": "PUBLIC" } }
                 }));
             })
             .await;
@@ -576,7 +579,8 @@ mod tests {
                     "success": true,
                     "data": {
                         "id": "550e8400-e29b-41d4-a716-446655440001",
-                        "status": "ACTIVE"
+                        "status": "ACTIVE",
+                        "distributionType": "PUBLIC"
                     }
                 }));
             })

@@ -235,8 +235,8 @@ mod tests {
                     "data": {
                         "applications": {
                             "edges": [
-                                { "node": { "id": "a1", "label": "Active", "name": "active-app", "description": null, "status": "ACTIVE", "url": null, "proxyUrl": null } },
-                                { "node": { "id": "a2", "label": "Inactive", "name": "inactive-app", "description": null, "status": "INACTIVE", "url": null, "proxyUrl": null } }
+                                { "node": { "id": "a1", "label": "Active", "name": "active-app", "description": null, "status": "ACTIVE", "distributionType": "PUBLIC", "url": null, "proxyUrl": null } },
+                                { "node": { "id": "a2", "label": "Inactive", "name": "inactive-app", "description": null, "status": "INACTIVE", "distributionType": "PUBLIC", "url": null, "proxyUrl": null } }
                             ]
                         }
                     }
@@ -287,6 +287,7 @@ mod tests {
                             "version": "1.0.0",
                             "description": null,
                             "status": "ACTIVE",
+                            "distributionType": "PUBLIC",
                             "activatedAt": "2026-09-18T00:00:00Z",
                             "createdAt": "2026-09-18T00:00:00Z",
                             "updatedAt": "2026-09-18T00:00:00Z"
@@ -382,6 +383,7 @@ mod tests {
                             "name": "my-app",
                             "description": null,
                             "status": "ACTIVE",
+                            "distributionType": "PUBLIC",
                             "url": null,
                             "proxyUrl": null,
                             "authorizationScopes": [],
@@ -406,6 +408,7 @@ mod tests {
                             "name": "observed-app",
                             "description": null,
                             "status": "ACTIVE",
+                            "distributionType": "PUBLIC",
                             "url": null,
                             "proxyUrl": null
                         }
