@@ -202,3 +202,82 @@ pub(crate) fn add_required_response_descriptions(value: &mut Value) {
         _ => {}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn defs_refs_are_rewritten_to_components_schemas_at_any_depth() {
+        let mut spec = json!({
+            "a": { "$ref": "#/$defs/Store" },
+            "b": [{ "items": { "$ref": "#/$defs/Address" } }],
+            "c": { "$ref": "#/components/schemas/Already" },
+        });
+        rewrite_defs_refs(&mut spec);
+        assert_eq!(spec["a"]["$ref"], "#/components/schemas/Store");
+        assert_eq!(
+            spec["b"][0]["items"]["$ref"],
+            "#/components/schemas/Address"
+        );
+        assert_eq!(spec["c"]["$ref"], "#/components/schemas/Already");
+    }
+
+    #[test]
+    fn retain_2xx_responses_visits_every_method_and_skips_non_operations() {
+        let mut spec = json!({ "paths": { "/stores": {
+            "parameters": [{ "name": "x" }],
+            "get": { "responses": { "200": {}, "404": {}, "default": {} } },
+            "post": { "responses": { "201": {}, "400": {} } }
+        } } });
+        retain_2xx_responses(&mut spec);
+        let item = &spec["paths"]["/stores"];
+        let codes = |method: &str| -> Vec<String> {
+            item[method]["responses"]
+                .as_object()
+                .expect("responses object")
+                .keys()
+                .cloned()
+                .collect()
+        };
+        assert_eq!(codes("get"), ["200"]);
+        assert_eq!(codes("post"), ["201"]);
+        assert_eq!(item["parameters"][0]["name"], "x");
+    }
+
+    #[test]
+    fn prefix_paths_prefixes_every_path_and_drops_path_level_extensions() {
+        let mut spec = json!({ "paths": { "/stores": {}, "x-internal": {} } });
+        prefix_paths(&mut spec, "/v2/commerce").expect("spec has paths");
+        let paths = spec["paths"].as_object().expect("paths object");
+        assert_eq!(paths.keys().collect::<Vec<_>>(), ["/v2/commerce/stores"]);
+    }
+
+    #[test]
+    fn external_formats_and_patterns_are_stripped_but_other_formats_stay() {
+        let mut schema = json!({ "properties": {
+            "id": { "type": "string", "format": "uuid", "pattern": "^x$", "minLength": 1, "maxLength": 9 },
+            "when": { "type": "string", "format": "date-time" },
+            "email": { "type": "string", "format": "email" },
+            "count": { "type": "integer", "format": "int64" }
+        } });
+        strip_external_formats(&mut schema, false);
+        let props = &schema["properties"];
+        assert_eq!(
+            props["id"],
+            json!({ "type": "string", "minLength": 1, "maxLength": 9 }),
+            "length bounds stay unless validators are dropped"
+        );
+        assert_eq!(props["when"], json!({ "type": "string" }));
+        assert_eq!(props["email"]["format"], "email");
+        assert_eq!(props["count"]["format"], "int64");
+    }
+
+    #[test]
+    fn dropping_validators_also_removes_length_bounds() {
+        let mut schema = json!({ "type": "string", "minLength": 1, "maxLength": 9 });
+        strip_external_formats(&mut schema, true);
+        assert_eq!(schema, json!({ "type": "string" }));
+    }
+}

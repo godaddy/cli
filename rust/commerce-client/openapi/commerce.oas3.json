@@ -1,0 +1,1364 @@
+{
+  "components": {
+    "headers": {
+      "Location": {
+        "description": "Location of the resource",
+        "schema": {
+          "format": "uri",
+          "type": "string"
+        }
+      },
+      "X-Request-Id": {
+        "deprecated": true,
+        "description": "Request Id",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "parameters": {
+      "attrName": {
+        "description": "Attribute name",
+        "in": "path",
+        "name": "attrName",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "businessId": {
+        "description": "Business ID",
+        "in": "query",
+        "name": "businessId",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/uuid"
+        }
+      },
+      "ifModifiedSince": {
+        "description": "To check if data has been modified since a given date",
+        "in": "header",
+        "name": "If-Modified-Since",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "includeFields": {
+        "description": "List of fields to include in the response",
+        "example": "address,attributes",
+        "explode": false,
+        "in": "query",
+        "name": "includeFields",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "style": "form"
+      },
+      "page": {
+        "in": "query",
+        "name": "page",
+        "schema": {
+          "default": 1,
+          "type": "integer"
+        }
+      },
+      "pageSize": {
+        "in": "query",
+        "name": "pageSize",
+        "schema": {
+          "default": 10,
+          "type": "integer"
+        }
+      },
+      "requestId": {
+        "description": "Request ID",
+        "in": "header",
+        "name": "X-Request-Id",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "storeId": {
+        "description": "Store ID",
+        "in": "path",
+        "name": "storeId",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/uuid"
+        }
+      },
+      "storeIdParam": {
+        "description": "Store ID",
+        "in": "query",
+        "name": "storeId",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/uuid"
+        }
+      },
+      "totalRequired": {
+        "in": "query",
+        "name": "totalRequired",
+        "schema": {
+          "default": false,
+          "type": "boolean"
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "Request was successful",
+        "headers": {
+          "X-Request-Id": {
+            "deprecated": true,
+            "description": "Request Id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "201": {
+        "description": "New resource created successfully",
+        "headers": {
+          "Location": {
+            "description": "Location of the resource",
+            "schema": {
+              "format": "uri",
+              "type": "string"
+            }
+          },
+          "X-Request-Id": {
+            "deprecated": true,
+            "description": "Request Id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "error": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "Error",
+        "headers": {
+          "X-Request-Id": {
+            "deprecated": true,
+            "description": "Request Id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "BundledFeatures": {
+        "$id": "https://godaddy.com/schemas/commerce/store-bundled-features.v2",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "deprecated": true,
+        "description": "This is the base object for the list of features a business/store has subscribed to.",
+        "properties": {
+          "createdAt": {
+            "description": "This is a response only field. The time (in ISO-8601 format) at which the bundle was created. E.g. 2014-09-11T23:14:44Z.",
+            "readOnly": true,
+            "type": "string"
+          },
+          "featureConfig": {
+            "$ref": "#/components/schemas/Dictionary",
+            "description": "Optional configs for each feature in the list."
+          },
+          "featureList": {
+            "description": "List of features the bundle contains.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 80,
+            "type": "array"
+          },
+          "id": {
+            "$ref": "#/components/schemas/uuid",
+            "description": "The id of the bundle. "
+          },
+          "name": {
+            "description": "Name of bundle.",
+            "type": "string"
+          },
+          "type": {
+            "description": "The type of the bundle.",
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "This is a response only field. The time (in ISO-8601 format) at which the bundle was updated. E.g. 2014-09-11T23:14:44Z.",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "featureList",
+          "id",
+          "name"
+        ],
+        "title": "Bundled Features",
+        "type": "object"
+      },
+      "Dictionary": {
+        "$id": "https://godaddy.com/schemas/commerce/store/dictionary.v2",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {
+          "type": "string"
+        },
+        "description": "Key value pairs of strings",
+        "maxProperties": 40,
+        "minProperties": 0,
+        "title": "Dictionary",
+        "type": "object"
+      },
+      "GovernmentId": {
+        "$id": "https://godaddy.com/schemas/commerce/store-government-id.v2",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "GovernmentId details",
+        "properties": {
+          "createdAt": {
+            "description": "The time (in ISO-8601 format) at which the application was created. E.g. 2014-09-11T23:14:44Z.",
+            "readOnly": true,
+            "type": "string"
+          },
+          "governmentId": {
+            "description": "The government id. E.g. '123456789'",
+            "type": "string"
+          },
+          "type": {
+            "description": "The type of government id. E.g. 'drivers-license'",
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "The time (in ISO-8601 format) at which the application was updated. E.g. 2014-09-11T23:14:44Z.",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "governmentId",
+          "type"
+        ],
+        "title": "GovernmentId",
+        "type": "object"
+      },
+      "Links": {
+        "$id": "https://godaddy.com/schemas/commerce/link.v2",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "HATEOAS links",
+        "items": {
+          "$ref": "#/components/schemas/link-description"
+        },
+        "title": "Links",
+        "type": "array",
+        "x-auto-generated": true
+      },
+      "PhoneWithType": {
+        "$id": "https://godaddy.com/schemas/commerce/store/phone-with-type.v2",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Contact Phone",
+        "properties": {
+          "details": {
+            "$ref": "#/components/schemas/phone",
+            "description": "Phone number details"
+          },
+          "type": {
+            "$ref": "#/components/schemas/phone-type",
+            "description": "Phone type"
+          }
+        },
+        "required": [
+          "details"
+        ],
+        "title": "Phone with Type",
+        "type": "object"
+      },
+      "Processor": {
+        "$id": "https://godaddy.com/schemas/commerce/store-processor.v2",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Processor to be used by Store",
+        "enum": [
+          "CHASE_PAYMENTECH",
+          "REDE",
+          "EVO",
+          "FIRST_DATA",
+          "GLOBAL_PAYMENTS",
+          "HEARTLAND_PAYMENT_SYSTEM",
+          "ELAVON",
+          "MERCURY",
+          "MONERIS",
+          "PAYPAL",
+          "ELAVON_MX",
+          "STRIPE",
+          "TSYS",
+          "VANTIV",
+          "WORLDPAY",
+          "EPX",
+          "WEPAY",
+          "MASHREQ",
+          "AXIS",
+          "KARTUKU",
+          "NEXI",
+          "DANA",
+          "MYNT",
+          "POYNT",
+          "NUVEI",
+          "NPAY",
+          "BRIDGEPAY",
+          "CONVERGE",
+          "MOCK",
+          "NA_BANCARD",
+          "CREDITCALL",
+          "ELAVON_EU",
+          "FUSEBOX",
+          "EVERTEC",
+          "GHL",
+          "RS2",
+          "JCN",
+          "PRISMA",
+          "VANTIV_EXPRESS",
+          "EZETAP",
+          "ADYEN",
+          "USBANK",
+          "LETGO",
+          "CHECK_COMMERCE"
+        ],
+        "title": "Store Processor",
+        "type": "string"
+      },
+      "Store": {
+        "$id": "https://godaddy.com/schemas/commerce/store.v2",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Store represent a brand under a business",
+        "properties": {
+          "address": {
+            "$ref": "#/components/schemas/address",
+            "description": "The store's address. This may or may not be different from business address."
+          },
+          "attributes": {
+            "$ref": "#/components/schemas/Dictionary",
+            "description": "A name/value pair list that could be persisted and later retrieved."
+          },
+          "businessId": {
+            "$ref": "#/components/schemas/uuid",
+            "description": "The business id the store belongs to"
+          },
+          "createdAt": {
+            "description": "The createdAt of the store.  This createdAt is generated internally during create store.",
+            "readOnly": true,
+            "type": "string"
+          },
+          "defaultChannelId": {
+            "$ref": "#/components/schemas/uuid",
+            "description": "The default channel of the store, where uncategorized transactions are mapped to"
+          },
+          "defaultRetailChannelId": {
+            "$ref": "#/components/schemas/uuid",
+            "description": "The default retail channel of the store, where uncategorized transactions from terminals in retail store are mapped to"
+          },
+          "displayName": {
+            "description": "The store name (used in various displays). It is recommended to pick a different name for each store in the business.",
+            "type": "string"
+          },
+          "emailAddress": {
+            "description": "The email address of the store.",
+            "type": "string"
+          },
+          "governmentIds": {
+            "items": {
+              "$ref": "#/components/schemas/GovernmentId"
+            },
+            "maxItems": 10,
+            "type": "array"
+          },
+          "id": {
+            "$ref": "#/components/schemas/uuid",
+            "description": "The id of the store.  This id is generated internally during create business."
+          },
+          "ownerId": {
+            "$ref": "#/components/schemas/uuid",
+            "description": "The id of the store owner."
+          },
+          "paymentDetails": {
+            "$ref": "#/components/schemas/StorePaymentDetails",
+            "description": "The payment details of the store (if setup)",
+            "nullable": true
+          },
+          "phone": {
+            "$ref": "#/components/schemas/PhoneWithType",
+            "description": "The store's phone. This may or may not be different from business phone."
+          },
+          "status": {
+            "default": "ACTIVE",
+            "description": "The status of the store.",
+            "enum": [
+              "ACTIVE",
+              "DISABLED",
+              "REMOVED"
+            ],
+            "type": "string"
+          },
+          "subscribedBundles": {
+            "description": "The list of bundles this store has subscribed to.",
+            "items": {
+              "$ref": "#/components/schemas/BundledFeatures"
+            },
+            "type": "array"
+          },
+          "timezone": {
+            "description": "The timezone of the store.",
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "The updatedAt of the store.  This updatedAt is set internally during store updates.",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "displayName",
+          "businessId"
+        ],
+        "title": "Store",
+        "type": "object"
+      },
+      "StoreList": {
+        "$id": "https://godaddy.com/schemas/commerce/store-list.v2",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Resource representing a list of Stores",
+        "properties": {
+          "items": {
+            "description": "Array containing the current page of Stores",
+            "items": {
+              "$ref": "#/components/schemas/Store"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "links": {
+            "$ref": "#/components/schemas/Links",
+            "description": "Array of HATEOAS link relations that should be used to navigate across pages of Stores"
+          },
+          "totalItems": {
+            "description": "Total number of Stores matching the search criteria. Returned only when totalRequired is set to true.",
+            "type": "integer"
+          },
+          "totalPages": {
+            "description": "Total number of pages matching the search criteria. Returned only when totalRequired is set to true.",
+            "type": "integer"
+          }
+        },
+        "title": "Store List",
+        "type": "object"
+      },
+      "StorePaymentDetails": {
+        "$id": "https://godaddy.com/schemas/commerce/store-payment-details.v2",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Payment details for a store.",
+        "properties": {
+          "acquirer": {
+            "$ref": "#/components/schemas/Processor",
+            "description": "The acquirer for this merchant."
+          },
+          "currency": {
+            "$ref": "#/components/schemas/currency-code",
+            "description": "The primary transaction currency for this store."
+          },
+          "externalStoreId": {
+            "description": "MID (merchantId) assigned to the store by the acquirer.",
+            "type": "string"
+          },
+          "gatewayStoreId": {
+            "description": "ID assigned to the store by the gateway (some gateways assign their own IDs). This field will typically not be available when the business is initially created in the Poynt system. Once that information is passed to the gateway, they will provide their ID.",
+            "type": "string"
+          },
+          "processor": {
+            "$ref": "#/components/schemas/Processor",
+            "description": "The processor for this merchant.  If this field is left blank it is assumed that the processor is the acquirer itself or CreditCall that happens to be our primary gateway."
+          },
+          "processorAdapterId": {
+            "deprecated": true,
+            "description": "The processor adapter id for the store.",
+            "type": "string"
+          },
+          "processorData": {
+            "$ref": "#/components/schemas/Dictionary",
+            "description": "The processor data for the store."
+          }
+        },
+        "required": [
+          "externalStoreId"
+        ],
+        "title": "Payment Details",
+        "type": "object"
+      },
+      "address": {
+        "$id": "https://godaddy.com/schemas/common/address.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "An internationalized postal address. Maps to [AddressValidationMetadata](https://github.com/googlei18n/libaddressinput/wiki/AddressValidationMetadata) from Google's Address Data Service and HTML 5.1 [Autofilling form controls: the autocomplete attribute](https://www.w3.org/TR/html51/sec-forms.html#autofilling-form-controls-the-autocomplete-attribute).",
+        "properties": {
+          "addressDetails": {
+            "description": "The non-portable additional address details that are sometimes needed for compliance, risk, or other scenarios where fine-grain address information might be needed. Not portable with common third-party and open-source address libraries and redundant with core fields. For example, `address.addressLine1` is usually a combination of `addressDetails.streetNumber` and `streetName` and `streetType`.",
+            "properties": {
+              "addressType": {
+                "description": "The type of address. Single character representation of a type. For example: 'B' for building, 'F' for organization, 'G' for general delivery, 'H' for high-rise, 'L' for large-volume organization, 'P' for Post Office box or delivery service, 'R' for rural route, 'S' for street, 'U' for unidentified address.",
+                "type": "string"
+              },
+              "buildingName": {
+                "description": "A named locations that represents the premise. Usually a building name or number or collection of buildings with a common name or number. For example, <code>Craven House</code>.",
+                "type": "string"
+              },
+              "deliveryService": {
+                "description": "The delivery service. Post office box, bag number, or post office name.",
+                "type": "string"
+              },
+              "geoCoordinates": {
+                "$ref": "#/components/schemas/geo-coordinates",
+                "description": "The latitude and longitude of the address. For example, `37.42242` and `-122.08585`."
+              },
+              "streetName": {
+                "description": "The street name. Just `Drury` in `Drury Lane`.",
+                "type": "string"
+              },
+              "streetNumber": {
+                "description": "The street number.",
+                "type": "string"
+              },
+              "streetType": {
+                "description": "The street type. For example, avenue, boulevard, road, or expressway.",
+                "type": "string"
+              },
+              "subBuilding": {
+                "description": "The first-order entity below a named building or location that represents the sub-premise. Usually a single building within a collection of buildings with a common name. Can be a flat, story, floor, room, or apartment.",
+                "type": "string"
+              }
+            },
+            "title": "Address Details",
+            "type": "object"
+          },
+          "addressLine1": {
+            "description": "The first line of the address. For example, number and street name. For example, `3032 Bunker Hill Lane`. Required for compliance and risk checks. Must contain the full address.",
+            "type": "string"
+          },
+          "addressLine2": {
+            "description": "The second line of the address. For example, office suite or apartment number.",
+            "type": "string"
+          },
+          "addressLine3": {
+            "description": "The third line of the address, if needed. For example, a street complement for Brazil; direction text, such as `next to Opera House`; or a landmark reference in an Indian address.",
+            "type": "string"
+          },
+          "adminArea1": {
+            "description": "The highest level sub-division in a country, which is usually a province, state, or ISO-3166-2 subdivision; formatted for postal delivery. For example, `CA` and not `California`. For example, for UK - A county; for USs - A state; for Canada - A province; for Japan - A prefecture; for Switzerland - A kanton.",
+            "type": "string"
+          },
+          "adminArea2": {
+            "description": "A city, town, or village. Smaller than `adminArea1`.",
+            "type": "string"
+          },
+          "adminArea3": {
+            "description": "A sub-locality, suburb, neighborhood, or district. Smaller than `adminArea2`. For example, in Brazil - Suburb, bairro, or neighborhood; in India - Sub-locality or district. Street name information may not always available and a sub-locality or district can reference a very small area.</li></ul>",
+            "type": "string"
+          },
+          "adminArea4": {
+            "description": "The neighborhood, ward, or district. Smaller than `adminArea3` or `subLocality`. For example, the postal sorting code that is used in Guernsey and many French territories, such as French Guiana; the fine-grained administrative levels in China.",
+            "type": "string"
+          },
+          "countryCode": {
+            "$ref": "#/components/schemas/country-code",
+            "description": "The [two-character ISO 3166-1 code](https://en.wikipedia.org/wiki/ISO_3166-1) that identifies the country or region. Note: The country code for Great Britain is `GB` and not `UK` as used in the top-level domain names for that country. Use country code `C2` for China for comparable uncontrolled price (CUP) method, bank-card, and cross-border transactions."
+          },
+          "postalCode": {
+            "description": "The postal code, which is the zip code or equivalent. Typically required for countries that have a postal code or an equivalent. See [Postal code](https://en.wikipedia.org/wiki/Postal_code).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "countryCode"
+        ],
+        "title": "Postal Address (Medium-Grained)",
+        "type": "object"
+      },
+      "attributeUpdateRequest": {
+        "properties": {
+          "ttl": {
+            "description": "The expiration time of an ephemeral attribute.",
+            "type": "integer"
+          },
+          "value": {
+            "description": "The attribute value.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ]
+      },
+      "country-code": {
+        "$id": "https://godaddy.com/schemas/common-types/country-code.v1",
+        "$schema": "http://json-schema.org/draft/2020-12/schema",
+        "description": "A two-character ISO 3166-1 code that identifies the country or region.",
+        "type": "string"
+      },
+      "currency-code": {
+        "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "A three-character ISO-4217 currency code.",
+        "title": "Currency Code",
+        "type": "string"
+      },
+      "error": {
+        "$id": "https://godaddy.com/schemas/common/error.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "definitions": {
+          "error-details": {
+            "$ref": "#/components/schemas/error-details"
+          },
+          "link-description": {
+            "$ref": "#/components/schemas/link-description"
+          }
+        },
+        "description": "The error information.",
+        "properties": {
+          "correlationId": {
+            "description": "Internal identifier used for correlation purposes.",
+            "type": "string"
+          },
+          "details": {
+            "additionalItems": false,
+            "description": "An array of additional details about the error. Required for client-side `4XX` errors.",
+            "items": {
+              "$ref": "#/components/schemas/error-details"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "informationLink": {
+            "description": "The URI for detailed information related to this error for the developer.",
+            "type": "string"
+          },
+          "links": {
+            "description": "An array of error-related HATEOAS links.",
+            "items": {
+              "$ref": "#/components/schemas/link-description",
+              "readOnly": true
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
+          },
+          "message": {
+            "description": "The message that describes the error.",
+            "type": "string"
+          },
+          "name": {
+            "description": "The human-readable, unique name of the error.",
+            "type": "string"
+          }
+        },
+        "title": "Error",
+        "type": "object"
+      },
+      "error-details": {
+        "$id": "https://godaddy.com/schemas/common/error-details.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "The error details. Required for client-side `4XX` errors.",
+        "properties": {
+          "description": {
+            "description": "The human-readable description for an issue. The description MAY change over the lifetime of an API, so clients MUST NOT depend on this value.",
+            "type": "string"
+          },
+          "field": {
+            "description": "The field that caused the error. If the field is in the body, set this value to the JSON pointer to that field. Required for client-side errors.",
+            "type": "string"
+          },
+          "issue": {
+            "description": "The unique fine-grained application-level error code.",
+            "type": "string"
+          },
+          "location": {
+            "default": "body",
+            "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
+            "type": "string"
+          },
+          "value": {
+            "description": "The value of the field that caused the error.",
+            "type": "string"
+          }
+        },
+        "title": "Error Details",
+        "type": "object"
+      },
+      "geo-coordinates": {
+        "$id": "https://godaddy.com/schemas/common/geo-coordinates.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "The geographic latitude and longitude coordinates.",
+        "properties": {
+          "latitude": {
+            "type": "string"
+          },
+          "longitude": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "longitude",
+          "latitude"
+        ],
+        "title": "Geographic Coordinates",
+        "type": "object"
+      },
+      "governmentIdList": {
+        "items": {
+          "$ref": "#/components/schemas/GovernmentId"
+        },
+        "type": "array"
+      },
+      "link-description": {
+        "$id": "https://godaddy.com/schemas/common/link-description.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "A request-related [HATEOAS link](https://datatracker.ietf.org/doc/html/draft-handrews-json-schema-hyperschema-02).",
+        "properties": {
+          "href": {
+            "description": "The complete target URL, or link, to use in combination with the method to make the related call, as defined by [RFC 6570 - URI Template](https://tools.ietf.org/html/rfc6570), with the addition of the `$`, `(`, and `)` characters for pre-processing. The `href` is the key HATEOAS component that links a completed call with a subsequent call.",
+            "format": "uri",
+            "type": "string"
+          },
+          "method": {
+            "description": "The method to use to request the link target. For example, for HTTP, this might be `GET` or `DELETE`.",
+            "type": "string"
+          },
+          "rel": {
+            "description": "The [link relation type](https://tools.ietf.org/html/rfc5988#section-4), which is an identifier for a link that unambiguously describes the semantics of the link. For values, see [Link Relationship Types](https://www.iana.org/assignments/link-relations/link-relations.xhtml).",
+            "type": "string"
+          },
+          "submissionMediaType": {
+            "default": "application/json",
+            "description": "The media type with which to submit data with the request.",
+            "type": "string"
+          },
+          "submissionSchema": {
+            "description": "The schema that describes the request data."
+          },
+          "targetMediaType": {
+            "description": "The [RFC 2046-defined media type](https://www.ietf.org/rfc/rfc2046.txt) that describes the link target.",
+            "type": "string"
+          },
+          "targetSchema": {
+            "description": "The schema that describes the link target."
+          },
+          "title": {
+            "description": "The link title.",
+            "type": "string"
+          }
+        },
+        "title": "Link Description",
+        "type": "object"
+      },
+      "patch": {
+        "$id": "https://godaddy.com/schemas/common/patch.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "The JSON patch object to apply partial updates to resources.",
+        "properties": {
+          "from": {
+            "description": "The JSON pointer to the target document location from which to move the value. Required for the `move` operation.",
+            "type": "string"
+          },
+          "op": {
+            "description": "The operation to complete.",
+            "enum": [
+              "add",
+              "remove",
+              "replace",
+              "move",
+              "copy",
+              "test"
+            ],
+            "type": "string"
+          },
+          "path": {
+            "description": "The JSON pointer to the target document location at which to complete the operation.",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "object"
+              }
+            ],
+            "description": "The value to apply. The `remove` operation does not require a value.",
+            "nullable": true
+          }
+        },
+        "required": [
+          "op"
+        ],
+        "title": "Patch",
+        "type": "object"
+      },
+      "patch-request": {
+        "$id": "https://godaddy.com/schemas/common/patch-request.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "An array of JSON patch objects to apply partial updates to resources.",
+        "items": {
+          "$ref": "#/components/schemas/patch"
+        },
+        "title": "Patch Request",
+        "type": "array"
+      },
+      "phone": {
+        "$id": "https://godaddy.com/schemas/common/phone.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "The phone number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en).",
+        "properties": {
+          "countryCode": {
+            "description": "The country calling code (CC), in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the CC and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
+            "type": "string"
+          },
+          "extensionNumber": {
+            "description": "The extension number.",
+            "type": "string"
+          },
+          "nationalNumber": {
+            "description": "The national number, in its canonical international [E.164 numbering plan format](https://www.itu.int/rec/T-REC-E.164/en). The combined length of the country calling code (CC) and the national number must not be greater than 15 digits. The national number consists of a national destination code (NDC) and subscriber number (SN).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "countryCode",
+          "nationalNumber"
+        ],
+        "title": "Phone",
+        "type": "object"
+      },
+      "phone-type": {
+        "$id": "https://godaddy.com/schemas/common/phone-type.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "The phone type.",
+        "enum": [
+          "FAX",
+          "HOME",
+          "MOBILE",
+          "OTHER",
+          "WORK"
+        ],
+        "title": "Phone type",
+        "type": "string"
+      },
+      "uuid": {
+        "$id": "https://godaddy.com/schemas/common/uuid.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+        "type": "string"
+      }
+    },
+    "securitySchemes": {
+      "Oauth2": {
+        "description": "Oauth 2.0 authentication",
+        "flows": {
+          "clientCredentials": {
+            "scopes": {
+              "commerce.store:create": "Create store",
+              "commerce.store:delete": "Disable store",
+              "commerce.store:read": "Read store",
+              "commerce.store:update": "Update store"
+            },
+            "tokenUrl": "https://api.godaddy.com/v1/oauth2/token"
+          }
+        },
+        "type": "oauth2"
+      }
+    }
+  },
+  "info": {
+    "description": "This API is capable of recording, updating and retrieving store information",
+    "title": "Commerce Store API",
+    "version": "2.1.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/v2/commerce/stores": {
+      "get": {
+        "description": "Retrieve the list of stores associated with a Business ID",
+        "operationId": "getStoresByBusinessId",
+        "parameters": [
+          {
+            "description": "Business ID",
+            "in": "query",
+            "name": "businessId",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/uuid"
+            }
+          },
+          {
+            "description": "To check if data has been modified since a given date",
+            "in": "header",
+            "name": "If-Modified-Since",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "default": 10,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "totalRequired",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "List of fields to include in the response",
+            "example": "address,attributes",
+            "explode": false,
+            "in": "query",
+            "name": "includeFields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreList"
+                }
+              }
+            },
+            "description": "List of stores found",
+            "headers": {
+              "X-Request-Id": {
+                "deprecated": true,
+                "description": "Request Id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Oauth2": [
+              "commerce.store:create"
+            ]
+          }
+        ],
+        "summary": "Get stores by business ID",
+        "tags": [
+          "General Endpoints"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "Request ID",
+          "in": "header",
+          "name": "X-Request-Id",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "description": "Create a new store",
+        "operationId": "createStore",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Store"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Store"
+                }
+              }
+            },
+            "description": "Store Created",
+            "headers": {
+              "Location": {
+                "description": "Location of the resource",
+                "schema": {
+                  "format": "uri",
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "deprecated": true,
+                "description": "Request Id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Oauth2": [
+              "commerce.store:create"
+            ]
+          }
+        ],
+        "summary": "Create a new store",
+        "tags": [
+          "General Endpoints"
+        ]
+      }
+    },
+    "/v2/commerce/stores/{storeId}": {
+      "get": {
+        "description": "Retrieve the information of a store using the Business and Store IDs.",
+        "operationId": "getStoreById",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Store"
+                }
+              }
+            },
+            "description": "Store Found",
+            "headers": {
+              "X-Request-Id": {
+                "deprecated": true,
+                "description": "Request Id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Oauth2": [
+              "commerce.store:read"
+            ]
+          }
+        ],
+        "summary": "Get store by ID",
+        "tags": [
+          "General Endpoints"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "Request ID",
+          "in": "header",
+          "name": "X-Request-Id",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Store ID",
+          "in": "path",
+          "name": "storeId",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/uuid"
+          }
+        },
+        {
+          "description": "List of fields to include in the response",
+          "example": "address,attributes",
+          "explode": false,
+          "in": "query",
+          "name": "includeFields",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "style": "form"
+        }
+      ],
+      "patch": {
+        "description": "Update the details of a store using the storeId.",
+        "operationId": "updateStore",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/patch-request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Store"
+                }
+              }
+            },
+            "description": "Store updated"
+          }
+        },
+        "security": [
+          {
+            "Oauth2": [
+              "commerce.store:update"
+            ]
+          }
+        ],
+        "summary": "Update store information",
+        "tags": [
+          "General Endpoints"
+        ]
+      }
+    },
+    "/v2/commerce/stores/{storeId}/attributes/{attrName}": {
+      "delete": {
+        "description": "Delete a store attribute using the store ID and attribute name.",
+        "operationId": "deleteStoreAttribute",
+        "parameters": [
+          {
+            "description": "Attribute name",
+            "in": "path",
+            "name": "attrName",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Store Attribute deleted"
+          }
+        },
+        "security": [
+          {
+            "Oauth2": [
+              "commerce.store:update"
+            ]
+          }
+        ],
+        "summary": "Delete store attribute"
+      },
+      "get": {
+        "description": "Retrieve the information of a store attribute using the business ID, store ID and attribute name.",
+        "operationId": "getStoreAttribute",
+        "responses": {
+          "200": {
+            "description": "Store Attribute Found",
+            "headers": {
+              "X-Request-Id": {
+                "deprecated": true,
+                "description": "Request Id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Oauth2": [
+              "commerce.store:read"
+            ]
+          }
+        ],
+        "summary": "Get store attribute",
+        "tags": [
+          "General Endpoints"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "Request ID",
+          "in": "header",
+          "name": "X-Request-Id",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Store ID",
+          "in": "path",
+          "name": "storeId",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/uuid"
+          }
+        },
+        {
+          "description": "Attribute name",
+          "in": "path",
+          "name": "attrName",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "description": "Modify the attribute of a store using the store ID and attribute name.",
+        "operationId": "updateStoreAttribute",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/attributeUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Store Attribute updated"
+          }
+        },
+        "security": [
+          {
+            "Oauth2": [
+              "commerce.store:update"
+            ]
+          }
+        ],
+        "summary": "Update store attribute",
+        "tags": [
+          "General Endpoints"
+        ]
+      }
+    },
+    "/v2/commerce/stores/{storeId}/government-ids": {
+      "parameters": [
+        {
+          "description": "Request ID",
+          "in": "header",
+          "name": "X-Request-Id",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Store ID",
+          "in": "path",
+          "name": "storeId",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/uuid"
+          }
+        }
+      ],
+      "put": {
+        "description": "Update government IDs using the store ID.",
+        "operationId": "updateGovernmentIds",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/governmentIdList"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Store"
+                }
+              }
+            },
+            "description": "Government IDs updated"
+          }
+        },
+        "security": [
+          {
+            "Oauth2": [
+              "commerce.store:update"
+            ]
+          }
+        ],
+        "summary": "Update government IDs",
+        "tags": [
+          "General Endpoints"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.{sub-domain}.com/{version}/{namespace}",
+      "variables": {
+        "namespace": {
+          "default": "commerce",
+          "description": "Namespace"
+        },
+        "sub-domain": {
+          "default": "godaddy",
+          "description": "Sub domain for different environments",
+          "enum": [
+            "godaddy",
+            "ote-godaddy",
+            "test-godaddy",
+            "dev-godaddy"
+          ]
+        },
+        "version": {
+          "default": "v2",
+          "description": "Version"
+        }
+      }
+    }
+  ]
+}

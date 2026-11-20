@@ -1,4 +1,5 @@
 mod app_registry_spec;
+mod commerce_merge;
 mod dereference;
 mod domains_spec;
 mod email_spec;
@@ -129,6 +130,17 @@ fn main() -> Result<()> {
             &app_registry_spec::app_registry_client_schema_path(),
         )
         .context("failed to refresh platform-app-client codegen schema")?;
+    }
+
+    // `stores` is likewise a normal remote source reused here as
+    // progenitor's codegen input for the `commerce-client` crate.
+    if let Some(stores_source) = sources.iter().find(|s| s.domain == "stores") {
+        commerce_merge::refresh(
+            &stores_source.spec_file,
+            common_types,
+            &commerce_merge::commerce_client_oas3_path(),
+        )
+        .context("failed to refresh commerce-client codegen spec")?;
     }
 
     sources.extend(local_spec_sources(&source_manifest)?);

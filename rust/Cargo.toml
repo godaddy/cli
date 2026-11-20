@@ -15,6 +15,7 @@ members = [
     "email-client",
     "generated-client-support",
     "platform-app-client",
+    "commerce-client",
 ]
 
 [[bin]]
