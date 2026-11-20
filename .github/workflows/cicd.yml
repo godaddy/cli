@@ -3,9 +3,10 @@ on:
   push:
     branches:
       - main
+  # No branch filter on pull requests, so a stacked pull request (one whose base
+  # is another feature branch) is built and tested too. `push` stays limited to
+  # `main` so a branch with an open pull request doesn't run twice.
   pull_request:
-    branches:
-      - main
 
 jobs:
   cicd:
