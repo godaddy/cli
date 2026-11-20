@@ -4,7 +4,7 @@ summary: Publish a Domain Connect template so customers can connect a domain to 
 
 # Publish a Domain Connect template with `gddy`
 
-A Domain Connect template lists the DNS records your service needs. Once it is published, a customer can connect their domain to your service in one step instead of copying records by hand. `gddy domain-connect template` takes a template from nothing to a public pull request with three commands:
+A Domain Connect template lists the DNS records your service needs. After you publish it, a customer can connect their domain to your service in one step instead of copying records by hand. `gddy domain-connect template` takes a template from nothing to a public pull request with three commands:
 
 | Command | Changes anything? | Purpose |
 |---|---|---|
@@ -18,7 +18,7 @@ A template is identified by two values. The **provider ID** is a domain name you
 
 The first account to submit a template for a provider ID owns it. After that, only that account can add services under it or change an existing one, and a change needs a higher `version` in the file.
 
-A record value can be fixed, such as `mail.acme.com`, or a variable that is filled in when the template is applied to a domain. Variables are written between percent signs, such as `%ip%`.
+A record value can be fixed, such as `mail.acme.com`, or a variable whose value is set when the template is applied to a domain. Write a variable between percent signs, such as `%ip%`.
 
 ## Create the template
 
@@ -41,7 +41,7 @@ gddy domain-connect template init \
   --add-txt "data=v=spf1 include:_spf.acme.com ~all"
 ```
 
-There is one `--add-<type>` flag per record type, and each can be repeated. Its value is a list of `key=value` pairs separated by commas. `host` defaults to `@`, the root of the domain, and `ttl` defaults to 3600 seconds.
+There's one `--add-<type>` flag per record type, and you can repeat each. Its value is a list of `key=value` pairs separated by commas. `host` defaults to `@`, the root of the domain, and `ttl` defaults to 3600 seconds.
 
 | Flag | Keys | Example |
 |---|---|---|
@@ -54,9 +54,11 @@ There is one `--add-<type>` flag per record type, and each can be repeated. Its 
 | `--add-srv` | `service`, `protocol`, `name`, `target`, `priority`, `weight`, `port`, `ttl` | `service=_sip,protocol=_tcp,target=sip.acme.com,port=5060` |
 | `--add-redir301`, `--add-redir302` | `host`, `target` | `target=https://www.acme.com` |
 
-Every record also accepts `group` and `essential`. `essential` is `Always` (the record must stay in place) or `OnApply` (the customer may remove it later). `--group-id` and `--essential` set them for every record that does not set its own.
+Every record also accepts `group` and `essential`. `essential` is `Always` (the record must stay in place) or `OnApply` (the customer may remove it later). `--group-id` and `--essential` set them for every record that doesn't set its own.
 
 In an A or AAAA record, `value` is either an address or a variable name. `value=192.0.2.1` is written as given, and `value=ip` becomes the variable `%ip%`.
+
+`ttl`, `priority`, `weight` and `port` each take a whole number or a variable, such as `ttl=%ttl%`.
 
 `init` leaves an existing file alone. Pass `--force` to replace it, or `--dry-run` to see the template without writing it. The file is plain JSON, so you can also edit it by hand.
 
@@ -82,10 +84,10 @@ Fix the file and run `validate` again until the outcome is `READY`.
 gddy domain-connect template submit acme.com.email.json
 ```
 
-`submit` runs the same checks, then publishes the template and opens a pull request on the public Domain Connect templates repository. If you already have one open for this service, it is updated instead. The output gives the pull request link, which is where the review happens.
+`submit` runs the same checks, then publishes the template and opens a pull request on the public Domain Connect templates repository. If you already have one open for this service, `submit` updates it instead. The output gives the pull request link, which is where the review happens.
 
-A template that is not ready is not submitted: the command lists the issues and exits with an error. `submit --dry-run` runs the checks and reports the outcome without submitting anything.
+A template that isn't ready isn't submitted: the command lists the issues and exits with an error. `submit --dry-run` runs the checks and reports the outcome without submitting anything.
 
-Submitting is public and cannot be undone from the CLI.
+Submitting is public and can't be undone from the CLI. There's nothing else to manage from the CLI after that: follow the review on the pull request, and to change the template, edit the file and submit it again.
 
 AI assistants: submitting publishes the template in a public pull request and claims the provider ID for the signed-in account. Show the user the file and the provider and service IDs, and get their explicit confirmation before running `template submit`. Do not infer it from a request to create or check a template. Use `template init --no-interactive`, since the prompts need a terminal, and ask the user for the provider and service details instead of inventing them.
