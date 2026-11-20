@@ -61,8 +61,9 @@ pub(crate) fn refresh(
 /// and rewriting `#/$defs/X` refs to `#/components/schemas/X`, since that's
 /// the shape progenitor expects), pins `openapi` to `3.0.3` (progenitor
 /// rejects anything else; this doc uses no 3.1-only constructs), prefixes
-/// every path with [`BASE_PATH`], strips external formats, relaxes the
-/// response-only schemas to tolerant readers (request-reachable schemas stay
+/// every path with [`BASE_PATH`], strips external formats, turns un-exploded
+/// array query parameters into strings (see
+/// [`flatten_unexploded_query_arrays`]), relaxes the response-only schemas to tolerant readers (request-reachable schemas stay
 /// strict), and drops the spec's *documented* non-2xx
 /// response schemas (see [`only_2xx_paths`] — this is a codegen-input trim,
 /// not a runtime error-handling gap: real non-2xx responses are still fully
@@ -106,6 +107,7 @@ fn load_and_lift(spec_path: &Path, common_types: Option<&Path>) -> Result<Value>
 
     only_2xx_paths(obj.get_mut("paths").context("missing paths")?);
     strip_external_formats(&mut dereffed);
+    flatten_unexploded_query_arrays(&mut dereffed);
     let strict = request_reachable_schemas(&dereffed);
     if let Some(schemas) = dereffed
         .pointer_mut("/components/schemas")
@@ -165,6 +167,35 @@ fn collect_schema_refs(node: &Value, schemas: Option<&Value>, seen: &mut HashSet
                 collect_schema_refs(item, schemas, seen);
             }
         }
+        _ => {}
+    }
+}
+
+/// Turns every array-typed query parameter declared `explode: false` into a
+/// plain string. `progenitor` ignores `explode` and serializes an array as
+/// repeated `key=value` pairs, so `includeFields=address&includeFields=attributes`
+/// would go out where the API expects the single value
+/// `includeFields=address,attributes` (the same trap `domain::common::comma_joined`
+/// works around for the domains client). As a string, the generated setter
+/// takes the already comma-joined value and sends exactly one pair.
+fn flatten_unexploded_query_arrays(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            let is_unexploded_query_array = map.get("in").and_then(Value::as_str) == Some("query")
+                && map.get("explode") == Some(&Value::Bool(false))
+                && map
+                    .get("schema")
+                    .and_then(|schema| schema.get("type"))
+                    .and_then(Value::as_str)
+                    == Some("array");
+            if is_unexploded_query_array {
+                map.insert("schema".to_owned(), serde_json::json!({ "type": "string" }));
+            }
+            for child in map.values_mut() {
+                flatten_unexploded_query_arrays(child);
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(flatten_unexploded_query_arrays),
         _ => {}
     }
 }
@@ -371,6 +402,51 @@ mod tests {
                 "{name} is response-only: {strict:?}"
             );
         }
+    }
+
+    #[test]
+    fn only_unexploded_query_arrays_become_strings() {
+        let mut spec = json!({
+            "components": { "parameters": {
+                "includeFields": {
+                    "name": "includeFields", "in": "query", "explode": false, "style": "form",
+                    "schema": { "type": "array", "items": { "type": "string" } }
+                }
+            } },
+            "paths": { "/stores": { "get": { "parameters": [
+                {
+                    "name": "ids", "in": "query", "explode": true,
+                    "schema": { "type": "array", "items": { "type": "string" } }
+                },
+                {
+                    "name": "tags", "in": "query",
+                    "schema": { "type": "array", "items": { "type": "string" } }
+                },
+                {
+                    "name": "sort", "in": "query", "explode": false,
+                    "schema": { "type": "string" }
+                },
+                {
+                    "name": "fields", "in": "header", "explode": false,
+                    "schema": { "type": "array", "items": { "type": "string" } }
+                }
+            ] } } }
+        });
+
+        flatten_unexploded_query_arrays(&mut spec);
+
+        assert_eq!(
+            spec["components"]["parameters"]["includeFields"]["schema"],
+            json!({ "type": "string" })
+        );
+        let params = &spec["paths"]["/stores"]["get"]["parameters"];
+        for (index, name) in [(0, "ids"), (1, "tags"), (3, "fields")] {
+            assert_eq!(
+                params[index]["schema"]["type"], "array",
+                "{name} should stay an array"
+            );
+        }
+        assert_eq!(params[2]["schema"], json!({ "type": "string" }));
     }
 
     #[test]
