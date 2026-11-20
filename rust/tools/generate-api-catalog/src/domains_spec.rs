@@ -48,10 +48,12 @@ const V1_RETAINED_OPS: &[(&str, &str)] = &[("/v1/domains/agreements", "agreement
 /// `domains.domain-lifecycle-specification` v3 OpenAPI doc — dereferenced
 /// with `common_types` the same way the catalog processing dereferences it,
 /// since it spans multiple files) merged with a freshly-pulled, trimmed copy
-/// of the v1 spec. Set `SKIP_DOMAINS_REFRESH` to leave `out_path` untouched
-/// (useful for local iteration without a network dependency).
+/// of the v1 spec and the Domain Connect Templates operations from
+/// `domain_connect_spec_path`. Set `SKIP_DOMAINS_REFRESH` to leave `out_path`
+/// untouched (useful for local iteration without a network dependency).
 pub(crate) fn refresh(
     v3_spec_path: &Path,
+    domain_connect_spec_path: &Path,
     common_types: Option<&Path>,
     out_path: &Path,
 ) -> Result<()> {
@@ -82,9 +84,11 @@ pub(crate) fn refresh(
         }
     };
 
-    let mut v3 = load_v3(v3_spec_path, common_types)?;
+    let mut v3 = load_dereferenced(v3_spec_path, common_types)?;
 
     merge(&mut v3, v1)?;
+    crate::domain_connect_spec::merge_into(&mut v3, domain_connect_spec_path, common_types)?;
+    prune_unreferenced_schemas(&mut v3);
 
     let json = serde_json::to_string_pretty(&v3).context("failed to serialize merged spec")?;
     if let Some(parent) = out_path.parent() {
@@ -101,7 +105,7 @@ pub(crate) fn refresh(
 // v3: dereference (spans multiple files) and flatten into components.schemas
 // ---------------------------------------------------------------------------
 
-/// Loads and fully dereferences the v3 spec via the catalog's own
+/// Loads and fully dereferences a spec via the catalog's own
 /// dereferencer (it spans multiple files — external `$ref`s into sibling
 /// `models`/`enums`/`common-types` directories, unlike the old vendored,
 /// pre-bundled `swagger_domains.v3.yaml` this replaced), then flattens the
@@ -110,9 +114,9 @@ pub(crate) fn refresh(
 /// shape `merge` and progenitor expect. Any other `components.*` sections
 /// the spec already declares (parameters, responses, ...) are left as-is;
 /// `should_lift_to_defs` only ever lifts `schemas`/`definitions` refs.
-fn load_v3(spec_path: &Path, common_types: Option<&Path>) -> Result<Value> {
+pub(crate) fn load_dereferenced(spec_path: &Path, common_types: Option<&Path>) -> Result<Value> {
     let (mut dereffed, defs) = crate::dereference::load_and_dereference(spec_path, common_types)
-        .with_context(|| format!("failed to dereference v3 spec {}", spec_path.display()))?;
+        .with_context(|| format!("failed to dereference spec {}", spec_path.display()))?;
 
     let schemas = dereffed
         .as_object_mut()
@@ -430,7 +434,7 @@ fn filter_2xx_responses(op: &mut Value) {
 
 /// Applies [`filter_2xx_responses`] to every HTTP-method operation under each
 /// path item.
-fn only_2xx_paths(paths: &mut Value) {
+pub(crate) fn only_2xx_paths(paths: &mut Value) {
     const METHODS: &[&str] = &["get", "post", "put", "patch", "delete"];
     let Some(paths) = paths.as_object_mut() else {
         return;
@@ -450,7 +454,7 @@ fn only_2xx_paths(paths: &mut Value) {
 /// Drops `required` and marks array properties nullable so a present-but-null
 /// value deserializes to `None` rather than erroring. `nullable_key` is
 /// `"x-nullable"` for the Swagger 2.0 side or `"nullable"` for OAS3.
-fn relax(defn: &mut Value, nullable_key: &str) {
+pub(crate) fn relax(defn: &mut Value, nullable_key: &str) {
     let Some(map) = defn.as_object_mut() else {
         return;
     };

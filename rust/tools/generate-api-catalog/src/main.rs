@@ -1,5 +1,6 @@
 mod app_registry_spec;
 mod dereference;
+mod domain_connect_spec;
 mod domains_spec;
 mod email_spec;
 mod github;
@@ -92,8 +93,18 @@ fn main() -> Result<()> {
     let common_types: Option<&Path> = if ct_dir.exists() { Some(&ct_dir) } else { None };
 
     if let Some(domains_source) = sources.iter().find(|s| s.domain == "domains") {
+        // The Domain Connect Templates operations share the Domains API host
+        // and its generated client, so the client spec needs both sources.
+        let domain_connect_source = sources
+            .iter()
+            .find(|s| s.domain == "domain-connect")
+            .context(
+                "the domains-client codegen spec also needs the 'domain-connect' source; \
+                 include its repository in API_CATALOG_REPOS",
+            )?;
         domains_spec::refresh(
             &domains_source.spec_file,
+            &domain_connect_source.spec_file,
             common_types,
             &domains_spec::domains_client_oas3_path(),
         )
