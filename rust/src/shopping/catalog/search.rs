@@ -2,10 +2,12 @@ use cli_engine::{
     CommandResult, CommandSpec, NextAction, NextActionParam, Result, RuntimeCommandSpec, Tier,
 };
 use shopping_client::types::{
-    CatalogSearchSearchRequest, CatalogSearchSearchResponse, SearchCatalogResponse, SearchRequest,
-    Variant,
+    CatalogSearchSearchRequest, CatalogSearchSearchResponse,
+    DomainDiscoverySearchRequestSchemaDomains, DomainDiscoverySearchRequestSchemaDomainsItem,
+    Product, SearchCatalogResponse, SearchRequest, Variant,
 };
 
+use crate::domain::common::validate_domain_name;
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 use crate::shopping::client::{ClientError, decode};
@@ -14,7 +16,10 @@ use crate::shopping::common::{
 };
 use crate::shopping::currency::CurrencyArgs;
 use crate::shopping::human::{CATALOG_SEARCH_VIEW_ID, catalog_search_response};
+use crate::shopping::line_items::DOMAIN_CATEGORY;
 use crate::shopping::{SHOPPING_CATALOG_SCOPES, command_for_env};
+
+const MAX_DOMAINS: usize = 100;
 
 output_schema!(CatalogSearchOutput {
     "products": "[]object";
@@ -31,6 +36,10 @@ struct Args {
     /// Product category to include. Run `shopping catalog category` to list supported values. Repeat to include multiple categories.
     #[arg(long, value_name = "CATEGORY")]
     category: Vec<String>,
+
+    /// Domain name to check for availability and price, for example example.com. Repeat to check up to 100 names.
+    #[arg(long, value_name = "DOMAIN")]
+    domain: Vec<String>,
 
     /// Opaque cursor from the preceding catalog-search response.
     #[arg(long, value_name = "CURSOR")]
@@ -49,7 +58,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
         CommandSpec::from_args::<Args>("search", "Search the Shopping catalog")
             .with_long(
                 "Explore GoDaddy products. Omit filters to browse the catalog. Use --query, repeatable \
-                 --category, --cursor, --limit, and --currency to refine the results. Use \
+                 --category, --cursor, --limit, and --currency to refine the results. Use repeatable \
+                 --domain to check the availability and price of specific domain names. Use \
                  --output json for the complete API response.",
             )
             .with_system("shopping")
@@ -65,6 +75,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 &args.category,
                 args.cursor.as_deref(),
             )?;
+            merge_domains(&mut request, &args.domain)?;
             let currency = args.currency.resolve(&ctx)?;
             merge_context_currency(&mut request.context, currency.as_deref());
             merge_pagination(&mut request, args.limit);
@@ -133,6 +144,38 @@ fn merge_search_args(
     Ok(())
 }
 
+fn merge_domains(request: &mut CatalogSearchSearchRequest, domains: &[String]) -> Result<()> {
+    if domains.is_empty() {
+        return Ok(());
+    }
+    if domains.len() > MAX_DOMAINS {
+        return Err(crate::error::GddyError::validation(format!(
+            "--domain can be repeated at most {MAX_DOMAINS} times"
+        ))
+        .into_cli_error());
+    }
+    let names = domains
+        .iter()
+        .map(|domain| {
+            let name = validate_domain_name(domain).map_err(|error| {
+                crate::error::GddyError::validation(format!("invalid --domain {domain:?}: {error}"))
+                    .with_fix("Use a full domain name such as example.com.")
+                    .into_cli_error()
+            })?;
+            DomainDiscoverySearchRequestSchemaDomainsItem::try_from(name.as_str()).map_err(
+                |error| {
+                    crate::error::GddyError::validation(format!(
+                        "invalid --domain {domain:?}: {error}"
+                    ))
+                    .into_cli_error()
+                },
+            )
+        })
+        .collect::<Result<Vec<_>>>()?;
+    request.domains = Some(DomainDiscoverySearchRequestSchemaDomains(names));
+    Ok(())
+}
+
 fn merge_pagination(request: &mut CatalogSearchSearchRequest, limit: Option<u8>) {
     let Some(limit) = limit else {
         return;
@@ -166,6 +209,9 @@ fn product_actions(
     let Some(product_id) = product.id.as_deref() else {
         return Vec::new();
     };
+    if is_domain(product) {
+        return domain_actions(product, env);
+    }
     let currency = request
         .context
         .as_ref()
@@ -238,6 +284,13 @@ fn search_action(
             params.push((name, category.clone()));
         }
     }
+    if let Some(domains) = request.domains.as_ref() {
+        for (index, domain) in domains.0.iter().enumerate() {
+            let name = format!("domain-{index}");
+            command.push_str(&format!(" --domain <{name}>"));
+            params.push((name, domain.to_string()));
+        }
+    }
     append_search_param(
         &mut command,
         &mut params,
@@ -277,6 +330,43 @@ fn append_search_param(
     }
 }
 
+/// The first available domain goes to checkout. Without one (for example, a
+/// category browse that returned only the domain-registration overview), the
+/// caller picks a name to check.
+fn domain_actions(product: &Product, env: &str) -> Vec<NextAction> {
+    let available = product
+        .variants
+        .iter()
+        .filter(|variant| is_available(variant))
+        .find_map(|variant| Some((variant.id.as_deref()?, variant)));
+    match available {
+        Some((domain, variant)) => {
+            let currency = variant
+                .price
+                .as_ref()
+                .and_then(|price| price.currency.as_deref())
+                .unwrap_or("USD");
+            vec![super::checkout_create_domain_action(env, domain, currency)]
+        }
+        None => vec![
+            next_action(
+                command_for_env(env, "catalog search --domain <domain>"),
+                "Check the availability and price of a domain name",
+            )
+            .with_param("domain", NextActionParam::required()),
+        ],
+    }
+}
+
+fn is_domain(product: &Product) -> bool {
+    product.categories.iter().any(|category| {
+        category
+            .value
+            .as_deref()
+            .is_some_and(|value| value.eq_ignore_ascii_case(DOMAIN_CATEGORY))
+    })
+}
+
 fn is_available(variant: &Variant) -> bool {
     variant
         .availability
@@ -293,8 +383,8 @@ mod tests {
     };
 
     use super::{
-        CatalogSearchSearchRequest, CatalogSearchSearchResponse, Variant, merge_pagination,
-        merge_search_args, next_actions,
+        CatalogSearchSearchRequest, CatalogSearchSearchResponse, Variant, merge_domains,
+        merge_pagination, merge_search_args, next_actions,
     };
     use crate::shopping::common::{currency_code, merge_context_currency};
     use crate::shopping::human::catalog_search_response;
@@ -470,6 +560,115 @@ mod tests {
         );
         assert_eq!(actions[1].params["currency"].value.as_deref(), Some("USD"));
         assert_eq!(actions[2].params["currency"].value.as_deref(), Some("jpy"));
+    }
+
+    fn domain_response(id: &str, available: bool) -> CatalogSearchSearchResponse {
+        CatalogSearchSearchResponse {
+            products: vec![Product {
+                id: Some(id.to_owned()),
+                categories: vec![Category {
+                    value: Some("domain".to_owned()),
+                    ..Default::default()
+                }],
+                variants: vec![Variant {
+                    id: Some(id.to_owned()),
+                    availability: Some(VariantAvailability {
+                        available: Some(available),
+                        ..Default::default()
+                    }),
+                    price: Some(Price {
+                        amount: Some(Amount(1299)),
+                        currency: Some("USD".to_owned()),
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn sends_domains_in_ascii_form() {
+        let mut request = CatalogSearchSearchRequest::default();
+        merge_domains(
+            &mut request,
+            &["Example.com".to_owned(), "bücher.de".to_owned()],
+        )
+        .expect("valid domains");
+        assert_eq!(
+            serde_json::to_value(&request).expect("serialize")["domains"],
+            serde_json::json!(["example.com", "xn--bcher-kva.de"])
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_or_too_many_domains() {
+        let mut request = CatalogSearchSearchRequest::default();
+        assert!(merge_domains(&mut request, &["not a domain".to_owned()]).is_err());
+        let many = (0..=100).map(|i| format!("d{i}.com")).collect::<Vec<_>>();
+        assert!(merge_domains(&mut request, &many).is_err());
+        assert!(request.domains.is_none());
+    }
+
+    #[test]
+    fn available_domain_suggests_a_domain_checkout() {
+        let mut request = CatalogSearchSearchRequest::default();
+        let actions = next_actions(
+            &domain_response("example.com", true),
+            &mut request,
+            None,
+            "test",
+        )
+        .expect("actions");
+        assert_eq!(actions.len(), 1);
+        assert_eq!(
+            actions[0].command,
+            "gddy shopping checkout create --domain <domain> --currency <currency>"
+        );
+        assert_eq!(
+            actions[0].params["domain"].value.as_deref(),
+            Some("example.com")
+        );
+    }
+
+    #[test]
+    fn unavailable_domain_asks_for_a_name_to_check() {
+        let mut request = CatalogSearchSearchRequest::default();
+        let actions = next_actions(
+            &domain_response("com.godaddy.shopping.domain_search", false),
+            &mut request,
+            None,
+            "test",
+        )
+        .expect("actions");
+        assert_eq!(actions.len(), 1);
+        assert_eq!(
+            actions[0].command,
+            "gddy shopping catalog search --domain <domain>"
+        );
+        assert!(actions[0].params["domain"].required);
+    }
+
+    #[test]
+    fn next_page_keeps_the_searched_domains() {
+        let mut response = domain_response("example.com", true);
+        response.pagination = Some(PaginationResponse {
+            cursor: Some("next".to_owned()),
+            has_next_page: Some(true),
+            total_count: None,
+        });
+        let mut request = CatalogSearchSearchRequest::default();
+        merge_domains(&mut request, &["example.com".to_owned()]).expect("valid domain");
+        let actions = next_actions(&response, &mut request, None, "test").expect("actions");
+        assert_eq!(
+            actions[1].command,
+            "gddy shopping catalog search --domain <domain-0> --cursor <cursor>"
+        );
+        assert_eq!(
+            actions[1].params["domain-0"].value.as_deref(),
+            Some("example.com")
+        );
     }
 
     #[test]
