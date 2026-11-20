@@ -45,6 +45,7 @@ pub(crate) fn refresh(
 
     let stores = load_and_lift(stores_spec_path, common_types)
         .with_context(|| format!("failed to dereference {}", stores_spec_path.display()))?;
+    ensure_refs_resolved(&stores)?;
 
     let json = serde_json::to_string_pretty(&stores).context("failed to serialize spec")?;
     if let Some(parent) = out_path.parent() {
@@ -54,6 +55,20 @@ pub(crate) fn refresh(
     std::fs::write(out_path, json)
         .with_context(|| format!("failed to write {}", out_path.display()))?;
     eprintln!("   wrote {}", out_path.display());
+    Ok(())
+}
+
+/// Fails if any `$ref` still points outside the document. The dereferencer
+/// deliberately keeps a ref it cannot resolve instead of erroring, so without
+/// this a moved or missing schema file would overwrite the last usable vendored
+/// spec with one `progenitor` cannot resolve, before the catalog validation in
+/// `main` has a chance to fail the run.
+fn ensure_refs_resolved(spec: &Value) -> Result<()> {
+    let unresolved = crate::dereference::collect_unresolved_refs(spec);
+    anyhow::ensure!(
+        unresolved.is_empty(),
+        "Stores spec has unresolved external $refs: {unresolved:?}"
+    );
     Ok(())
 }
 
@@ -402,6 +417,33 @@ mod tests {
                 "{name} is response-only: {strict:?}"
             );
         }
+    }
+
+    #[test]
+    fn an_unresolved_external_ref_stops_the_refresh() {
+        let unresolved = json!({
+            "paths": { "/stores": { "get": { "responses": { "200": {
+                "content": { "application/json": {
+                    "schema": { "$ref": "../common-types/store.yaml#/Store" }
+                } }
+            } } } } }
+        });
+        let error = ensure_refs_resolved(&unresolved).expect_err("an external ref is unresolved");
+        assert!(
+            error
+                .to_string()
+                .contains("../common-types/store.yaml#/Store"),
+            "the error should name the ref: {error}"
+        );
+
+        let resolved = json!({
+            "paths": { "/stores": { "get": { "responses": { "200": {
+                "content": { "application/json": {
+                    "schema": { "$ref": "#/components/schemas/Store" }
+                } }
+            } } } } }
+        });
+        assert!(ensure_refs_resolved(&resolved).is_ok());
     }
 
     #[test]
