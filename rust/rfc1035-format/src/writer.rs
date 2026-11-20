@@ -102,7 +102,12 @@ pub(crate) fn quote(bytes: &[u8]) -> String {
                         out.push(ch);
                     }
                     c if c.is_control() => {
-                        let _ = write!(out, "\\{:03}", u32::from(c));
+                        // `\DDD` is one byte, so a character that takes several
+                        // bytes in UTF-8 (U+0085 is `C2 85`) needs one escape each.
+                        let mut buf = [0u8; 4];
+                        for byte in c.encode_utf8(&mut buf).bytes() {
+                            let _ = write!(out, "\\{byte:03}");
+                        }
                     }
                     c => out.push(c),
                 }
