@@ -5,24 +5,16 @@ use crate::hosting::common::{AppIdArgs, client_err_retry_on_503, is_mhwp_app_id,
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_APPLICATION_DELETE as APP_DELETE;
 
-fn delete_long(mhwp: bool) -> String {
-    let mut long =
-        "Permanently delete a hosting application and all its associated data.".to_owned();
-    if mhwp {
-        long.push_str(
-            "\n\nA WordPress (MHWP) site is deleted along with its content. The command \
-             returns once deletion has started. `hosting app get` then shows status \
-             DELETING until the site is gone, and after that reports it was not found. \
-             There is no operation to poll.",
-        );
-    }
-    long
-}
+const DELETE_LONG: &str = "Permanently delete a hosting application and all its associated data.\
+     \n\nA WordPress (MHWP) site is deleted along with its content. The command \
+     returns once deletion has started. `hosting app get` then shows status \
+     DELETING until the site is gone, and after that reports it was not found. \
+     There is no operation to poll.";
 
-pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
+pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppIdArgs, _, _, _>(
         CommandSpec::from_args::<AppIdArgs>("delete", "Delete a hosting application")
-            .with_long(delete_long(mhwp))
+            .with_long(DELETE_LONG)
             .with_system("hosting")
             .with_tier(Tier::Destructive)
             .mutates(true)
@@ -93,13 +85,9 @@ mod tests {
 
     #[tokio::test]
     async fn delete_help_says_wordpress_teardown_returns_before_the_site_is_gone() {
-        let on = run_hosting(&cli(true), &["app", "delete", "--help"]).await;
-        assert!(on.contains("deletion has started"), "{on}");
-        assert!(on.contains("DELETING"), "{on}");
-        assert!(on.contains("no operation to poll"), "{on}");
-
-        let off = run_hosting(&cli(false), &["app", "delete", "--help"]).await;
-        assert!(!off.contains("MHWP"), "{off}");
-        assert!(!off.contains("WordPress"), "{off}");
+        let help = run_hosting(&cli(), &["app", "delete", "--help"]).await;
+        assert!(help.contains("deletion has started"), "{help}");
+        assert!(help.contains("DELETING"), "{help}");
+        assert!(help.contains("no operation to poll"), "{help}");
     }
 }

@@ -24,27 +24,18 @@ struct AppUpdateArgs {
     root_path: Option<String>,
 }
 
-fn update_long(mhwp: bool) -> String {
-    let mut long = "Update application metadata. At least one of --name or --root-path \
-         is required. Changes take effect immediately and do not trigger a \
-         new deployment."
-        .to_owned();
-    if mhwp {
-        long.push_str(
-            "\n\nA WordPress (MHWP) site can only be renamed. --root-path does not apply. \
-             If you include it, nothing changes, not even the name. --name is the label \
-             in the CLI and in Airo App Builder. It does not become the WordPress site \
-             title. The name is 1–200 characters and cannot contain '<', '>' or control \
-             characters such as tabs and line breaks.",
-        );
-    }
-    long
-}
+const UPDATE_LONG: &str = "Update application metadata. At least one of --name or --root-path \
+     is required. Changes take effect immediately and do not trigger a \
+     new deployment.\n\nA WordPress (MHWP) site can only be renamed. --root-path does not apply. \
+     If you include it, nothing changes, not even the name. --name is the label \
+     in the CLI and in Airo App Builder. It does not become the WordPress site \
+     title. The name is 1–200 characters and cannot contain '<', '>' or control \
+     characters such as tabs and line breaks.";
 
-pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
+pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppUpdateArgs, _, _, _>(
         CommandSpec::from_args::<AppUpdateArgs>("update", "Update a hosting application")
-            .with_long(update_long(mhwp))
+            .with_long(UPDATE_LONG)
             .with_system("hosting")
             .with_tier(Tier::Mutate)
             .mutates(true)
@@ -144,17 +135,13 @@ mod tests {
 
     #[tokio::test]
     async fn update_help_says_a_wordpress_site_only_renames() {
-        let on = run_hosting(&cli(true), &["app", "update", "--help"]).await;
-        assert!(on.contains("can only be renamed"), "{on}");
-        assert!(on.contains("such as tabs and line breaks"), "{on}");
+        let help = run_hosting(&cli(), &["app", "update", "--help"]).await;
+        assert!(help.contains("can only be renamed"), "{help}");
+        assert!(help.contains("such as tabs and line breaks"), "{help}");
         assert!(
-            on.contains("does not become the WordPress site title"),
-            "{on}"
+            help.contains("does not become the WordPress site title"),
+            "{help}"
         );
-
-        let off = run_hosting(&cli(false), &["app", "update", "--help"]).await;
-        assert!(!off.contains("MHWP"), "{off}");
-        assert!(!off.contains("WordPress"), "{off}");
     }
 
     fn fix_for(status: u16, issue: &str, mhwp: bool) -> Option<String> {

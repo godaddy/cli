@@ -12,43 +12,42 @@ mod update;
 
 use cli_engine::{GroupSpec, RuntimeGroupSpec};
 
-use crate::hosting::common::supported_app_types;
+use crate::hosting::common::SUPPORTED_APP_TYPES;
 
-pub(super) fn group(mhwp: bool) -> RuntimeGroupSpec {
-    let mut long = format!(
-        "Work with hosting applications. Use --app-type on list and create to \
-         specify the application type (currently {}).",
-        supported_app_types(mhwp)
-    );
-    if mhwp {
-        long.push_str(
-            " `publish` takes any app live; `unpublish` takes a WordPress (MHWP) site back \
-             to a placeholder page. `update` renames a WordPress site; `--root-path` does \
-             not apply to it.",
-        );
-    }
-    let group = RuntimeGroupSpec::new(
+pub(super) fn group() -> RuntimeGroupSpec {
+    RuntimeGroupSpec::new(
         GroupSpec::new(
             "app",
             "Create, inspect, update, and delete hosting applications",
         )
         .with_alias("apps")
-        .with_long(long),
+        .with_long(format!(
+            "Work with hosting applications. Use --app-type on list and create to \
+             specify the application type (currently {SUPPORTED_APP_TYPES}). \
+             `publish` takes any app live; `unpublish` takes a WordPress (MHWP) site back \
+             to a placeholder page. `update` renames a WordPress site; `--root-path` does \
+             not apply to it."
+        )),
     )
-    .with_command(list::command(mhwp))
+    .with_command(list::command())
     .with_command(get::command())
-    .with_command(create::command(mhwp))
-    .with_command(update::command(mhwp))
-    .with_command(delete::command(mhwp))
+    .with_command(create::command())
+    .with_command(update::command())
+    .with_command(delete::command())
     .with_command(status::command())
-    .with_command(restart::command());
-    if mhwp {
-        // Both name WordPress, so they ship with its flag; Node.js keeps
-        // `deployment publish` either way.
-        group
-            .with_command(publish::command())
-            .with_command(unpublish::command())
-    } else {
-        group
+    .with_command(restart::command())
+    .with_command(publish::command())
+    .with_command(unpublish::command())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::hosting::test_support::{cli, run_hosting};
+
+    #[tokio::test]
+    async fn app_help_names_both_app_types_and_the_wordpress_limits() {
+        let help = run_hosting(&cli(), &["app", "--help"]).await;
+        assert!(help.contains("currently NODEJS, MHWP"), "{help}");
+        assert!(help.contains("renames a WordPress site"), "{help}");
     }
 }

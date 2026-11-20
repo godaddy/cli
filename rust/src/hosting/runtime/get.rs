@@ -4,25 +4,17 @@ use crate::hosting::common::{AppIdArgs, HostingRuntime, client_err, make_client}
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_APPLICATION_READ as APP_READ;
 
-fn get_long(mhwp: bool) -> String {
-    let mut long = "Get the runtime name and version for a hosting application. \
-         The API returns an array of runtime/version objects \
-         (e.g. runtime=NODEJS, version=22.11.0)."
-        .to_owned();
-    if mhwp {
-        long.push_str(
-            " A WordPress (MHWP) site reports PHP and WORDPRESS. \
-             An empty list is not an error. It means no version is known yet. \
-             An older site may list WORDPRESS only.",
-        );
-    }
-    long
-}
+const GET_LONG: &str = "Get the runtime name and version for a hosting application. \
+     The API returns an array of runtime/version objects \
+     (e.g. runtime=NODEJS, version=22.11.0). \
+     A WordPress (MHWP) site reports PHP and WORDPRESS. \
+     An empty list is not an error. It means no version is known yet. \
+     An older site may list WORDPRESS only.";
 
-pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
+pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppIdArgs, _, _, _>(
         CommandSpec::from_args::<AppIdArgs>("get", "Get application runtime configuration")
-            .with_long(get_long(mhwp))
+            .with_long(GET_LONG)
             .with_system("hosting")
             .with_tier(Tier::Read)
             .with_scopes(&[APP_READ])
@@ -56,13 +48,9 @@ mod tests {
 
     #[tokio::test]
     async fn runtime_help_names_php_and_wordpress_and_an_empty_list() {
-        let on = run(&cli(true), &["get", "--help"]).await;
-        assert!(on.contains("PHP"), "{on}");
-        assert!(on.contains("WORDPRESS"), "{on}");
-        assert!(on.contains("empty list"), "{on}");
-
-        let off = run(&cli(false), &["get", "--help"]).await;
-        assert!(!off.contains("MHWP"), "{off}");
-        assert!(!off.contains("WORDPRESS"), "{off}");
+        let help = run(&cli(), &["get", "--help"]).await;
+        assert!(help.contains("PHP"), "{help}");
+        assert!(help.contains("WORDPRESS"), "{help}");
+        assert!(help.contains("empty list"), "{help}");
     }
 }
