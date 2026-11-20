@@ -11,6 +11,10 @@ pub(crate) const BUILT_IN_TYPES: &[&str] = &[
     "A", "AAAA", "NS", "CNAME", "MX", "TXT", "SRV", "CAA", "TLSA", "HTTPS", "SVCB", "SOA",
 ];
 
+/// The classes of a master file. A word that is one of these is read as the class of
+/// a record, never as its type.
+pub(crate) const CLASS_NAMES: &[&str] = &["IN", "CH", "HS", "CS"];
+
 /// Input larger than this is refused unless raised with
 /// [`ParseOptions::with_max_input_bytes`].
 const DEFAULT_MAX_INPUT_BYTES: usize = 16 * 1024 * 1024;
@@ -87,15 +91,27 @@ impl ParseOptions {
 
     pub(crate) fn validate(&self) -> Result<(), ParseError> {
         for name in self.custom_types.keys() {
-            let well_formed = !name.is_empty()
-                && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
-                && !name.bytes().all(|b| b.is_ascii_digit());
+            // A word that starts with a digit is read as a time, so a type name
+            // may not start with one.
+            let well_formed = name.bytes().next().is_some_and(|b| !b.is_ascii_digit())
+                && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
             if !well_formed {
                 return Err(ParseError::new(
                     ErrorKind::InvalidValue,
                     0,
                     0,
-                    format!("`{name}` is not a valid record type name"),
+                    format!(
+                        "`{name}` is not a valid record type name: use letters, digits and \
+                         hyphens, starting with a letter"
+                    ),
+                ));
+            }
+            if CLASS_NAMES.contains(&name.as_str()) {
+                return Err(ParseError::new(
+                    ErrorKind::InvalidValue,
+                    0,
+                    0,
+                    format!("`{name}` is a record class, so it cannot be used as a record type"),
                 ));
             }
             if BUILT_IN_TYPES.contains(&name.as_str()) {

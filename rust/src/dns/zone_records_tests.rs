@@ -228,6 +228,27 @@ fn json_input_that_is_not_a_list_of_records_says_so() {
 }
 
 #[test]
+fn a_json_record_with_no_data_is_refused_but_an_explicit_empty_value_is_not() {
+    let errors = from_json_text(r#"[{"type":"TXT","name":"@","ttl":600}]"#).expect_err("no data");
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors[0].starts_with("record 1: "), "{errors:?}");
+    assert!(errors[0].contains("no `data`"), "{errors:?}");
+
+    // `data: ""` is a value someone wrote, so it stays distinct from a missing one.
+    let imported = from_json_text(r#"[{"type":"TXT","name":"@","ttl":600,"data":""}]"#)
+        .expect("an explicit empty TXT value reads");
+    assert_eq!(imported.desired[0].value, "");
+
+    // A TLSA record may carry its value as `certificateData` alone.
+    let imported = from_json_text(
+        r#"[{"type":"TLSA","name":"www","ttl":600,"port":443,"protocol":"_tcp",
+             "usage":3,"selector":1,"matchingType":1,"certificateData":"d2abde24"}]"#,
+    )
+    .expect("reads");
+    assert_eq!(imported.desired[0].value, "d2abde24");
+}
+
+#[test]
 fn json_records_keep_their_fields_and_skip_ns_and_soa() {
     let imported = from_json_text(
         r#"[
