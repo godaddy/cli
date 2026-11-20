@@ -14,7 +14,7 @@ The following terms and concepts are relevant to deploying a Node.js application
 
 **Environment**: each app has a PREVIEW (staging) and PUBLISH (production) environment. The CLI calls an environment a `variant`. Uploads land on PREVIEW and then can be promoted to PUBLISH once accepted.
 
-**Subscription**: a hosting plan you already bought (resources and billing). Attach the app to one before the first publish. Don't have one? Go to the "Buy a plan" section later in this guide.
+**Subscription**: a hosting plan you pay for. A subscription can host one or more apps. Attach the app to one before the first publish. If you don't have a plan, go to the "Buy a plan" section in this guide.
 
 **Slot**: available space within a subscription for an attached app. Each app attached to a subscription takes up one slot, and a given subscription can have one or more slots.
 
