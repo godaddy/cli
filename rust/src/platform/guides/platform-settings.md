@@ -41,7 +41,7 @@ To add a settings form to an application, add the placement, add the form, relea
 
 ### Placement options
 
-These options need a note:
+The following options require a note:
 
 - `entryPath` is relative to the application's registered `proxy_url`, same as action URLs.
 - `--capability` defaults to `read` and `write` server-side if omitted.
