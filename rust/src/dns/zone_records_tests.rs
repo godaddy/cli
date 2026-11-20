@@ -64,6 +64,19 @@ fn a_name_outside_the_domain_is_rejected_with_a_hint() {
 }
 
 #[test]
+fn a_unicode_owner_name_is_read_as_unicode_so_it_can_become_punycode() {
+    let d = one("café 600 A 192.0.2.1\n");
+    assert_eq!(
+        d.name, "café",
+        "not the escaped bytes of its UTF-8 encoding"
+    );
+
+    // A name with an ASCII-only form is unchanged by this.
+    assert_eq!(one("www 600 A 192.0.2.1\n").name, "www");
+    assert_eq!(one("@ 600 A 192.0.2.1\n").name, "@");
+}
+
+#[test]
 fn srv_owner_splits_into_service_protocol_and_name() {
     let d = one("_sip._tcp.chat 600 SRV 10 60 5060 sip.example.net.\n");
     assert_eq!((d.record_type.as_str(), d.name.as_str()), ("SRV", "chat"));

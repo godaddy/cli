@@ -3,6 +3,7 @@
 //! (no I/O), so the decisions are unit-testable.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 use domains_client::types;
 
@@ -65,6 +66,20 @@ fn check(d: &mut Desired) -> Result<(), String> {
             WRITABLE_TYPES.join(", ")
         ));
     }
+    // A zone file's records are read as addresses already; JSON's are plain text,
+    // so check both here, before a plan can delete anything on their account.
+    match record_type.as_str() {
+        "A" if d.value.parse::<Ipv4Addr>().is_err() => {
+            return Err(format!("the value `{}` is not an IPv4 address", d.value));
+        }
+        "AAAA" if d.value.parse::<Ipv6Addr>().is_err() => {
+            return Err(format!("the value `{}` is not an IPv6 address", d.value));
+        }
+        _ => {}
+    }
+    // `dns list` shows a name in Unicode and the API holds it as punycode, so
+    // compare in the form the API uses, as a name typed on the command line is.
+    d.name = crate::idn::parse_name_arg(&d.name)?;
     let ttl = d.ttl();
     if !(MIN_TTL..=MAX_TTL).contains(&ttl) {
         return Err(format!(
@@ -75,7 +90,9 @@ fn check(d: &mut Desired) -> Result<(), String> {
     let o = &d.opts;
     in_range("priority", o.priority, 0, 65_535)?;
     in_range("weight", o.weight, 0, 65_535)?;
-    in_range("port", o.port, 1, 65_535)?;
+    // Port 0 is valid for an SRV record (RFC 2782: with a target of `.`, the service
+    // is unavailable). TLSA keeps the 1 to 65535 range `dns add` gives its `--port`.
+    in_range("port", o.port, i64::from(record_type != "SRV"), 65_535)?;
     in_range("flag", o.flag, 0, 255)?;
     in_range("usage", o.usage, 0, 3)?;
     in_range("selector", o.selector, 0, 1)?;
@@ -218,10 +235,12 @@ pub(super) fn build_plan(
         };
         let group = &mut groups[at];
         let record = d.record();
+        // The TTL counts: the same record twice with different TTLs is a conflict to
+        // report below, not a repeat to drop.
         if let Some(first) = group
             .desired
             .iter()
-            .find(|earlier| same_content(&earlier.record(), &record))
+            .find(|earlier| earlier.ttl() == d.ttl() && same_content(&earlier.record(), &record))
         {
             warnings.push(format!(
                 "{}: ignored, it repeats {} ({})",

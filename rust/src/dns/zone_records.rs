@@ -94,6 +94,27 @@ fn parse_options(origin: Name) -> ParseOptions {
         .with_default_ttl(u32::try_from(DEFAULT_TTL).unwrap_or(3600))
 }
 
+/// `name` relative to `origin`, as the text a `--name` flag would take: `@`, `www`,
+/// `_sip._tcp.chat`. A name with non-ASCII labels comes back in Unicode, not as the
+/// `\DDD` byte escapes the crate writes, so that it can be converted to punycode
+/// like any other name. `None` when the name is not at or below `origin`.
+fn relative_name(name: &Name, origin: &Name) -> Option<String> {
+    let relative = name.relative_to(origin)?;
+    if name.labels().iter().all(|label| label.is_ascii()) {
+        return Some(relative);
+    }
+    let keep = name.labels().len() - origin.labels().len();
+    let labels: Vec<String> = name.labels()[..keep]
+        .iter()
+        .map(|label| String::from_utf8_lossy(label).into_owned())
+        .collect();
+    Some(if labels.is_empty() {
+        "@".to_owned()
+    } else {
+        labels.join(".")
+    })
+}
+
 /// Read a zone file for `domain`. Every problem found is returned, not only the
 /// first, so one run shows what to fix.
 pub(super) fn from_zone_text(text: &str, domain: &str) -> Result<Imported, Vec<String>> {
@@ -104,7 +125,7 @@ pub(super) fn from_zone_text(text: &str, domain: &str) -> Result<Imported, Vec<S
     let mut errors = Vec::new();
     for record in &zone.records {
         let at = format!("line {}", record.line);
-        let Some(relative) = record.name.relative_to(&origin) else {
+        let Some(relative) = relative_name(&record.name, &origin) else {
             errors.push(format!(
                 "{at}: {} is not in {domain}. To import a zone file written for another \
                  domain, change its `$ORIGIN` line to `$ORIGIN {domain}.`",

@@ -403,6 +403,24 @@ async fn skipped_ns_and_soa_become_warnings_with_the_delegations_named() {
 }
 
 #[test]
+fn a_unicode_name_in_a_zone_file_imports_as_the_punycode_record_it_already_is() {
+    // The zone file says `café`; the API holds `xn--caf-dma`. They are one record.
+    let imported = zone("café 600 A 192.0.2.1\n");
+    let existing = [api_record("r1", "A", "xn--caf-dma", "192.0.2.1", 600)];
+    let mut desired = imported.desired;
+    assert!(validate(&mut desired).is_empty());
+    assert_eq!(desired[0].name, "xn--caf-dma");
+    let plan = build_plan("example.com", desired, &existing, true).expect("plans");
+    assert!(
+        plan.groups
+            .iter()
+            .flat_map(|g| &g.actions)
+            .all(|a| matches!(a, SetAction::Unchanged { .. })),
+        "an unchanged record is left alone, even with --replace"
+    );
+}
+
+#[test]
 fn input_format_is_worked_out_from_the_content() {
     let json = r#"  [{"type":"A","name":"www","data":"192.0.2.1","ttl":600}]"#;
     let parsed = parse_input(json, InputFormat::Auto, "example.com").expect("json");

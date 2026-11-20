@@ -83,6 +83,88 @@ fn ttl_outside_the_range_is_rejected_with_the_line() {
 }
 
 #[test]
+fn a_and_aaaa_values_must_be_addresses_of_the_right_kind() {
+    for (ty, value) in [
+        ("A", "not-an-ip"),
+        ("A", "Parked"),
+        ("A", ""),
+        ("A", "2001:db8::1"),
+        ("AAAA", "192.0.2.1"),
+        ("AAAA", "nope"),
+    ] {
+        let problems = validate(&mut [want(4, ty, "www", value, 600)]);
+        assert_eq!(problems.len(), 1, "{ty} {value:?}: {problems:?}");
+        assert!(
+            problems[0].starts_with("line 4: the value "),
+            "{problems:?}"
+        );
+    }
+    for (ty, value) in [("A", "192.0.2.1"), ("AAAA", "2001:db8::1")] {
+        assert!(validate(&mut [want(1, ty, "www", value, 600)]).is_empty());
+    }
+}
+
+#[test]
+fn a_bad_address_stops_the_import_before_replace_could_delete_anything() {
+    // Validation runs on every record before a plan is built, so with --replace a
+    // record the API would refuse cannot take unrelated existing records with it.
+    let mut input = vec![want(1, "A", "www", "not-an-ip", 600)];
+    assert_eq!(validate(&mut input).len(), 1);
+}
+
+#[test]
+fn a_unicode_name_is_compared_in_the_punycode_form_the_api_holds() {
+    let existing = [have("r1", "A", "xn--caf-dma", "192.0.2.1", 600)];
+    for replace in [false, true] {
+        let mut input = vec![want(1, "A", "café", "192.0.2.1", 600)];
+        assert!(validate(&mut input).is_empty());
+        assert_eq!(input[0].name, "xn--caf-dma");
+        let p = plan(input, &existing, replace);
+        assert_eq!(kinds(group(&p, "A", "xn--caf-dma")), ["unchanged"]);
+        assert!(
+            p.groups.iter().all(|g| !kinds(g).contains(&"delete")),
+            "replace={replace}: an unchanged listing must not delete its own record"
+        );
+    }
+}
+
+#[test]
+fn names_are_lower_cased_and_special_labels_are_left_alone() {
+    let mut input = [
+        want(1, "A", "WWW", "192.0.2.1", 600),
+        want(2, "TXT", "_dmarc", "v=DMARC1", 600),
+        want(3, "A", "@", "192.0.2.2", 600),
+        want(4, "A", "*", "192.0.2.3", 600),
+    ];
+    assert!(validate(&mut input).is_empty());
+    let names: Vec<&str> = input.iter().map(|d| d.name.as_str()).collect();
+    assert_eq!(names, ["www", "_dmarc", "@", "*"]);
+}
+
+#[test]
+fn srv_may_use_port_zero_but_tlsa_may_not() {
+    let mut srv = want(1, "SRV", "@", ".", 600);
+    srv.opts.priority = Some(0);
+    srv.opts.weight = Some(0);
+    srv.opts.port = Some(0);
+    srv.opts.service = Some("_sip".into());
+    srv.opts.protocol = Some("_tcp".into());
+    assert!(
+        validate(&mut [srv]).is_empty(),
+        "the unavailable-service form"
+    );
+
+    let mut tlsa = want(1, "TLSA", "www", "d2ab", 600);
+    tlsa.opts.port = Some(0);
+    tlsa.opts.protocol = Some("_tcp".into());
+    tlsa.opts.usage = Some(3);
+    tlsa.opts.selector = Some(1);
+    tlsa.opts.matching_type = Some(1);
+    let problems = validate(&mut [tlsa]);
+    assert!(problems[0].contains("port 0"), "{problems:?}");
+}
+
+#[test]
 fn types_that_cannot_be_written_are_rejected() {
     for ty in ["NS", "SOA", "PTR", "BOGUS"] {
         let problems = validate(&mut [want(2, ty, "@", "x", 600)]);
@@ -249,6 +331,22 @@ fn records_of_one_name_and_type_with_different_ttls_are_refused() {
     assert_eq!(errors.len(), 1);
     assert!(errors[0].contains("600, 7200"), "{errors:?}");
     assert!(errors[0].contains("line 3, line 4"), "{errors:?}");
+}
+
+#[test]
+fn the_same_record_twice_with_different_ttls_is_a_conflict_not_a_repeat() {
+    let errors = build_plan(
+        "example.com",
+        vec![
+            want(3, "A", "www", "192.0.2.1", 600),
+            want(4, "A", "www", "192.0.2.1", 7200),
+        ],
+        &[],
+        false,
+    )
+    .expect_err("the TTLs disagree");
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors[0].contains("600, 7200"), "{errors:?}");
 }
 
 #[test]

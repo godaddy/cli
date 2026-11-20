@@ -158,6 +158,25 @@ fn zone_without_an_origin_writes_absolute_names_and_no_directive() {
 }
 
 #[test]
+fn a_control_character_is_escaped_as_each_byte_of_its_utf8_encoding() {
+    // U+0085 is two bytes in UTF-8, so it takes two escapes; one escape for the
+    // code point would read back as a different, single byte.
+    assert_eq!(quote("a\u{85}b".as_bytes()), "\"a\\194\\133b\"");
+    for value in ["a\u{85}b", "\u{9f}", "x\u{80}\u{85}\u{9f}y"] {
+        let zone = Zone {
+            origin: None,
+            records: vec![Record {
+                name: "t.example.com.".parse().expect("name"),
+                ttl: 60,
+                line: 0,
+                data: RData::Txt(vec![value.as_bytes().to_vec()]),
+            }],
+        };
+        assert_round_trips(&zone);
+    }
+}
+
+#[test]
 fn quote_escapes_only_what_must_be() {
     assert_eq!(quote(b"a b"), "\"a b\"");
     assert_eq!(quote(b"a\"b\\c"), "\"a\\\"b\\\\c\"");
