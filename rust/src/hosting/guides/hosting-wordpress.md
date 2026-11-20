@@ -67,7 +67,7 @@ gddy hosting app delete --app-id <app-id>
 gddy hosting app get --app-id <app-id>
 ```
 
-Deletion removes the site and its content. It cannot be undone. The command returns once deletion has started. `hosting app get` shows status DELETING until the site is gone, and then reports it was not found. There is no operation to poll. If the service is temporarily unavailable, wait a few seconds and run the command again. To take the site offline but keep its content, run `hosting app unpublish` instead.
+Deletion removes the site and its content. It can't be undone. The command returns once deletion has started. `hosting app get` shows status DELETING until the site is gone, and then reports it wasn't found. There is no operation to poll. If the service is temporarily unavailable, wait a few seconds and run the command again. To take the site offline but keep its content, run `hosting app unpublish` instead.
 
 ## Read the PHP and WordPress versions
 
