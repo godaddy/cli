@@ -14,25 +14,29 @@ use super::plan::SetAction;
 const NOTHING_TO_CHANGE: &str = "nothing to change";
 
 /// Outcome of one applied `set` reconcile action, for reporting.
-pub(super) struct SetOutcome {
+pub(in crate::dns) struct SetOutcome {
     /// What was attempted: `"replaced"`, `"unchanged"`, `"created"`, or `"deleted"`.
-    pub(super) kind: &'static str,
+    pub(in crate::dns) kind: &'static str,
     /// The `--data` value (replace/create) or record id (delete).
-    pub(super) detail: String,
+    pub(in crate::dns) detail: String,
     /// `Some(msg)` if the call failed.
-    pub(super) error: Option<DnsFailure>,
+    pub(in crate::dns) error: Option<DnsFailure>,
     /// The record's id: the one replaced, left alone or deleted. A created record
     /// has it in `new`.
-    pub(super) record_id: Option<String>,
+    pub(in crate::dns) record_id: Option<String>,
     /// The record as it was before the action; `None` for a create.
-    pub(super) old: Option<types::DnsRecord>,
+    pub(in crate::dns) old: Option<types::DnsRecord>,
     /// The record as it is after the action, as the API returned it; `None` for a
     /// delete.
-    pub(super) new: Option<types::DnsRecord>,
+    pub(in crate::dns) new: Option<types::DnsRecord>,
 }
 
 impl SetOutcome {
-    pub(super) fn new(kind: &'static str, detail: String, error: Option<DnsFailure>) -> Self {
+    pub(in crate::dns) fn new(
+        kind: &'static str,
+        detail: String,
+        error: Option<DnsFailure>,
+    ) -> Self {
         Self {
             kind,
             detail,
@@ -53,7 +57,7 @@ impl SetOutcome {
     }
 
     /// This outcome's entry in the result's `records`.
-    fn change_entry(&self) -> Value {
+    pub(in crate::dns) fn change_entry(&self) -> Value {
         let action = match self.kind {
             "replaced" => "replace",
             "created" => "create",
@@ -163,6 +167,32 @@ pub(super) fn dry_run_set_preview(
     opts: &[RecordOptions],
 ) -> Value {
     let count = |predicate: fn(&SetAction) -> bool| plan.iter().filter(|a| predicate(a)).count();
+    let records = preview_entries(record_type, name, plan, existing, opts);
+
+    set_result(
+        domain,
+        record_type,
+        name,
+        [
+            count(|a| matches!(a, SetAction::Replace { .. })),
+            count(|a| matches!(a, SetAction::Unchanged { .. })),
+            count(|a| matches!(a, SetAction::Create { .. })),
+            count(|a| matches!(a, SetAction::Delete { .. })),
+        ],
+        "would set",
+        records,
+    )
+}
+
+/// The `records` entries a reconcile plan would produce, one per action, in plan
+/// order: the record as it is now (`old`) and as the write would leave it (`new`).
+pub(in crate::dns) fn preview_entries(
+    record_type: &str,
+    name: &str,
+    plan: &[SetAction],
+    existing: &[types::DnsRecord],
+    opts: &[RecordOptions],
+) -> Vec<Value> {
     let stored = |record_id: &str| {
         existing
             .iter()
@@ -185,8 +215,7 @@ pub(super) fn dry_run_set_preview(
             )
         })
     };
-    let records: Vec<Value> = plan
-        .iter()
+    plan.iter()
         .map(|action| match action {
             SetAction::Replace {
                 record_id,
@@ -212,27 +241,13 @@ pub(super) fn dry_run_set_preview(
                 change_entry("delete", Some(record_id), stored(record_id), None)
             }
         })
-        .collect();
-
-    set_result(
-        domain,
-        record_type,
-        name,
-        [
-            count(|a| matches!(a, SetAction::Replace { .. })),
-            count(|a| matches!(a, SetAction::Unchanged { .. })),
-            count(|a| matches!(a, SetAction::Create { .. })),
-            count(|a| matches!(a, SetAction::Delete { .. })),
-        ],
-        "would set",
-        records,
-    )
+        .collect()
 }
 
 /// Human-readable `"<TYPE> <DATA>"` label for an existing record id, for
 /// outcome reporting — falls back to the bare id if the record isn't in
 /// `existing` (shouldn't happen; `existing` is what `plan_set` was built from).
-pub(super) fn record_label(
+pub(in crate::dns) fn record_label(
     existing: &[types::DnsRecord],
     record_type: &str,
     record_id: &str,

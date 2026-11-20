@@ -20,8 +20,8 @@ struct ListArgs {
     #[arg(value_name = "DOMAIN", value_parser = crate::idn::parse_name_arg)]
     domain: String,
 
-    /// Only records of this type (A, AAAA, ALIAS, CAA, CNAME, HTTPS, MX, NS,
-    /// SOA, SRV, SVCB, TLSA, TXT).
+    /// Only records of this type (A, AAAA, CAA, CNAME, HTTPS, MX, NS, SOA, SRV,
+    /// SVCB, TLSA, TXT).
     #[arg(long = "type", value_name = "TYPE", value_parser = parse_list_type_arg)]
     record_type: Option<String>,
 
