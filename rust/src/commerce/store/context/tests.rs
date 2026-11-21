@@ -3,6 +3,7 @@
 //! repository's per-file size limit.
 
 use super::*;
+use crate::environments::test_support::ENV_LOCK;
 
 const STORE_A: &str = "6d1f0f4c-8a2e-4a52-9a5b-0f6a3c1d2e4b";
 const STORE_B: &str = "a1e14cc2-29bd-4e99-a1ad-c426cb0266c1";
@@ -172,6 +173,9 @@ fn a_blank_environment_variable_counts_as_unset() {
 
 #[test]
 fn a_blank_flag_is_rejected_not_skipped() {
+    // The error's hint resolves the environment, which reads GDDY_* variables
+    // that other tests change; hold the lock they take (see `ENV_LOCK`).
+    let _lock = ENV_LOCK.blocking_lock();
     for blank in ["", "   "] {
         let error = resolve(
             "ote",
@@ -190,6 +194,9 @@ fn a_blank_flag_is_rejected_not_skipped() {
 
 #[test]
 fn an_invalid_id_is_rejected_and_names_where_it_came_from() {
+    // The error's hint resolves the environment, which reads GDDY_* variables
+    // that other tests change; hold the lock they take (see `ENV_LOCK`).
+    let _lock = ENV_LOCK.blocking_lock();
     let from_flag =
         resolve("ote", Some("nope"), &[], StoreRegistry::default()).expect_err("flag is invalid");
     assert!(message(&from_flag).contains("--store-id"));
@@ -226,6 +233,9 @@ fn an_invalid_id_is_rejected_and_names_where_it_came_from() {
 /// reported even though a later source would have been valid.
 #[test]
 fn an_invalid_higher_priority_value_is_not_skipped_for_a_valid_lower_one() {
+    // The error's hint resolves the environment, which reads GDDY_* variables
+    // that other tests change; hold the lock they take (see `ENV_LOCK`).
+    let _lock = ENV_LOCK.blocking_lock();
     let error = resolve(
         "ote",
         None,
@@ -421,6 +431,9 @@ fn saving_canonicalizes_the_id_so_the_file_holds_one_spelling() {
 
 #[test]
 fn saving_an_invalid_id_fails_and_changes_nothing() {
+    // The error's hint resolves the environment, which reads GDDY_* variables
+    // that other tests change; hold the lock they take (see `ENV_LOCK`).
+    let _lock = ENV_LOCK.blocking_lock();
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("gddy").join(STORE_FILE_NAME);
 
@@ -682,6 +695,9 @@ fn an_empty_file_is_an_empty_registry() {
 #[cfg(unix)]
 #[test]
 fn a_non_unicode_override_is_rejected_not_skipped() {
+    // The error's hint resolves the environment, which reads GDDY_* variables
+    // that other tests change; hold the lock they take (see `ENV_LOCK`).
+    let _lock = ENV_LOCK.blocking_lock();
     use std::os::unix::ffi::OsStringExt as _;
 
     let not_unicode = std::ffi::OsString::from_vec(vec![0xff, 0xfe, b'x']);
@@ -719,6 +735,9 @@ fn a_non_unicode_override_is_rejected_not_skipped() {
 #[cfg(unix)]
 #[test]
 fn a_non_unicode_per_environment_override_does_not_fall_back_to_a_valid_bare_one() {
+    // The error's hint resolves the environment, which reads GDDY_* variables
+    // that other tests change; hold the lock they take (see `ENV_LOCK`).
+    let _lock = ENV_LOCK.blocking_lock();
     use std::os::unix::ffi::OsStringExt as _;
 
     let per_env = env_var_for("ote");
