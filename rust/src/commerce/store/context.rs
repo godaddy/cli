@@ -305,9 +305,14 @@ fn save_store_at(path: &Path, env: &str, mut entry: StoreEntry) -> Result<()> {
 
 fn clear_store_at(path: &Path, env: &str) -> Result<bool> {
     // Nothing saved means nothing to clear; do not create a config directory and
-    // a lock file just to find that out.
-    if !path.exists() {
-        return Ok(false);
+    // a lock file just to find that out. Only a file that is really missing counts
+    // as nothing saved: `Path::exists` also says "no" when the lookup itself fails
+    // (an unsearchable directory, say), which would report success and leave the
+    // selection in place.
+    match path.try_exists() {
+        Ok(true) => {}
+        Ok(false) => return Ok(false),
+        Err(error) => return Err(unreadable(path, &error)),
     }
     let _lock = RegistryLock::acquire(path)?;
     let mut registry = StoreRegistry::load(path)?;
@@ -892,6 +897,27 @@ mod tests {
             !dir.path().join("gddy").exists(),
             "no directory should be created"
         );
+    }
+
+    /// A path whose parent is a file cannot be looked up, which is an error that
+    /// is not "missing". Clearing must report it, not say there was nothing to
+    /// clear (what `Path::exists` would have done). Unix only: other platforms
+    /// report this case as a missing path.
+    #[cfg(unix)]
+    #[test]
+    fn clearing_reports_a_failed_lookup_instead_of_saying_nothing_was_saved() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let parent_is_a_file = dir.path().join("gddy");
+        std::fs::write(&parent_is_a_file, "not a directory").expect("seed");
+        let path = parent_is_a_file.join(STORE_FILE_NAME);
+
+        let error = clear_store_at(&path, "ote").expect_err("a failed lookup is an error");
+        assert!(
+            message(&error).contains(&path.display().to_string()),
+            "{}",
+            message(&error)
+        );
+        assert!(fix(&error).contains("store use"), "{}", fix(&error));
     }
 
     #[cfg(unix)]
