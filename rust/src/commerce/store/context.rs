@@ -45,7 +45,12 @@ const STORE_FILE_NAME: &str = "commerce.toml";
 /// One persisted store selection. `business_id` and `display_name` are captured
 /// from the API when the store is selected, so a later command can show more
 /// than a bare id, but only `store_id` is needed to resolve a store.
+///
+/// Unknown keys are rejected rather than ignored: a save rewrites the whole file
+/// from what was parsed, so a misspelled or newer key that was ignored on the way
+/// in would be silently deleted on the way out.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct StoreEntry {
     pub(crate) store_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -55,7 +60,12 @@ pub(crate) struct StoreEntry {
 }
 
 /// The persisted selections, keyed by environment name.
+///
+/// Unknown top-level keys are rejected for the reason given on [`StoreEntry`]: a
+/// misspelled table such as `[store.prod]` would otherwise parse as an empty
+/// registry, and the next save would overwrite the file and discard what it held.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StoreRegistry {
     #[serde(default)]
     stores: BTreeMap<String, StoreEntry>,
@@ -918,6 +928,85 @@ mod tests {
             message(&error)
         );
         assert!(fix(&error).contains("store use"), "{}", fix(&error));
+    }
+
+    /// The silent-overwrite case: a table with the wrong name is valid TOML and
+    /// used to parse as an empty registry, so the next save replaced the file and
+    /// the selection it held was gone.
+    #[test]
+    fn a_misspelled_table_is_an_error_and_the_file_is_left_untouched() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join(STORE_FILE_NAME);
+        let original = format!("[store.prod]\nstore_id = \"{STORE_B}\"\n");
+        std::fs::write(&path, &original).expect("seed");
+
+        let error = StoreRegistry::load(&path).expect_err("an unknown table is an error");
+        assert!(message(&error).contains("store"), "{}", message(&error));
+        assert!(message(&error).contains(&path.display().to_string()));
+        assert!(fix(&error).contains("store use"), "{}", fix(&error));
+
+        save_store_at(&path, "ote", entry(STORE_A)).expect_err("a save must not overwrite it");
+        clear_store_at(&path, "prod").expect_err("a clear must not overwrite it");
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read"),
+            original,
+            "the file must be left for the user to fix"
+        );
+    }
+
+    #[test]
+    fn a_misspelled_or_unknown_key_inside_an_entry_is_an_error_not_dropped() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join(STORE_FILE_NAME);
+        let original = format!("[stores.prod]\nstore_id = \"{STORE_B}\"\nbusinessid = \"typo\"\n");
+        std::fs::write(&path, &original).expect("seed");
+
+        let error = StoreRegistry::load(&path).expect_err("an unknown key is an error");
+        assert!(
+            message(&error).contains("businessid"),
+            "{}",
+            message(&error)
+        );
+        save_store_at(&path, "ote", entry(STORE_A)).expect_err("a save must not drop the key");
+        assert_eq!(std::fs::read_to_string(&path).expect("read"), original);
+    }
+
+    /// Rejecting unknown fields must not reject what this version writes.
+    #[test]
+    fn everything_this_version_writes_still_loads() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join(STORE_FILE_NAME);
+        save_store_at(
+            &path,
+            "ote",
+            StoreEntry {
+                store_id: STORE_A.to_owned(),
+                business_id: Some("biz-1".to_owned()),
+                display_name: Some("My Shop".to_owned()),
+            },
+        )
+        .expect("save a full entry");
+        save_store_at(&path, "prod", entry(STORE_B)).expect("save a minimal entry");
+
+        let loaded = StoreRegistry::load(&path).expect("what we wrote loads");
+        assert_eq!(loaded.stores.len(), 2);
+        assert_eq!(
+            loaded.stores["ote"].display_name.as_deref(),
+            Some("My Shop")
+        );
+    }
+
+    #[test]
+    fn an_empty_file_is_an_empty_registry() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join(STORE_FILE_NAME);
+        std::fs::write(&path, "").expect("seed");
+        assert!(
+            StoreRegistry::load(&path)
+                .expect("empty is valid")
+                .stores
+                .is_empty()
+        );
     }
 
     #[cfg(unix)]
