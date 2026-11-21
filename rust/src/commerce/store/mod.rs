@@ -27,19 +27,44 @@ const YOUR_STORES_PATH: &str = "/docs/api-users/commerce#your-stores";
 /// is no in-CLI discovery. The portal is the environment's own, so a store id for
 /// `ote` is looked up on the OTE portal, and `GDDY_DEVELOPER_URL` is honored.
 ///
-/// If the environment cannot be resolved the sentence names the page without a
-/// link, rather than guessing at a portal that might be the wrong one: the
-/// command that is building this hint will fail on that same bad configuration
-/// as soon as it needs the environment.
+/// The link is built with a URL parser, not by appending text: an override may
+/// carry a query string or a fragment, and appending the docs path to one of
+/// those would produce a link that goes nowhere. If the environment cannot be
+/// resolved, or its portal is not a usable base, the sentence names the page
+/// without a link, and says why when it is the configuration that is broken,
+/// rather than guessing at a portal that might be the wrong one.
 pub(crate) fn find_your_store_id_hint(env: &str) -> String {
-    match environments::resolve(env) {
-        Ok(resolved) => format!(
-            "Find your store id by signing in at {}{YOUR_STORES_PATH} (\"Your stores\").",
-            resolved.developer_url.trim_end_matches('/')
-        ),
-        Err(_) => "Find your store id on the \"Your stores\" page of the GoDaddy developer portal."
-            .to_owned(),
+    const PAGE: &str = "the \"Your stores\" page of the GoDaddy developer portal";
+    let resolved = match environments::resolve(env) {
+        Ok(resolved) => resolved,
+        Err(error) => {
+            return format!(
+                "Find your store id on {PAGE}. (The {env} environment's configuration could not \
+                 be read, so no link is shown: {error})"
+            );
+        }
+    };
+    match your_stores_url(&resolved.developer_url) {
+        Some(link) => format!("Find your store id by signing in at {link} (\"Your stores\")."),
+        None => format!("Find your store id on {PAGE}."),
     }
+}
+
+/// The "Your stores" page under the developer portal at `portal`, keeping any
+/// path prefix the portal is served under and dropping its query string and
+/// fragment. `None` if `portal` is not a base URL a path can be added to.
+fn your_stores_url(portal: &str) -> Option<String> {
+    let mut url = url::Url::parse(portal).ok()?;
+    if url.cannot_be_a_base() {
+        return None;
+    }
+    let (path, fragment) = YOUR_STORES_PATH.split_once('#')?;
+    let mut base = url.path().trim_end_matches('/').to_owned();
+    base.push_str(path);
+    url.set_path(&base);
+    url.set_query(None);
+    url.set_fragment(Some(fragment));
+    Some(url.into())
 }
 
 /// `--store-id`, shared by every command that operates on a store. Resolved with
@@ -166,7 +191,10 @@ mod tests {
         let _lock = ENV_LOCK.blocking_lock();
         let hint = find_your_store_id_hint("no-such-environment");
         assert!(hint.contains("Your stores"), "{hint}");
-        assert!(!hint.contains("http"), "no link should be guessed: {hint}");
+        assert!(
+            !hint.contains("https://"),
+            "no link should be guessed: {hint}"
+        );
     }
 
     /// Both errors that carry the hint — nothing selected, and an id that is not
@@ -188,6 +216,64 @@ mod tests {
             fix_of(&invalid).contains("developer.ote-godaddy.com"),
             "{}",
             fix_of(&invalid)
+        );
+    }
+
+    /// `clean_url` accepts an override with a query string or a fragment, so the
+    /// hint must not splice the docs path onto the end of one of those.
+    #[test]
+    fn an_override_with_a_query_or_fragment_still_yields_a_well_formed_link() {
+        let _lock = ENV_LOCK.blocking_lock();
+        for override_url in [
+            "https://dev.test/?x=1",
+            "https://dev.test/#top",
+            "https://dev.test?x=1#top",
+        ] {
+            let _override = EnvGuard::set("GDDY_DEVELOPER_URL", override_url);
+            let hint = find_your_store_id_hint("ote");
+            let link = hint
+                .split_whitespace()
+                .find(|word| word.starts_with("https://"));
+            assert!(link.is_some(), "no link for {override_url}: {hint}");
+            let url = url::Url::parse(link.expect("checked above")).expect("the link parses");
+            assert_eq!(url.host_str(), Some("dev.test"), "{override_url}: {hint}");
+            assert_eq!(
+                url.path(),
+                "/docs/api-users/commerce",
+                "{override_url}: {hint}"
+            );
+            assert_eq!(url.query(), None, "{override_url}: {hint}");
+            assert_eq!(
+                url.fragment(),
+                Some("your-stores"),
+                "{override_url}: {hint}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_path_prefix_on_the_override_is_kept() {
+        let _lock = ENV_LOCK.blocking_lock();
+        let _override = EnvGuard::set("GDDY_DEVELOPER_URL", "https://dev.test/portal/");
+        let hint = find_your_store_id_hint("ote");
+        assert!(
+            hint.contains("https://dev.test/portal/docs/api-users/commerce#your-stores"),
+            "{hint}"
+        );
+    }
+
+    /// An environment whose configuration is broken still gets a hint, but the
+    /// hint must say what is wrong instead of hiding it behind a generic sentence.
+    #[test]
+    fn an_environment_that_cannot_be_resolved_says_why_in_the_hint() {
+        let _lock = ENV_LOCK.blocking_lock();
+        let _override = EnvGuard::set("GDDY_DEVELOPER_URL", "not a url");
+        let hint = find_your_store_id_hint("ote");
+        assert!(hint.contains("Your stores"), "{hint}");
+        assert!(hint.contains("not a url"), "the cause is hidden: {hint}");
+        assert!(
+            !hint.contains("https://"),
+            "no link should be guessed: {hint}"
         );
     }
 }
