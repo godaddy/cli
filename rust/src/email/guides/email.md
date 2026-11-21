@@ -150,7 +150,7 @@ Typical provisioning takes several seconds to a minute. The response has the sam
 
 ## Error handling
 
-These sections cover why the eligibility check or the create command can fail, the rules for the username in an email address, and other HTTP errors.
+These sections cover why the eligibility check or the create command can fail, the rules for the username in an email address, and other errors.
 
 ### Eligibility failure reasons
 
@@ -164,6 +164,8 @@ When `check-eligibility` fails, the error message lists one or more of the follo
 | `EMAIL_PLAN_NOT_AVAILABLE`       | There is no active email plan for this domain.                                         | Run `gddy shopping catalog search --query titan` to see available email plans, select one to purchase, then retry. |
 | `EMAIL_ADDRESS_INVALID`          | The username portion fails format or length validation.                                | Fix the address. Go to the "Username rules" section later in this guide for the rules.                                                           |
 | `EMAIL_ADDRESS_ALREADY_EXISTS`   | A mailbox with this address already exists.                                            | The address is taken; choose a different username.                                                                 |
+
+The error's `fix` hint is specific for `EMAIL_PLAN_NOT_AVAILABLE` and `EMAIL_PLAN_NOT_ELIGIBLE`. For the other reasons, follow the action in this table.
 
 ### Create failure reasons (422 from `gddy email create`)
 
@@ -191,16 +193,19 @@ The username (the part before `@`) must:
 - Not contain spaces.
 - Not exceed 30 characters, or a shorter limit when the domain name is long enough that the full address would exceed 64 characters.
 
-### Other HTTP errors
+### Other errors
 
-| Code | Meaning                                                                   |
-| ---- | ------------------------------------------------------------------------- |
-| 400  | Malformed request: missing required field or bad parameter.              |
-| 401  | Access token is missing, expired, or invalid.                             |
-| 403  | Token is valid but doesn't have permission for this resource.            |
-| 404  | The requested mailbox doesn't exist or belongs to a different account.   |
-| 409  | A mailbox with the requested email address already exists.                |
-| 429  | Rate limit exceeded. Retry after the seconds in the `Retry-After` header. |
+Every `gddy email` command reports a failed request as an error with `error.code`, `error.message` and a top-level `fix` hint. The message starts with `HTTP error` and the status. After that comes the API's message and, when there are reasons, the issue codes in parentheses, as `ISSUE_CODE: description`. The code and hint depend on the status:
+
+| Status | `error.code` | Meaning | `fix` hint |
+| ------ | ------------ | ------- | ---------- |
+| 401 | `AUTH_REQUIRED` | Access token is missing, expired, or invalid. | Run `gddy auth login`. |
+| 403 | `NETWORK_ERROR` | Token is valid but doesn't have permission for this resource. | Confirm scopes with `gddy auth scope`, or sign in again with `gddy auth login`. |
+| 404 | `NOT_FOUND` | The requested mailbox doesn't exist or belongs to a different account. | Run `gddy email list`. |
+| 400 or 422 from `create` | `NETWORK_ERROR` | A business-rule failure, for example a missing agreement or no eligible account. The reasons are in the failure reason tables. | Run `gddy email check-eligibility --email <email>`. The two plan reasons have their own hints. |
+| Other 4xx, including 409 and 429 | `NETWORK_ERROR` | The API rejected the request. A 409 means a mailbox with the requested address already exists. A 429 means the rate limit was exceeded, so wait and retry. | A general hint to check the request. |
+| 5xx | `NETWORK_ERROR` | The API is failing on its side. | Retry, or check service health. |
+| No response | `NETWORK_ERROR` | The CLI couldn't reach the API. | Verify connectivity with `gddy env get`. |
 
 ## Command reference
 
