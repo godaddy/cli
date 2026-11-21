@@ -942,3 +942,27 @@ fn detail_values_carry_only_the_fields_a_record_has() {
     assert_eq!(values["priority"], 10);
     assert!(!values.contains_key("tag") && !values.contains_key("data"));
 }
+
+/// The API keeps an HTTPS/SVCB root target as `.`; trimming dots to compare must
+/// not turn it into an empty value in a preview.
+#[test]
+fn as_stored_keeps_the_root_target_of_an_https_record() {
+    let https_opts = RecordOptions {
+        priority: Some(0),
+        ..opts()
+    };
+    let record = v3_record("@", "HTTPS", ".", &https_opts);
+    assert_eq!(as_stored(&record).data.as_deref(), Some("."));
+
+    let host = v3_record("@", "CNAME", "Target.Example.COM", &opts());
+    assert_eq!(
+        as_stored(&host).data.as_deref(),
+        Some("target.example.com.")
+    );
+
+    let empty = types::DnsRecord {
+        data: None,
+        ..v3_record("@", "CNAME", "x", &opts())
+    };
+    assert_eq!(as_stored(&empty).data, None);
+}

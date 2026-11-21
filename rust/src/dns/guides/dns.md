@@ -37,6 +37,8 @@ Pass `--data` more than once to add several records for the same type+name in on
 
 A name can hold a CNAME or other record types, never both. Adding into a name that already has the other kind fails with an error naming the conflict. To replace it instead, use `set --replace-conflicting-types`, covered in the `set` section.
 
+Add `--dry-run` to the command to validate the command and preview the changes without actually applying them.
+
 ## Replace records (`set`, destructive)
 
 `set` replaces every record matching a type+name pair with exactly the `--data` value(s) you give it.
@@ -51,7 +53,8 @@ Preview the plan before writing:
 gddy dns set example.com --type TXT --name @ --data "v=spf1 -all" --dry-run
 ```
 
-The dry-run preview lists the planned action per record so you can confirm it before it runs for real.
+
+Add `--dry-run` to the command to validate the command and preview the changes without actually applying them.
 
 For `SRV` and `TLSA` records, give `add` and `set` the record's own name and the service and protocol (or port and protocol) as separate flags, for example `--name chat --service sip --protocol tcp`.
 
@@ -63,9 +66,53 @@ For `SRV` and `TLSA` records, give `add` and `set` the record's own name and the
 gddy dns delete example.com --type A --name www
 ```
 
-Deleting something that doesn't match is a no-op success (`deleted: 0`), not an error. Preview with `--dry-run` first for anything you're not fully sure about.
+Deleting something that doesn't match is a no-op success (`deleted: 0`, action `nothing to delete`), not an error. Preview with `--dry-run` first for anything you're not fully sure about.
 
 For `SRV` and `TLSA` records, the name doesn't include the service or port. `--type SRV --name chat` matches every SRV record listed under `chat`, whatever its service, so run `list` or `--dry-run` first to see which will be removed. To target one service, give the full name instead, for example `--name _sip._tcp.chat` (for `TLSA`, `_443._tcp.www`).
+
+## Read the result of a write
+
+`add`, `set` and `delete` return the same `records` list whether you pass `--dry-run` or run the command for real, so a script reads a preview and the real result the same way. Each entry describes one record that was changed, or with `--dry-run` would be:
+
+| Field | Meaning |
+|---|---|
+| `action` | `create`, `replace`, `unchanged`, `delete` or `fail`. `fail` shows only in a preview, with an `error` that says why the write would be refused. A real run that fails exits with an error instead. |
+| `recordId` | The record's id. It's `null` for a `create` in a preview, because the API assigns the id when it writes the record. |
+| `old` | The record before the change: its `type`, `data`, `ttl` and any type-specific fields. It's `null` for a `create`. |
+| `new` | The record after the change. It's `null` for a `delete`. |
+
+A real `set` that replaces one record and creates another returns this:
+
+```json
+{
+  "data": {
+    "domain": "example.com",
+    "type": "A",
+    "name": "www",
+    "replaced": 1,
+    "unchanged": 0,
+    "created": 1,
+    "deleted": 0,
+    "action": "set",
+    "records": [
+      {
+        "action": "replace",
+        "recordId": "r1",
+        "old": { "type": "A", "data": "192.0.2.1", "ttl": 3600 },
+        "new": { "type": "A", "data": "192.0.2.9", "ttl": 3600 }
+      },
+      {
+        "action": "create",
+        "recordId": "r3",
+        "old": null,
+        "new": { "type": "A", "data": "192.0.2.7", "ttl": 3600 }
+      }
+    ]
+  }
+}
+```
+
+With `--dry-run` the same command returns the same entries, with `action` set to `would set` and `"recordId": null` for creates.
 
 ## International domain names
 
