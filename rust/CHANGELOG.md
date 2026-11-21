@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.42](https://github.com/godaddy/cli/compare/v0.2.41...v0.2.42) (2026-11-21)
+
+
+### Features
+
+* **update:** add an upgrades guide and suggest it after a breaking update ([#400](https://github.com/godaddy/cli/issues/400)) ([5f0feee](https://github.com/godaddy/cli/commit/5f0feee9d4ebc40629873a37245f5377e1e98dee))
+
+
+### Documentation
+
+* **api:** fix style findings in the API explorer guide ([#392](https://github.com/godaddy/cli/issues/392)) ([ecefb42](https://github.com/godaddy/cli/commit/ecefb424ada8d7f5a291924e41c4ff8902e2dcef))
+* **platform:** fix style findings in the platform guides ([#393](https://github.com/godaddy/cli/issues/393)) ([5597f4b](https://github.com/godaddy/cli/commit/5597f4bca450c22c91f867a2ac58b47e59b88508))
+
 ## [0.2.41](https://github.com/godaddy/cli/compare/v0.2.40...v0.2.41) (2026-11-20)
 
 
