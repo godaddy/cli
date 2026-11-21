@@ -22,7 +22,7 @@ fn registry_with(env: &str, store_id: &str) -> StoreRegistry {
     registry
 }
 
-fn no_env(_: &str) -> Option<String> {
+fn no_env(_: &str) -> Option<std::ffi::OsString> {
     None
 }
 
@@ -42,7 +42,7 @@ fn resolve(
         move |name| {
             vars.iter()
                 .find(|(var, _)| var == name)
-                .map(|(_, value)| value.clone())
+                .map(|(_, value)| std::ffi::OsString::from(value))
         },
         move || Ok(registry),
     )
@@ -270,7 +270,7 @@ fn the_saved_selection_is_not_read_when_a_flag_or_variable_supplies_a_store() {
     let from_env = resolve_with(
         "ote",
         None,
-        |name| (name == STORE_ID_ENV_VAR).then(|| STORE_B.to_owned()),
+        |name| (name == STORE_ID_ENV_VAR).then(|| std::ffi::OsString::from(STORE_B)),
         counting_registry,
     )
     .expect("resolves");
@@ -673,6 +673,72 @@ fn an_empty_file_is_an_empty_registry() {
             .expect("empty is valid")
             .stores
             .is_empty()
+    );
+}
+
+/// A value that is set but not valid Unicode must be rejected, not read as
+/// unset: reading it as unset would fall through to the bare variable or the
+/// saved store and quietly select a different store than the one asked for.
+#[cfg(unix)]
+#[test]
+fn a_non_unicode_override_is_rejected_not_skipped() {
+    use std::os::unix::ffi::OsStringExt as _;
+
+    let not_unicode = std::ffi::OsString::from_vec(vec![0xff, 0xfe, b'x']);
+    let per_env = env_var_for("ote");
+    let error = resolve_with(
+        "ote",
+        None,
+        |name| (name == per_env).then(|| not_unicode.clone()),
+        || Ok(registry_with("ote", STORE_C)),
+    )
+    .expect_err("a non-Unicode override is invalid input");
+    assert!(
+        message(&error).contains("GDDY_STORE_ID_OTE"),
+        "{}",
+        message(&error)
+    );
+
+    // Same for the bare variable, which must not fall back to the saved store.
+    let bare = resolve_with(
+        "ote",
+        None,
+        |name| (name == STORE_ID_ENV_VAR).then(|| not_unicode.clone()),
+        || Ok(registry_with("ote", STORE_C)),
+    )
+    .expect_err("a non-Unicode bare override is invalid input");
+    assert!(
+        message(&bare).contains("GDDY_STORE_ID"),
+        "{}",
+        message(&bare)
+    );
+}
+
+/// The per-environment override is the one that wins, so a non-Unicode value
+/// there must not let a valid bare override take over.
+#[cfg(unix)]
+#[test]
+fn a_non_unicode_per_environment_override_does_not_fall_back_to_a_valid_bare_one() {
+    use std::os::unix::ffi::OsStringExt as _;
+
+    let per_env = env_var_for("ote");
+    let result = resolve_with(
+        "ote",
+        None,
+        |name| {
+            if name == per_env {
+                Some(std::ffi::OsString::from_vec(vec![0xff]))
+            } else if name == STORE_ID_ENV_VAR {
+                Some(std::ffi::OsString::from(STORE_B))
+            } else {
+                None
+            }
+        },
+        || Ok(StoreRegistry::default()),
+    );
+    assert!(
+        result.is_err(),
+        "fell back to the bare override: {result:?}"
     );
 }
 
