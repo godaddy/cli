@@ -50,6 +50,10 @@ Commands that charge money or request user consent should follow the examples of
 - Polling/retry wrappers map only the exhausted expected status (e.g. 404) to `not_found`; keep 429/5xx/network errors as-is.
 - Resolve the API base URL from the selected environment; do not add per-service URL overrides or `--env` flags on follow-up commands.
 
+## Breaking changes (Required)
+
+If a change can break an existing script or setting (a removed or renamed flag, a changed JSON field, a changed environment variable or config file), mark the commit and PR title with `!`, add a `BREAKING CHANGE:` footer, and add a section to `rust/src/update/guides/upgrades.md` in the same PR. Follow `.agents/skills/breaking-changes/SKILL.md`. A test fails the release PR if a breaking version has no section.
+
 ## Reuse Before You Build (Required)
 
 Search the codebase and `cli-engine` before writing a helper; reviewers reject duplication.
