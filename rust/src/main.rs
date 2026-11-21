@@ -1,5 +1,6 @@
 mod api;
 mod auth;
+mod commerce;
 mod config;
 mod db;
 mod dns;
