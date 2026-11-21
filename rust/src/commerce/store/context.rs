@@ -228,7 +228,7 @@ pub(crate) fn lookup(env: &str, explicit: Option<&str>) -> Result<Option<Resolve
     resolve_with(
         env,
         explicit,
-        |name| std::env::var(name).ok(),
+        |name| std::env::var_os(name),
         || match registry_path() {
             Some(path) => StoreRegistry::load(&path),
             None => Ok(StoreRegistry::default()),
@@ -244,7 +244,7 @@ pub(crate) fn lookup(env: &str, explicit: Option<&str>) -> Result<Option<Resolve
 fn resolve_with(
     env: &str,
     explicit: Option<&str>,
-    get_env: impl Fn(&str) -> Option<String>,
+    get_env: impl Fn(&str) -> Option<std::ffi::OsString>,
     registry: impl FnOnce() -> Result<StoreRegistry>,
 ) -> Result<Option<ResolvedStore>> {
     if let Some(value) = explicit {
@@ -260,7 +260,13 @@ fn resolve_with(
         (per_env.as_str(), StoreIdSource::EnvVarForEnv),
         (STORE_ID_ENV_VAR, StoreIdSource::EnvVar),
     ] {
-        if let Some(value) = get_env(name).filter(|value| !value.trim().is_empty()) {
+        // A value that is set but not valid Unicode is still a value the user
+        // supplied. Reading it lossily keeps it present, and the replacement
+        // character it leaves is never part of a UUID, so validation rejects it and
+        // names the variable, instead of the lookup falling through to a different
+        // store.
+        let value = get_env(name).map(|value| value.to_string_lossy().into_owned());
+        if let Some(value) = value.filter(|value| !value.trim().is_empty()) {
             return Ok(Some(ResolvedStore {
                 store_id: parse_store_id(&value, name, env)?,
                 source,
