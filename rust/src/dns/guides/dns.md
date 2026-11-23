@@ -83,7 +83,7 @@ Some record types need extra flags:
 | `TLSA` | `--usage`, `--selector`, `--matching-type`, `--port`, `--protocol` | |
 | `CAA` | `--tag` (`issue`, `issuewild` or `iodef`); `--data` carries the value for that tag, for example a CA domain | `--flag` (defaults to `0`) |
 
-`--service` and `--protocol` take the plain name, for example `--service sip --protocol tcp`. GoDaddy stores them with a leading underscore (`_sip._tcp`), which `gddy` adds for you; `--service _sip` works too. Any name made of letters, digits, `-` and `_` (up to 62 characters before the underscore) is accepted, so custom services work. Listings show the underscore form, since that is the DNS name.
+`--service` and `--protocol` take the plain name, for example `--service sip --protocol tcp`. GoDaddy stores them with a leading underscore (`_sip._tcp`), which `gddy` adds for you; `--service _sip` works too. Any name made of letters, digits, `-` and `_` (up to 62 characters before the underscore) is accepted, so custom services work. Listings show the underscore form, since that's the DNS name.
 
 Example SRV record:
 
