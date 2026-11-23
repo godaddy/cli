@@ -67,7 +67,7 @@ gddy hosting source status --app-id <app-id> --import-id <import-id>
 
 ## Preview the app
 
-Once the import is COMPLETED the app is live on its PREVIEW URL. Retrieve it:
+After the import is COMPLETED the app is live on its PREVIEW URL. Retrieve it:
 
 ```sh
 gddy hosting app get --app-id <app-id>
