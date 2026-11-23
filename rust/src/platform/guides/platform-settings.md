@@ -206,8 +206,8 @@ App Registry stores only this allowlist. Settings API strips response properties
 
 `gddy platform app add settings` and `gddy platform app release` reject settings that break the following rules:
 
-- `group` and `slug` use lowercase letters and dashes (`lowercase-with-dashes`).
-- `entryPath` starts with `/`, has no query string, fragment, or `..`, and doesn't overlap another setting's `entryPath` in the same `godaddy.toml`.
+- `group` and `slug` use lowercase letters, digits, and single dashes between them, such as `paypal-payments` or `tax-v2`. They can't start or end with a dash or contain consecutive dashes.
+- `entryPath` starts with `/` and has at least one segment. Each segment uses only letters, digits, `.`, `_`, `~`, or `-`. It has no query string, fragment, or `..`, and doesn't overlap another setting's `entryPath` in the same `godaddy.toml`.
 - `capabilities` are a subset of `read`, `write`, `validate`, `test`, `delete`, `open`, and `config`. `open` is only valid on a link presentation. Link presentations require `read` and `open`, plus optional `config` or `delete`.
 - `config` requires `read` and 1 to 16 valid, unique `metadata.configKeys`.
 - `icon.library` is one of `ux`, `lucide`, or `commerce`.
