@@ -2,19 +2,21 @@
 summary: Create a Node.js app on GoDaddy hosting, upload your code, preview the app, attach it to a plan, and publish it
 ---
 
-# `gddy hosting` — deploying a Node.js application
+# `gddy hosting`: deploy a Node.js application
 
-This guide covers the full lifecycle of a hosted Node.js application: create an app, upload source code, test on a staging URL, attach to a hosting plan, and publish to production.
+This guide covers the full lifecycle of a hosted Node.js application. You'll create an app, upload source code, test on a staging URL, attach to a hosting plan, and publish to production.
 
 ## Concepts
 
-**App** — the hosted Node.js application. Create it first. Later commands take `--app-id`.
+The following terms and concepts are relevant to deploying a Node.js application:
 
-**Environments** — each app has PREVIEW (staging) and PUBLISH (production). The CLI calls this `variant`. Uploads land on PREVIEW. `deployment publish` promotes that build to PUBLISH.
+**App**: the hosted Node.js application. Create it first to get the `--app-id` used for later commands.
 
-**Subscription** — a hosting plan you already bought (resources and billing). Attach the app to one before the first publish. Don't have one? See *Buy a plan*.
+**Environment**: each app has a PREVIEW (staging) and PUBLISH (production) environment. The CLI calls an environment a `variant`. Uploads land on PREVIEW and then can be promoted to PUBLISH once accepted.
 
-**Slot** — available space within a subscription for an attached app. Each app attached to a subscription takes up one slot, and a given subscription can have one or more slots.
+**Subscription**: a hosting plan you pay for. A subscription can host one or more apps. Attach the app to one before the first publish. If you don't have a plan, go to the "Buy a plan" section in this guide.
+
+**Slot**: available space within a subscription for an attached app. Each app attached to a subscription takes up one slot, and a given subscription can have one or more slots.
 
 ## Create the app
 
@@ -49,7 +51,7 @@ When zipping your project, exclude the `node_modules` directory.
 
 For a full list of application requirements and instructions on preparing a `.zip` file for uploading, go to [Node.js app requirements](https://developer.godaddy.com/en/docs/api-users/hosting/app-requirements).
 
-## Upload
+## Upload the source code
 
 Deploys code to the app's PREVIEW environment. You can run this again to replace what was uploaded before.
 
@@ -63,9 +65,9 @@ Poll the import until COMPLETED:
 gddy hosting source status --app-id <app-id> --import-id <import-id>
 ```
 
-## Preview
+## Preview the app
 
-Once the import is COMPLETED the app is live on its PREVIEW URL. Retrieve it:
+After the import is COMPLETED the app is live on its PREVIEW URL. Retrieve it:
 
 ```sh
 gddy hosting app get --app-id <app-id>
@@ -90,7 +92,7 @@ gddy hosting subscription attach --app-id <app-id> --subscription-id <subscripti
 
 If several plans have open slots, pick the one you want.
 
-If `totalAvailableSlots` is 0, see *Buy a plan*.
+If `totalAvailableSlots` is 0, go to the "Buy a plan" section later in this guide.
 
 Skip this on later deploys.
 
@@ -104,15 +106,15 @@ gddy shopping catalog search --category webHosting
 
 AI assistants: if an existing plan has an open slot, tell the user and let them choose between attaching the app to it and buying a new plan. Buying is a purchase, so follow the consent steps in `gddy guide shopping` before checkout.
 
-When the order completes, poll `gddy hosting subscription list --hosting-product=WEB_HOSTING` until a plan with a free slot appears whose `subscriptionId` was not in the list before checkout. Attach the app to that plan.
+When the order completes, poll `gddy hosting subscription list --hosting-product=WEB_HOSTING` until a plan with a free slot displays whose `subscriptionId` wasn't in the list before checkout. Attach the app to that plan.
 
-## Publish
+## Publish the app
 
 ```sh
 gddy hosting deployment publish --app-id <app-id>
 ```
 
-If publish returns `WH_PLAN_REQUIRED`, the app has no plan. See *Attach a plan*.
+If publish returns `WH_PLAN_REQUIRED`, the app has no plan. Go to the "Attach a plan" section earlier in this guide.
 
 Poll until COMPLETED:
 
@@ -122,16 +124,43 @@ gddy hosting deployment get --app-id <app-id> --deployment-id <deployment-id>
 
 ## Custom domains
 
-Attach after the app is published:
+Every domain on an app has a `domainType`:
+
+- **`PREFIX`**: the hostname GoDaddy gives the app. By default it starts with the app's ID. A `PREFIX` domain replaces that first part with a name you choose, for example `helloworld.c39.airoapp.ai`. You change the prefix in the hosting UI, not with this CLI.
+- **`CUSTOM`**: a hostname you own and attach to the app. If its DNS is on GoDaddy, you don't need to do anything more.
+
+Attach a `CUSTOM` domain after the app is published. Then read it back with all fields, because `domainType` isn't in the default output of `domain get` or `domain list`:
 
 ```sh
 gddy hosting domain attach --app-id <app-id> --hostname www.example.com
-gddy hosting domain get --app-id <app-id> --domain-id <domain-id>
+gddy hosting domain get --app-id <app-id> --domain-id <domain-id> --fields all
 ```
 
-`domainType` on list/get is `CUSTOM` for an attached customer hostname. `PREFIX` is the platform hostname, whose prefix can be changed in the hosting UI (not using this CLI).
+The following examples show the `data` part of the output. The CLI also prints `next_actions`, which suggests the command to detach the domain. This is a `PREFIX` domain:
 
-For a CUSTOM domain whose DNS is **not** on GoDaddy, poll `hosting domain get` and apply records at the external DNS host as fields become non-null:
+```json
+{
+  "domainId": "aGVsbG93b3JsZC5jMzkuYWlyb2FwcC5haQ",
+  "domainType": "PREFIX",
+  "hostname": "helloworld.c39.airoapp.ai",
+  "role": "PRIMARY",
+  "verificationStatus": "ACTIVE"
+}
+```
+
+This is a `CUSTOM` domain that isn't verified yet:
+
+```json
+{
+  "domainId": "d3d3LmV4YW1wbGUuY29t",
+  "domainType": "CUSTOM",
+  "hostname": "www.example.com",
+  "role": "PRIMARY",
+  "verificationStatus": "PENDING"
+}
+```
+
+For a CUSTOM domain whose DNS isn't on GoDaddy, poll `hosting domain get` and apply records at the external DNS host as fields become non-null:
 
 | When | Record | Target |
 |---|---|---|
@@ -140,9 +169,9 @@ For a CUSTOM domain whose DNS is **not** on GoDaddy, poll `hosting domain get` a
 
 Keep polling until `verificationStatus` is `ACTIVE`. `cdnStatus` follows CDN provisioning (`INIT` → `PENDING` → `ACTIVE`).
 
-## Redeploying
+## Redeploy the app
 
-Upload the source again, wait for the import to complete, then publish again. Skip *Create the app* and *Attach a plan*.
+Upload the source again, wait for the import to complete, then publish again. Skip the "Create the app" and "Attach a plan" sections.
 
 ## Other commands
 
@@ -158,5 +187,5 @@ Upload the source again, wait for the import to complete, then publish again. Sk
 
 ## See also
 
-- `gddy guide hosting` — the other hosting products and the commands they share.
-- `gddy guide auth` — how authentication and credential storage work.
+- `gddy guide hosting`: the other hosting products and the commands they share.
+- `gddy guide auth`: how authentication and credential storage work.

@@ -177,6 +177,49 @@ mod tests {
         );
     }
 
+    /// Managed WordPress (app type, publish/unpublish, guide) is visible at
+    /// the Ga default with no override.
+    #[tokio::test]
+    async fn managed_wordpress_is_visible_at_the_default_min_stage() {
+        let cli = Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Ga)
+                .with_modules(super::all_modules()),
+        );
+        let output = cli
+            .run(["gddy", "hosting", "app", "create", "--help"])
+            .await;
+        assert!(
+            output.rendered.contains("possible values: NODEJS, MHWP"),
+            "MHWP should be an app type at the Ga default: {}",
+            output.rendered
+        );
+
+        for command in ["publish", "unpublish"] {
+            let output = cli.run(["gddy", "hosting", "app", command, "--help"]).await;
+            assert!(
+                output.exit_code == 0 && output.rendered.contains("placeholder page"),
+                "hosting app {command} should be visible at the Ga default: {}",
+                output.rendered
+            );
+        }
+        let output = cli.run(["gddy", "hosting", "app", "--help"]).await;
+        for summary in ["Take an app live", "Take a WordPress site offline"] {
+            assert!(
+                output.rendered.contains(summary),
+                "hosting app --help should list {summary:?}: {}",
+                output.rendered
+            );
+        }
+
+        let output = cli.run(["gddy", "guide", "--output", "json"]).await;
+        assert!(
+            output.rendered.contains("hosting-wordpress"),
+            "the WordPress guide should be listed at the Ga default: {}",
+            output.rendered
+        );
+    }
+
     #[tokio::test]
     async fn platform_namespace_is_visible_at_the_default_min_stage() {
         let cli = Cli::new(

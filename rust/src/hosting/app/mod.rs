@@ -12,43 +12,60 @@ mod update;
 
 use cli_engine::{GroupSpec, RuntimeGroupSpec};
 
-use crate::hosting::common::supported_app_types;
-
-pub(super) fn group(mhwp: bool) -> RuntimeGroupSpec {
-    let mut long = format!(
-        "Work with hosting applications. Use --app-type on list and create to \
-         specify the application type (currently {}).",
-        supported_app_types(mhwp)
-    );
-    if mhwp {
-        long.push_str(
-            " `publish` takes any app live; `unpublish` takes a WordPress (MHWP) site back \
-             to a placeholder page. `update` renames a WordPress site; `--root-path` does \
-             not apply to it.",
-        );
-    }
-    let group = RuntimeGroupSpec::new(
+pub(super) fn group() -> RuntimeGroupSpec {
+    RuntimeGroupSpec::new(
         GroupSpec::new(
             "app",
             "Create, inspect, update, and delete hosting applications",
         )
         .with_alias("apps")
-        .with_long(long),
+        .with_long(
+            "Work with hosting applications of each hosting type: Node.js apps (NODEJS) \
+             and WordPress sites (MHWP).",
+        ),
     )
-    .with_command(list::command(mhwp))
+    .with_command(list::command())
     .with_command(get::command())
-    .with_command(create::command(mhwp))
-    .with_command(update::command(mhwp))
-    .with_command(delete::command(mhwp))
+    .with_command(create::command())
+    .with_command(update::command())
+    .with_command(delete::command())
     .with_command(status::command())
-    .with_command(restart::command());
-    if mhwp {
-        // Both name WordPress, so they ship with its flag; Node.js keeps
-        // `deployment publish` either way.
-        group
-            .with_command(publish::command())
-            .with_command(unpublish::command())
-    } else {
-        group
+    .with_command(restart::command())
+    .with_command(publish::command())
+    .with_command(unpublish::command())
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::ValueEnum;
+
+    use crate::hosting::common::HostingAppType;
+    use crate::hosting::test_support::{cli, run_hosting};
+
+    #[tokio::test]
+    async fn app_help_names_both_app_types_and_leaves_details_to_the_commands() {
+        let help = run_hosting(&cli(), &["app", "--help"]).await;
+        let group_text = help.split("Usage:").next().unwrap_or_default();
+        assert!(
+            group_text.contains("Node.js apps (NODEJS) and WordPress sites (MHWP)"),
+            "{group_text}"
+        );
+        // A new app type must be named here too.
+        for app_type in HostingAppType::value_variants() {
+            assert!(
+                group_text.contains(&format!("({})", app_type.as_str())),
+                "{app_type:?} is missing: {group_text}"
+            );
+        }
+        // Each command's own help says what it does for a WordPress site, and only
+        // `create` and `list` take --app-type, so the group names neither.
+        for detail in [
+            "placeholder page",
+            "renames a WordPress site",
+            "--root-path",
+            "--app-type",
+        ] {
+            assert!(!group_text.contains(detail), "{detail:?}: {group_text}");
+        }
     }
 }

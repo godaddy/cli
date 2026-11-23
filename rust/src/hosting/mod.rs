@@ -15,29 +15,12 @@ mod test_support;
 use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 
 pub fn module() -> Module {
-    Module::new("Hosting", |ctx| {
-        let mhwp = common::mhwp_enabled(&ctx.middleware().flag_policy);
-        // Registered here, not on the Module, so the guides are built from the
-        // same flag that decides which commands exist: they must never walk a
-        // reader into `hosting app publish` on a binary that does not register it.
-        // One call per guide: a call sorts its files by name, which would list
-        // `hosting-nodejs` ahead of the `hosting` index.
-        ctx.add_guides_from_markdown([("hosting.md", common::hosting_guide(mhwp))]);
-        ctx.add_guides_from_markdown([("hosting-nodejs.md", common::NODEJS_GUIDE)]);
-        if mhwp {
-            ctx.add_guides_from_markdown([("hosting-wordpress.md", common::WORDPRESS_GUIDE)]);
-        }
-        // Only WordPress sites have a publish state; name it only while the flag is on.
-        let app_line = if mhwp {
-            "Hosting applications (create, inspect, update, delete, restart, publish/unpublish)"
-        } else {
-            "Hosting applications (create, inspect, update, delete, restart)"
-        };
+    Module::new("Hosting", |_ctx| {
         RuntimeGroupSpec::new(
-            GroupSpec::new("hosting", "Manage GoDaddy hosting products").with_long(format!(
+            GroupSpec::new("hosting", "Manage GoDaddy hosting products").with_long(
                 "Work with GoDaddy hosting APIs.\n\
                  \n\
-                 • app          — {app_line}\n\
+                 • app          — Hosting applications (create, inspect, update, delete, restart, publish/unpublish)\n\
                  • deployment   — Build and deploy application source\n\
                  • source       — Import source code\n\
                  • secret       — Application secrets (create, update, delete, list)\n\
@@ -47,7 +30,7 @@ pub fn module() -> Module {
                  • subscription — Hosting plan subscriptions\n\
                  • operation    — Poll async operations\n\
                  \n\
-                 First-time setup:\n\
+                 First-time setup (Node.js):\n\
                  1. `hosting app create` — provision the app, poll `hosting operation get`\n\
                  2. `hosting source upload` — upload source, poll `hosting source status`\n\
                  3. Preview at the PREVIEW URL from `hosting app get` (no plan needed)\n\
@@ -56,56 +39,56 @@ pub fn module() -> Module {
                  \n\
                  To redeploy: repeat steps 2–3, then 5.\n\
                  \n\
-                 Terminology: `variant` refers to an environment — PREVIEW (staging) or PUBLISH (production)."
-            )),
+                 WordPress sites (`--app-type MHWP`) have no source, build or deployment: \
+                 see `gddy guide hosting-wordpress`.\n\
+                 \n\
+                 Terminology: `variant` refers to an environment — PREVIEW (staging) or PUBLISH (production).",
+            ),
         )
-        .with_group(app::group(mhwp))
+        .with_group(app::group())
         .with_group(deployment::group())
         .with_group(source::group())
         .with_group(secrets::group())
         .with_group(log::group())
-        .with_group(runtime::group(mhwp))
+        .with_group(runtime::group())
         .with_group(domain::group())
         .with_group(subscription::group())
-        .with_group(operation::group(mhwp))
+        .with_group(operation::group())
     })
+    // One call per guide: a call sorts its files by name, which would list
+    // `hosting-nodejs` ahead of the `hosting` index.
+    .with_guides_from_markdown([("hosting.md", common::HOSTING_GUIDE)])
+    .with_guides_from_markdown([("hosting-nodejs.md", common::NODEJS_GUIDE)])
+    .with_guides_from_markdown([("hosting-wordpress.md", common::WORDPRESS_GUIDE)])
 }
 
 #[cfg(test)]
 mod tests {
-    use super::common::{NODEJS_GUIDE, WORDPRESS_GUIDE, hosting_guide};
+    use super::common::{HOSTING_GUIDE, NODEJS_GUIDE, WORDPRESS_GUIDE};
     use crate::hosting::test_support::{cli, run_guide};
 
     #[test]
-    fn the_index_names_wordpress_only_while_its_flag_is_on() {
-        let off = hosting_guide(false);
-        assert_eq!(off, include_str!("guides/hosting.md"));
-        assert!(off.contains("`gddy guide hosting-nodejs`"), "{off}");
-        for absent in ["WordPress", "MHWP", "hosting-wordpress", "app publish"] {
-            assert!(!off.contains(absent), "flag off still mentions {absent:?}");
-        }
-
-        let on = hosting_guide(true);
+    fn the_index_lists_each_product_and_the_publish_command_once() {
         for added in [
+            "`gddy guide hosting-nodejs`",
             "`gddy guide hosting-wordpress`",
             "`hosting app publish --app-id <app-id>`",
         ] {
-            assert_eq!(on.matches(added).count(), 1, "{added}: {on}");
+            assert_eq!(
+                HOSTING_GUIDE.matches(added).count(),
+                1,
+                "{added}: {HOSTING_GUIDE}"
+            );
         }
+        let position = |text: &str| HOSTING_GUIDE.find(text).expect(text);
         assert!(
-            on.find("hosting-nodejs") < on.find("hosting-wordpress"),
-            "the WordPress row must follow the Node.js row: {on}"
+            position("hosting-nodejs") < position("hosting-wordpress"),
+            "the WordPress row must follow the Node.js row: {HOSTING_GUIDE}"
         );
         assert!(
-            on.find("hosting app status") < on.find("hosting app publish"),
-            "the publish row must follow the status row: {on}"
+            position("hosting app status") < position("hosting app publish"),
+            "the publish row must follow the status row: {HOSTING_GUIDE}"
         );
-        // The two rows are the only difference.
-        let without_rows: Vec<&str> = on
-            .lines()
-            .filter(|line| !line.contains("hosting-wordpress") && !line.contains("app publish"))
-            .collect();
-        assert_eq!(without_rows, off.lines().collect::<Vec<_>>());
     }
 
     #[test]
@@ -131,11 +114,14 @@ mod tests {
             "(https://airo-builder.godaddy.com/apps)",
             "## Concepts",
             "no source upload, no build",
-            "does not become the WordPress site title",
+            "doesn't become the WordPress site title",
             "placeholder page",
-            "## What the CLI does not do for WordPress sites",
+            "## What the CLI doesn't do for WordPress sites",
             "hosting app update",
             "hosting app delete",
+            "There is no operation to poll. If the service is temporarily unavailable, wait a \
+             few seconds and run the command again. To take the site offline but keep its \
+             content, run `hosting app unpublish` instead.",
             "hosting runtime get",
             "Deployments, restarts, source imports, secrets, logs, custom domains and plan attachment",
         ] {
@@ -151,20 +137,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gddy_guide_offers_wordpress_only_while_its_flag_is_on() {
-        let off = cli(false);
-        let topics = run_guide(&off, None).await;
-        assert!(topics.contains("hosting-nodejs"), "{topics}");
-        assert!(!topics.contains("hosting-wordpress"), "{topics}");
-        let index = run_guide(&off, Some("hosting")).await;
-        assert!(!index.contains("WordPress"), "{index}");
-        let nodejs = run_guide(&off, Some("hosting-nodejs")).await;
-        assert!(nodejs.contains("Attach a plan"), "{nodejs}");
-        let wordpress = run_guide(&off, Some("hosting-wordpress")).await;
-        assert!(!wordpress.contains("Airo App Builder"), "{wordpress}");
-
-        let on = cli(true);
-        let topics = run_guide(&on, None).await;
+    async fn gddy_guide_offers_the_index_then_each_product() {
+        let cli = cli();
+        let topics = run_guide(&cli, None).await;
         // Listed index first, then the product guides, by their summaries.
         let position = |summary: &str| topics.find(summary).expect(summary);
         assert!(
@@ -172,9 +147,11 @@ mod tests {
                 && position("Create a Node.js app") < position("Create a managed WordPress site"),
             "{topics}"
         );
-        let index = run_guide(&on, Some("hosting")).await;
+        let index = run_guide(&cli, Some("hosting")).await;
         assert!(index.contains("gddy guide hosting-wordpress"), "{index}");
-        let wordpress = run_guide(&on, Some("hosting-wordpress")).await;
+        let nodejs = run_guide(&cli, Some("hosting-nodejs")).await;
+        assert!(nodejs.contains("Attach a plan"), "{nodejs}");
+        let wordpress = run_guide(&cli, Some("hosting-wordpress")).await;
         assert!(wordpress.contains("hosting app unpublish"), "{wordpress}");
     }
 }

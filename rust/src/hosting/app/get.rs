@@ -14,7 +14,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_long(
                 "Get details for a single hosting application by ID. \
                  The `urls` object exposes the reachable URLs for each environment \
-                 variant (preview and publish).",
+                 variant (preview and publish). A WordPress (MHWP) site has only a publish URL.",
             )
             .with_system("hosting")
             .with_tier(Tier::Read)
@@ -30,11 +30,6 @@ pub(super) fn command() -> RuntimeCommandSpec {
 }
 
 /// WordPress (MHWP) sites have no deployments, so they are not offered one.
-///
-/// Deliberately independent of the `hosting-mhwp` flag, unlike the retry hint
-/// in `operation get`: this branch only withholds a suggestion that was wrong
-/// for a WordPress id whatever the flag said, and the id reaches here because
-/// the caller already has one.
 fn next_actions(app_id: String) -> Vec<NextAction> {
     let status = next_action(
         "hosting app status --app-id <app-id>",
@@ -60,6 +55,16 @@ mod tests {
 
     fn commands(actions: &[NextAction]) -> Vec<&str> {
         actions.iter().map(|a| a.command.as_str()).collect()
+    }
+
+    #[tokio::test]
+    async fn get_help_says_a_wordpress_site_has_only_a_publish_url() {
+        let help = crate::hosting::test_support::run_hosting(
+            &crate::hosting::test_support::cli(),
+            &["app", "get", "--help"],
+        )
+        .await;
+        assert!(help.contains("only a publish URL"), "{help}");
     }
 
     #[test]

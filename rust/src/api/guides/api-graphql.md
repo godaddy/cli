@@ -55,7 +55,7 @@ The global `--dry-run` flag short-circuits a `mutation` operation the same way i
 gddy api graphql type get <TypeName>
 ```
 
-Repeat with whatever type name shows up next until every segment of your `--select` path resolves to a real field. For example, `edges` might be a `[SomethingEdge]`: look up `SomethingEdge`, find a `node` field, look up its type, and so on.
+Repeat with whatever type name shows up next until every segment of your `--select` path resolves to a real field. For example, `edges` might be a `[SomethingEdge]`. Look up `SomethingEdge`, find its `node` field, then look up the type of `node`. Stop when the last segment of your path resolves.
 
 A GraphQL type name is only unique within its own domain's schema. Two domains can each declare an unrelated type sharing a name (for example `ReferenceValueFilter` on both `taxes` and `catalog-products`). When that happens, `api graphql type get <TypeName>` errors out listing every domain that defines it. Add `--domain <domain>` to pick one.
 

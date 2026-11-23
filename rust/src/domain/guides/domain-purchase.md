@@ -1,74 +1,84 @@
 ---
-summary: Register a domain with gddy — quote, review, then purchase
+summary: Quote, review, and purchase a domain with gddy
 ---
 
-# Buying a domain with `gddy`
+# Buy a domain with `gddy`
 
-Registering a domain is a **two-step, quote-then-purchase** flow:
+Registering a domain is a quote-then-purchase flow.
 
-1. `gddy domain quote <domain>` locks a price and returns the legal agreements
-   and a single-use **quote token** (valid ~10 minutes).
-2. `gddy domain purchase --quote-token <token> --agree --confirm` accepts that
-   quote and registers the domain.
+A purchase isn't reversible, so `purchase` has two gates (`--agree`, `--confirm`) on top of the quote token. The quote token locks the registration price and settings you reviewed.
 
-A purchase is **paid and not reversible**, so `purchase` has two gates (`--agree`, `--confirm`) on top of the token. The quote token locks the registration price and settings you reviewed.
+The quoted price doesn't include taxes and fees. The ICANN fee and any applicable taxes are added when you register, so the total charged is higher than the price shown by `suggest`, `available` and `quote`. Whether tax applies depends on the billing address of your payment method. The `Premium Fees` column is something else: it lists the extra cost of a premium domain and is empty for a non-premium domain. Once the registration completes, `purchase` gives you the order ID, and `gddy shopping order get <order-id>` shows the total charged.
 
-**The quoted price does not include taxes and fees.** The ICANN fee and any applicable taxes are added when you register, so the total charged is higher than the price shown by `suggest`, `available` and `quote`. Whether tax applies depends on the billing address of your payment method. The `Premium Fees` column is something else: it lists the extra cost of a premium domain and is empty for a non-premium domain. Once the registration completes, `purchase` gives you the order ID, and `gddy shopping order get <order-id>` shows the total charged.
+Registration completes asynchronously. `purchase` submits the registration and waits briefly for the registry, reporting the operation's `status` (`COMPLETED` when done). Then the domain displays in `gddy domain list`. If `purchase` gives up waiting before reaching a terminal status, it will give you an operation ID which you can use to check its progress with `gddy domain operation status <operation-id>`.
 
-Registration completes **asynchronously**: `purchase` submits the registration and waits briefly for the registry, reporting the operation's `status` (`COMPLETED` when done). The domain then appears in `gddy domain list`. If `purchase` gives up waiting before reaching a terminal status, it will give you an operation ID which you can use to check its progress with:
-`gddy domain operation status <operation-id>`.
+## Quote and purchase a domain
 
-## The flow
+To buy a domain, run up to four commands in order. The first two are optional. Quoting a domain gives you a single-use quote token, which locks in the price and the registration settings you review. After the steps, a section for each of suggestions, quote options and quote lifetime has the details.
 
-1. **Find a name** (optional) — if you don't have one in mind, get suggestions
-   from a seed word or phrase:
+1. (_Optional_) Get name suggestions, from a seed word or phrase or with no phrase:
+
    ```
    gddy domain suggest "avocado jewelry"
-   ```
-   Or leave the phrase out to get suggestions based on what we know about you
-   and your account:
-   ```
    gddy domain suggest
    ```
-   Narrow with `--tlds com --tlds dev` (repeatable), bound the name length with
-   `--length-min`/`--length-max`, and cap the count with the global `--limit`.
-   Suggestions are available-by-contract, but availability is re-checked at
-   quote time.
-2. **Check availability** (optional) — confirm a name and see its price:
-   `gddy domain available example.com`
-3. **Quote it** — this is where you choose the registration settings and review
-   the terms and price:
+
+2. (_Optional_) Check availability to confirm a name and see its price:
+
+   ```
+   gddy domain available example.com
+   ```
+
+3. Quote the domain to review the terms and price and lock in your registration settings:
+
    ```
    gddy domain quote example.com
    ```
-   The output shows the price, the required legal agreements, the resolved
-   contact/preference settings, and the `quoteToken` (with its `expiresAt`). Set
-   registration options here (they're locked into the token):
-   - `--period <1-10>` — registration length in years (default 1).
-   - `--privacy` — add privacy protection.
-   - `--no-renew` — disable auto-renew (on by default).
-   - `--nameserver <host>` — custom nameserver (repeatable); omit for GoDaddy's.
-4. **Purchase**, accepting the agreements and confirming the charge:
+
+4. Read the quote, which shows the price, the required legal agreements, the resolved contact and preference settings, and the `quoteToken` (with its `expiresAt`).
+
+5. Purchase the domain, accepting the agreements and confirming the charge:
+
    ```
    gddy domain purchase --quote-token <token> --agree --confirm
    ```
+
+### Find a name
+
+Give `suggest` a seed word or phrase, or leave the phrase out to get suggestions based on what we know about you and your account. These options narrow the results:
+
+- `--tlds com --tlds dev`: limit the suggestions to these top-level domains (repeatable).
+- `--length-min` and `--length-max`: bound the name length.
+- `--limit`: cap the count (a global option).
+
+Suggestions are meant to be available, but availability is checked again when you quote.
+
+### Quote options
+
+Set registration options when you quote, because they're locked into the quote token:
+
+- `--period <1-10>`: registration length in years (default 1).
+- `--privacy`: add privacy protection.
+- `--no-renew`: disable auto-renew (on by default).
+- `--nameserver <host>`: custom nameserver (repeatable); omit for GoDaddy's.
+
+### Quote lifetime
 
 The quote is cached locally (next to your `contacts.toml`), so **run `quote` and `purchase` on the same machine**, within the token's ~10-minute lifetime. If the token has expired or isn't found, just re-run `gddy domain quote`.
 
 ### The three decisions
 
-- **The quote token** selects *which* quote you're buying — the exact domain,
-  settings, and registration price you reviewed.
-- `--agree` is your **consent** to the quote's legal agreements. Run `purchase`
-  without it and it lists the agreements you must accept.
-- `--confirm` acknowledges that the purchase **charges your account**. Without
-  it, the command stops before buying.
+Three things decide what you buy and what you agree to:
+
+- **The quote token** selects *which* quote you're buying: the exact domain, settings, and registration price you reviewed.
+- `--agree` is your **consent** to the quote's legal agreements. Run `purchase` without it and it lists the agreements you must accept.
+- `--confirm` acknowledges that the purchase **charges your account**. Without it, the command stops before buying.
 
 AI assistants: Before using `--agree` or `--confirm`, show the end user the quoted price from `domain quote` (including any premium fees), tell them that taxes and fees such as the ICANN fee are added on top so the total charged will be higher, and show each required legal agreement's title and URL (from `quote`'s `requiredAgreements`), and obtain their explicit confirmation to proceed. The user must be able to click through and read the agreements. Do not infer confirmation from a general request to buy or register a domain.
 
-## Buying with other products
+## Buy a domain with other products
 
-To buy a domain together with other GoDaddy products, or to pay with the same checkout session as them, use `gddy shopping checkout create --domain <domain>` instead. That path uses your account's default registration settings. See `gddy guide shopping`.
+To buy a domain together with other GoDaddy products, or to pay with the same checkout session as them, use `gddy shopping checkout create --domain <domain>` instead. That path uses your account's default registration settings. Go to `gddy guide shopping` for the details.
 
 ## International domain names
 
@@ -76,7 +86,7 @@ You can type a name either as Unicode (`münchen.de`) or in its encoded form (`x
 
 ## Contacts
 
-A registration has four contact roles: **registrant**, **admin**, **billing**, and **tech**. If you don't supply them, the API uses your GoDaddy account's default contacts — which is usually what you want. Contacts are part of the quote, so configure them *before* you quote.
+A registration has four contact roles: **registrant**, **admin**, **billing**, and **tech**. If you don't supply them, GoDaddy uses your account's default contacts, which is usually what you want. Contacts are part of the quote, so configure them *before* you quote.
 
 If you register many domains and want to set your own contacts once, save them in a `contacts.toml` in your `gddy` config directory. The quickest start is to generate a template and edit it:
 
@@ -90,7 +100,7 @@ That writes a starter `contacts.toml` (with every role commented out) to:
 - macOS: `~/Library/Application Support/gddy/contacts.toml`
 - Windows: `%APPDATA%\gddy\contacts.toml`
 
-Open it, uncomment the role(s) you want, and fill in the values. Each role is an optional table: a role you omit falls back to the account default; a role you uncomment must be **complete** (the required fields below), or the file fails to load.
+Open it, uncomment the role(s) you want, and fill in the values. Each role is an optional table. A role you omit falls back to the account default. A role you uncomment must be **complete**, with every required field from the example that follows, or the file fails to load.
 
 ```toml
 [registrant]
@@ -121,5 +131,5 @@ country     = "US"
 # default for it.
 ```
 
-Required fields per role: `name_first`, `name_last`, `email`, `phone`, `address1`, `city`, `state`, `postal_code`, `country`.
-Optional fields: `organization`, `address2`.
+- Required fields per role: `name_first`, `name_last`, `email`, `phone`, `address1`, `city`, `state`, `postal_code`, `country`.
+- Optional fields: `organization`, `address2`.

@@ -4,7 +4,7 @@ summary: Browse the GoDaddy API catalog, inspect operations, and make calls
 
 # Explore the GoDaddy API with `gddy api`
 
-`gddy api` lets you browse GoDaddy's REST API catalog and inspect the details of any operation: parameters, request and response schemas, and required scopes. You can also make an authenticated call. You never need to leave the CLI or look anything up in separate API docs.
+`gddy api` lets you browse GoDaddy's API catalog and inspect the details of operations, like data schemas and required scopes. You can also make authenticated calls to these APIs. You never need to leave the CLI or look anything up in separate API docs.
 
 The typical flow is: find an operation, inspect it, then call it.
 
@@ -16,7 +16,7 @@ The following terms and concepts are relevant to browsing and calling the GoDadd
 
 **Operation**: one endpoint of the API, identified by an operation ID (for example `createOrder`), an HTTP method, and a path.
 
-**Catalog**: the list of API domains and operations that `gddy api` browses. You don't need to look anything up outside the CLI.
+**Catalog**: the list of API domains and operations that `gddy api` browses.
 
 **Schema**: the shape of a request body, a parameter's value, or a response. A schema ID is a name you can pass to `gddy api schema get` to see the full structure.
 
@@ -52,7 +52,7 @@ After you have an operation in mind, get its full detail with:
 gddy api operation get <operationId>
 ```
 
-You can pass either the operation's ID (for example `createOrder`) or a path or path fragment (for example `/v1/commerce/orders` or `/orders`). The output shows the HTTP method, path, and summary. It also shows every parameter, every possible response, and the OAuth scopes the operation requires. A request body, if there is one, shows as a parameter named `body`.
+You can pass either the operation's ID (for example `createOrder`), a path, or a path fragment (for example `/v1/commerce/orders` or `/orders`). The output shows the HTTP method, path, and summary. It also shows every parameter, every possible response, and the OAuth scopes the operation requires. A request body, if there is one, shows as a parameter named `body`.
 
 If your query matches more than one operation, `get` reports an error listing the candidates. This happens with a path shared by several HTTP methods, or a fuzzy search hitting several unrelated endpoints. Be more specific, or add `--method`:
 

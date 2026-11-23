@@ -1,15 +1,17 @@
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
-use cli_engine::{CliCoreError, CommandResult, NextActionParam, RuntimeCommandSpec, Tier};
+use cli_engine::{
+    CliCoreError, CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier,
+};
 use serde_json::{Value, json};
 
 use super::create_keys;
 use crate::error::GddyError;
 use crate::hosting::client::{ClientError, HostingClient};
 use crate::hosting::common::{
-    CREATE_APP, HostingAppOperation, HostingAppType, app_type_command, client_err,
-    client_err_with_fix, error_issues, make_client, with_operation_type,
+    CREATE_APP, HostingAppOperation, HostingAppType, client_err, client_err_with_fix, error_issues,
+    make_client, with_operation_type,
 };
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_APPLICATION_CREATE as APP_CREATE;
@@ -35,17 +37,16 @@ const MHWP_HELP: &str = "\n\nMHWP creates a WordPress site and needs an Airo App
      source imports, secrets, logs, custom domains and plan attachment are not available \
      for WordPress sites.";
 
-pub(super) fn command(mhwp: bool) -> RuntimeCommandSpec {
+pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<AppCreateArgs, _, _, _>(
-        app_type_command::<AppCreateArgs>("create", "Create a hosting application", mhwp)
+        CommandSpec::from_args::<AppCreateArgs>("create", "Create a hosting application")
             .with_long(format!(
                 "Provision a new hosting application slot. Because no app ID exists \
                  until provisioning completes, this returns an operation ID. \
                  Poll `hosting operation get --operation-id <id>` until \
                  status is COMPLETED or FAILED. On COMPLETED, the operation's \
                  `app` field carries the created app; use `app.id` \
-                 as the --app-id for all subsequent calls.{}",
-                if mhwp { MHWP_HELP } else { "" }
+                 as the --app-id for all subsequent calls.{MHWP_HELP}"
             ))
             .with_system("hosting")
             .with_tier(Tier::Mutate)
@@ -511,16 +512,15 @@ mod tests {
         run_hosting(cli, &argv).await
     }
 
-    const REJECTED: &str = "invalid value 'MHWP'";
     const PARSED: &str = "no provider registered";
 
     #[tokio::test]
-    async fn mhwp_is_rejected_before_auth_while_its_flag_is_off() {
-        let cli = cli(false);
-        let create = run(&cli, &["create", "--app-type", "MHWP", "--name", "s"]).await;
-        assert!(create.contains(REJECTED), "{create}");
+    async fn mhwp_is_accepted_and_documented() {
+        let cli = cli();
+        let create = run(&cli, &["create", "--app-type", "mhwp", "--name", "s"]).await;
+        assert!(create.contains(PARSED), "{create}");
         let list = run(&cli, &["list", "--app-type", "MHWP"]).await;
-        assert!(list.contains(REJECTED), "{list}");
+        assert!(list.contains(PARSED), "{list}");
         let nodejs = run(&cli, &["create", "--app-type", "nodejs", "--name", "s"]).await;
         assert!(nodejs.contains(PARSED), "{nodejs}");
 
@@ -529,18 +529,6 @@ mod tests {
             help.contains("Provision a new hosting application"),
             "{help}"
         );
-        assert!(!help.contains("MHWP"), "{help}");
-    }
-
-    #[tokio::test]
-    async fn mhwp_is_accepted_and_documented_while_its_flag_is_on() {
-        let cli = cli(true);
-        let create = run(&cli, &["create", "--app-type", "mhwp", "--name", "s"]).await;
-        assert!(create.contains(PARSED), "{create}");
-        let list = run(&cli, &["list", "--app-type", "MHWP"]).await;
-        assert!(list.contains(PARSED), "{list}");
-
-        let help = run(&cli, &["create", "--help"]).await;
         assert!(help.contains("Airo App Builder subscription"), "{help}");
         assert!(help.contains("hosting runtime get"), "{help}");
         assert!(help.contains("not available for WordPress sites"), "{help}");

@@ -91,6 +91,10 @@ Run `gddy guide hosting-nodejs` for a walkthrough of deploying a Node.js app. Pu
 
 Use the `hosting app restart` command after creating, updating or deleting an application's secrets.
 
+### Managed WordPress
+
+Run `gddy guide hosting-wordpress` for a walkthrough of creating a WordPress site (`--app-type MHWP`).
+
 ## Global flags
 
 Use the `--debug` flag for verbose output, including the full HTTP request/response. Use `--dry-run` to see what would happen without making any changes. Humans see human-formatted output; use `--human` to see what they see in an interactive TTY. Non-TTY output uses `--json` formatting by default. Use `--toon` if you understand that format to save tokens. Use `--env` to override the default `prod` environment, or set it permanently with `gddy env set <env>`.
