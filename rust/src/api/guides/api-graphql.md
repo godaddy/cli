@@ -12,7 +12,7 @@ The following terms and concepts are relevant to calling GraphQL-backed APIs:
 
 **Wrapper operation**: the one REST operation (for example `postTaxGraphql` or `postCatalogGraphql`) through which a domain backed by GraphQL accepts a generic `{query, variables}` body. In the catalog, the domain shows up as this one operation.
 
-**GraphQL operation**: a single GraphQL query or mutation that the wrapper operation proxies to. Each one is also individually addressable, with an ID, for example `postTaxGraphql::query::classification`.
+**GraphQL operation**: a single GraphQL query or mutation that the wrapper operation proxies to. Each one is individually addressable by ID, for example `postTaxGraphql::query::classification`.
 
 **SDL**: GraphQL's schema definition language, the text form of a GraphQL schema.
 
