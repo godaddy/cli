@@ -81,7 +81,7 @@ A GraphQL type name is only unique within its own domain's schema. Two domains c
 
 ## Get the whole schema at once
 
-Drilling one type at a time is the right flow for shaping a specific `--select`. If you want the actual GraphQL specification instead (the real SDL text, not a JSON reconstruction of it), ask for it directly:
+If you want the full GraphQL specification instead of exploring each type one at a time, run the `gddy api graphql sdl get <id>` command:
 
 ```
 gddy api graphql sdl get postTaxGraphql
