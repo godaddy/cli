@@ -118,7 +118,7 @@ Before running anything that changes data, preview it with the global `--dry-run
 
 ## Make a GraphQL call
 
-Some API domains are backed by GraphQL rather than REST. Go to `gddy guide api-graphql` for how to inspect and call a GraphQL operation, choose the fields you get back, and read the schema.
+Some API domains are backed by GraphQL instead of REST. Go to `gddy guide api-graphql` for how to inspect and call a GraphQL operation, choose the fields you get back, and read the schema.
 
 ## Command reference
 
@@ -133,7 +133,7 @@ Some API domains are backed by GraphQL rather than REST. Go to `gddy guide api-g
 | `api schema get <id>` | Full structure of a schema |
 | `api call <path> --method <method>` | Make an authenticated REST request |
 
-## See also
+## Related
 
 - `gddy guide auth`: how authentication and credential storage work.
 - `gddy guide api-graphql`: inspect and call GraphQL-backed APIs.
