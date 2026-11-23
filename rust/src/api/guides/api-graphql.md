@@ -4,7 +4,7 @@ summary: Inspect and call GraphQL-backed APIs, choose the fields you get back, a
 
 # Call a GraphQL API with `gddy api graphql`
 
-Some GoDaddy API domains are backed by GraphQL rather than plain REST. `gddy api graphql` lets you inspect their operations, call them, choose the fields you get back, and read the schema. To find an operation, or to call a REST operation, go to `gddy guide api-explorer`.
+Some GoDaddy API domains are backed by GraphQL rather than REST. `gddy api graphql` lets you inspect their operations, call them, choose the fields you get back, and read the schema. To find an operation, or to call a REST operation, go to `gddy guide api-explorer`.
 
 ## Concepts
 
