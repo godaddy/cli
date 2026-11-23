@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.42](https://github.com/godaddy/cli/compare/v0.2.41...v0.2.42) (2026-11-23)
+
+
+### Features
+
+* **update:** add an upgrades guide and suggest it after a breaking update ([#400](https://github.com/godaddy/cli/issues/400)) ([5f0feee](https://github.com/godaddy/cli/commit/5f0feee9d4ebc40629873a37245f5377e1e98dee))
+
+
+### Bug Fixes
+
+* **deps:** bump url to 2.5.9 to resolve RUSTSEC-2026-0592 ([#413](https://github.com/godaddy/cli/issues/413)) ([23bfab3](https://github.com/godaddy/cli/commit/23bfab34ed20f88b41da9930f33522499d7a0bb6))
+
+
+### Documentation
+
+* align the merged guides with the new guide patterns ([#397](https://github.com/godaddy/cli/issues/397)) ([cdb8c44](https://github.com/godaddy/cli/commit/cdb8c4443f84e724bb7ce9546f36cfa6dea101a1))
+* **api:** fix style findings in the API explorer guide ([#392](https://github.com/godaddy/cli/issues/392)) ([ecefb42](https://github.com/godaddy/cli/commit/ecefb424ada8d7f5a291924e41c4ff8902e2dcef))
+* **hosting:** fix style findings in the hosting guides ([#390](https://github.com/godaddy/cli/issues/390)) ([e4aa782](https://github.com/godaddy/cli/commit/e4aa782749baf4e1d15ee3a26761a02d7531ee77))
+* **platform:** fix style findings in the platform guides ([#393](https://github.com/godaddy/cli/issues/393)) ([5597f4b](https://github.com/godaddy/cli/commit/5597f4bca450c22c91f867a2ac58b47e59b88508))
+
 ## [0.2.41](https://github.com/godaddy/cli/compare/v0.2.40...v0.2.41) (2026-11-20)
 
 
