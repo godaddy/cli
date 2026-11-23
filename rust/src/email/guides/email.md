@@ -150,7 +150,7 @@ Typical provisioning takes several seconds to a minute. The response has the sam
 
 ## Error handling
 
-These sections cover why the eligibility check or the create command can fail, the rules for the username in an email address, and other errors.
+The following sections cover why the eligibility check or the create command can fail, the rules for the username in an email address, and other errors.
 
 ### Eligibility failure reasons
 
