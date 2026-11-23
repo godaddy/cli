@@ -125,6 +125,21 @@ check "a breaking change touching only docs and workflows needs no CLI notes" 0 
 check "a directory that only starts like the CLI path does not count" 0 \
   "fix!: x" "fix: x"$'\n' $'rustic/notes.md\n' 0.2.39 "$guide_old_only"
 
+# A guide with many sections is longer than a pipe buffer. `grep -q` stops reading at
+# the first match, and `sed` then dies of SIGPIPE; under `pipefail` that once made a
+# heading near the top look missing about three runs in four. Run it a few times,
+# since a lucky run passes.
+padding=
+for _ in $(seq 1 2000); do
+  padding+=$'A long line of guide text that pads the file out past the size of a pipe buffer.\n'
+done
+big_guide=$'# Upgrade\n\n## 0.1 to 0.2\n\ntext\n\n## 0.2 to 0.3\n\n'$padding
+for attempt in 1 2 3 4 5 6; do
+  check "a heading near the top of a long guide is found (run $attempt)" 0 \
+    "fix(dns)!: x" "fix: x"$'\n' "$touched" 0.2.39 "$big_guide" \
+    "documented under \"## 0.2 to 0.3\""
+done
+
 check "an unreadable version is an error" 2 \
   "fix(dns)!: x" "x"$'\n' "$touched" "not-a-version" "$guide_02_to_03" \
   "Can't read the crate version"

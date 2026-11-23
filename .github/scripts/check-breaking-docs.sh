@@ -8,11 +8,13 @@
 # release. Only a commit's first line is a subject: a body that quotes `fix!: ...` as an
 # example doesn't count.
 #
+# A breaking pull request that changes the CLI has to change the guide, and the guide has
+# to hold the section for the upgrade the change belongs to: `## 0.2 to 0.3` while the
+# version in rust/Cargo.toml is 0.2.x, `## 1 to 2` while it is 1.x.y.
+#
 # The guide covers the `gddy` CLI, which release-please versions from the files under
 # `rust/`. The GitHub Action in `action/` is released on its own, so a breaking change
 # that doesn't touch `rust/` doesn't change the CLI and needs no upgrade notes here.
-# the section for the upgrade the change belongs to: `## 0.2 to 0.3` while the version
-# in rust/Cargo.toml is 0.2.x, `## 1 to 2` while it is 1.x.y.
 #
 # Inputs, all from the environment:
 #   PR_TITLE            the pull request title
@@ -90,7 +92,9 @@ if ! grep -Fxq -- "$guide" "$changed_files_file"; then
 fi
 if [[ ! -f $guide ]]; then
   problems+=("$guide doesn't exist.")
-elif ! sed 's/[[:space:]]*$//' "$guide" | grep -Fxq -- "$heading"; then
+elif ! sed 's/[[:space:]]*$//' "$guide" | grep -Fx -- "$heading" >/dev/null; then
+  # No `grep -q` here: it exits at the first match, `sed` then dies of SIGPIPE (status
+  # 141) while it still has lines to write, and `pipefail` reports the heading missing.
   problems+=("$guide has no section titled \`$heading\`.")
 fi
 
@@ -111,7 +115,7 @@ fi
   echo "Add or extend the \"$heading\" section in $guide. For each affected"
   echo "command, flag, variable or field, say what it was, what it is now, and"
   echo "what to do. See .agents/skills/breaking-changes/SKILL.md. If this"
-  echo "change isn't breaking, remove the\`!\` from the title and the"
+  echo "change isn't breaking, remove the \`!\` from the title and the"
   echo "\`BREAKING CHANGE:\` footer from the commits."
 } >&2
 echo "::error title=Breaking change has no upgrade notes::Add a \"$heading\" section to $guide."
