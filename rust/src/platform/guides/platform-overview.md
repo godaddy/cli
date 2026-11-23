@@ -12,7 +12,7 @@ summary: How to build, configure, and ship a GoDaddy Platform Application (GPA) 
 gddy platform app init --name my-app --url https://example.com --proxy-url https://example.com/proxy --scopes commerce.order:read,commerce.order:update
 ```
 
-This calls the app-registry API to create the application, then writes `godaddy.toml` (and a per-env secrets file) to the current directory. `url` and `proxy-url` must be publicly resolvable HTTP(S). Localhost, loopback, and private IPs are rejected. Re-run with `--config <path>` to seed flags from an existing manifest instead of retyping them. Covered by the default login; a PAT needs the `apps.app-registry:read` and `apps.app-registry:write` scopes.
+This calls the app-registry API to create the application, then writes `godaddy.toml` (and a per-env secrets file) to the current directory. `url` and `proxy-url` must be publicly resolvable HTTP or HTTPS. Localhost, loopback, and private IPs are rejected. Re-run with `--config <path>` to seed flags from an existing manifest instead of retyping them. Covered by the default login. A PAT needs the `apps.app-registry:read` and `apps.app-registry:write` scopes.
 
 To allow additional OAuth callbacks, add `redirect_uris` to the manifest passed with `--config`:
 
@@ -26,14 +26,14 @@ redirect_uris = [
 ]
 ```
 
-The list accepts up to five unique HTTPS URLs, each no longer than 2048 characters. Credentials and fragments aren't allowed, and the list must not repeat `url` or the root-relative `/api/godaddy/callback` resolved against `url`. Omitting `redirect_uris` leaves the existing App Registry allowlist unchanged during an update; `redirect_uris = []` clears the additional callbacks. `init --config` sends the list when creating an application. Both `update` (including a label-only or description-only update) and `deploy` synchronize it when the key is present, so an explicit empty list clears remote extras in either flow. The list contains extras only and doesn't replace the callbacks registered automatically from `url`.
+The list accepts up to five unique HTTPS URLs, each no longer than 2048 characters. Credentials and fragments aren't allowed, and the list must not repeat `url` or the root-relative `/api/godaddy/callback` resolved against `url`. Omitting `redirect_uris` leaves the existing App Registry allowlist unchanged during an update. `redirect_uris = []` clears the additional callbacks. `init --config` sends the list when creating an application. Both `update` (including a label-only or description-only update) and `deploy` synchronize it when the key is present, so an explicit empty list clears remote extras in either flow. The list contains extras only and doesn't replace the callbacks registered automatically from `url`.
 
 ## Configure the application
 
 Most `gddy platform app add <subcommand>` commands only append to `godaddy.toml`:
 
 - `add action --name <name> --url <url>`: an HTTP endpoint the platform calls on the app's behalf.
-- `add subscription --name <name> --url <url> --events <event...>`: a webhook route for platform events; run `gddy platform webhook event` to see valid event types.
+- `add subscription --name <name> --url <url> --events <event...>`: a webhook route for platform events. Run `gddy platform webhook event` to see valid event types.
 - `add extension <embed|checkout|blocks> ...`: a UI extension bundle (run that subcommand with `--help` for details).
 - `add settings --group <group> --slug <slug> --entry-path <path> ...`: placement metadata for a merchant-facing settings form or link. This only writes placement fields (group, slug, entryPath, order, capabilities, and icon). The presentation itself (`[settings.presentation]`) has to be hand-authored in `godaddy.toml` afterward. Go to the `platform-settings` guide (`gddy guide platform-settings`) for the full presentation shape.
 
@@ -70,9 +70,9 @@ gddy platform app enablement --store-id <storeId>
 ## Other useful commands
 
 - `gddy platform app validate <name>`: check *remote* application state (`url` and `proxy-url` set, not INACTIVE), as opposed to `config validate`'s local manifest check.
-- `gddy platform app info --name <name>` or `list`: inspect a single app or list all of them (developer catalog, not store enablements).
+- `gddy platform app info --name <name>` or `list`: inspect a single app or list them all (developer catalog, not store enablements).
 - `gddy platform app enablement --store-id <storeId>`: list apps enabled on a store (defaults: name, status, releaseVersion).
-- `gddy platform app archive <name>`: irreversible; confirm the name with `list` first.
+- `gddy platform app archive <name>`: irreversible. Confirm the name with `list` first.
 - `gddy platform action` and `gddy platform webhook`: browse the platform's action and webhook-event catalogs (used when choosing values for `add action` and `add subscription`).
 
 ## Related

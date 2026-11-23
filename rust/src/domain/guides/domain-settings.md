@@ -6,7 +6,7 @@ summary: Manage settings on domains you already own, including auto-renew, trans
 
 This guide is for domains you already own. Use it to inspect a domain and change settings including auto-renewal, transfer lock, and nameservers.
 
-To **register a new domain**, follow `gddy guide domain-purchase` instead. To manage **DNS records** (A, CNAME, MX, and so on), follow `gddy guide dns`.
+To **register a new domain**, follow `gddy guide domain-purchase` instead. To manage **DNS records** (for example A, CNAME, and MX), follow `gddy guide dns`.
 
 Most setting changes run **asynchronously**: the command returns an operation ID and a status. If the status isn't finished yet, poll with `domain operation status`, then confirm with `domain get`.
 
@@ -46,7 +46,7 @@ gddy domain transfer-lock set example.com --enable
 gddy domain transfer-lock set example.com --disable
 ```
 
-Pass exactly one of `--enable` or `--disable`. Unlock only when you intend to allow a transfer away from GoDaddy; re-enable the lock when you are done.
+Pass exactly one of `--enable` or `--disable`. Unlock only when you intend to allow a transfer away from GoDaddy. Re-enable the lock when you are done.
 
 AI assistants: Before using `--disable` on transfer lock, confirm the end user intends to allow outbound transfer of this domain. Unlocking removes registrar-level protection against unauthorized transfers.
 
@@ -76,7 +76,7 @@ Then confirm the domain itself:
 gddy domain get example.com
 ```
 
-If a change fails, the operation status (or the original command error) explains why; fix the issue and try again if appropriate.
+If a change fails, the operation status (or the original command error) explains why. Fix the issue and try again if appropriate.
 
 ## Related guides
 

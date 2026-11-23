@@ -4,7 +4,7 @@ summary: Create a managed WordPress site, rename or delete it, and take it live 
 
 # `gddy hosting`: managed WordPress sites
 
-Managed WordPress on this platform is a WordPress site that lives inside an Airo App Builder subscription, not a hosting plan of its own. The CLI creates the site, tells you its URL, renames or deletes it, reads its PHP and WordPress versions, and switches it between live and a placeholder page. You edit everything inside the site in WordPress itself: pages, posts, themes, plugins and the site title. Open the WordPress admin by signing in to [Airo App Builder](https://airo-builder.godaddy.com/apps) and opening the site.
+Managed WordPress on this platform is a WordPress site that lives inside an Airo App Builder subscription, not a hosting plan of its own. The CLI creates the site, tells you its URL, renames or deletes it, reads its PHP and WordPress versions, and switches it between live and a placeholder page. You edit everything inside the site in WordPress itself: pages, posts, themes, plugins, and the site title. Open the WordPress admin by signing in to [Airo App Builder](https://airo-builder.godaddy.com/apps) and opening the site.
 
 ## Concepts
 
@@ -16,7 +16,7 @@ The following terms and concepts are relevant to managed WordPress sites:
 
 **Published-site slot**: a live site uses one slot on the plan. The free plan has no slots, so you can't take a site live on it.
 
-**Operation**: create, publish and unpublish return an operation ID. Run `hosting operation get` to check the status of the operation until it reaches a `COMPLETED` or `FAILED` state.
+**Operation**: create, publish, and unpublish return an operation ID. Run `hosting operation get` to check the status of the operation until it reaches a `COMPLETED` or `FAILED` state.
 
 ## Create the site
 

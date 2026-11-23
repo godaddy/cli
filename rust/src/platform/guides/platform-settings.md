@@ -46,7 +46,7 @@ The following options require a note:
 - `entryPath` is relative to the application's registered `proxy_url`, same as action URLs.
 - `--capability` defaults to `read` and `write` server-side if omitted.
 - `--icon-name` and `--icon-library` must be given together or not at all.
-- A `config` capability requires `read` plus one or more `--config-key` values; the command writes those values to `metadata.configKeys`.
+- A `config` capability requires `read` plus one or more `--config-key` values. The command writes those values to `metadata.configKeys`.
 
 ### The form
 
@@ -85,7 +85,7 @@ label = "Order origin"
 value = "origin"
 ```
 
-A field `key` becomes a property in the merchant's saved `values` document and must stay stable once merchants have data. Don't rename a field key without a GPA-owned migration. Section keys are display-only and safe to change freely.
+A field `key` becomes a property in the merchant's saved `values` document and must stay stable once merchants have data. Don't rename a field key without a GPA-owned migration. Section keys are display-only and safe to change.
 
 Supported field types (`type` discriminates the shape; every field needs `type`, `key`, and `label`):
 
