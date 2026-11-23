@@ -501,6 +501,579 @@
         "title": "Payment Details",
         "type": "object"
       },
+      "V1BundledFeatures": {
+        "$id": "https://godaddy.com/schemas/commerce/store-bundled-features.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "deprecated": true,
+        "description": "This is the base object for the list of features a business/store has subscribed to.",
+        "properties": {
+          "createdAt": {
+            "description": "This is a response only field. The time (in ISO-8601 format) at which the bundle was created. E.g. 2014-09-11T23:14:44Z.",
+            "readOnly": true,
+            "type": "string"
+          },
+          "featureConfig": {
+            "$ref": "#/components/schemas/V1Dictionary",
+            "description": "Optional configs for each feature in the list."
+          },
+          "featureList": {
+            "description": "List of features the bundle contains.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 80,
+            "nullable": true,
+            "type": "array"
+          },
+          "id": {
+            "$ref": "#/components/schemas/V1uuid",
+            "description": "The id of the bundle. "
+          },
+          "name": {
+            "description": "Name of bundle.",
+            "type": "string"
+          },
+          "type": {
+            "description": "The type of the bundle.",
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "This is a response only field. The time (in ISO-8601 format) at which the bundle was updated. E.g. 2014-09-11T23:14:44Z.",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "title": "Bundled Features",
+        "type": "object"
+      },
+      "V1Dictionary": {
+        "$id": "https://godaddy.com/schemas/commerce/store/dictionary.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {
+          "type": "string"
+        },
+        "description": "Key value pairs of strings",
+        "maxProperties": 40,
+        "minProperties": 0,
+        "title": "Dictionary",
+        "type": "object"
+      },
+      "V1GovernmentId": {
+        "$id": "https://godaddy.com/schemas/commerce/store-government-id.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "GovernmentId details",
+        "properties": {
+          "createdAt": {
+            "description": "The time (in ISO-8601 format) at which the application was created. E.g. 2014-09-11T23:14:44Z.",
+            "readOnly": true,
+            "type": "string"
+          },
+          "governmentId": {
+            "description": "The government id. E.g. '123456789'",
+            "type": "string"
+          },
+          "type": {
+            "description": "The type of government id. E.g. 'drivers-license'",
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "The time (in ISO-8601 format) at which the application was updated. E.g. 2014-09-11T23:14:44Z.",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "title": "GovernmentId",
+        "type": "object"
+      },
+      "V1Processor": {
+        "$id": "https://godaddy.com/schemas/commerce/store-processor.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Processor to be used by Store",
+        "enum": [
+          "CHASE_PAYMENTECH",
+          "REDE",
+          "EVO",
+          "FIRST_DATA",
+          "GLOBAL_PAYMENTS",
+          "HEARTLAND_PAYMENT_SYSTEM",
+          "ELAVON",
+          "MERCURY",
+          "MONERIS",
+          "PAYPAL",
+          "ELAVON_MX",
+          "STRIPE",
+          "TSYS",
+          "VANTIV",
+          "WORLDPAY",
+          "EPX",
+          "WEPAY",
+          "MASHREQ",
+          "AXIS",
+          "KARTUKU",
+          "NEXI",
+          "DANA",
+          "MYNT",
+          "POYNT",
+          "NUVEI",
+          "NPAY",
+          "BRIDGEPAY",
+          "CONVERGE",
+          "MOCK",
+          "NA_BANCARD",
+          "CREDITCALL",
+          "ELAVON_EU",
+          "FUSEBOX",
+          "EVERTEC",
+          "GHL",
+          "RS2",
+          "JCN",
+          "PRISMA",
+          "VANTIV_EXPRESS",
+          "EZETAP",
+          "ADYEN",
+          "USBANK",
+          "LETGO",
+          "CHECK_COMMERCE"
+        ],
+        "title": "Store Processor",
+        "type": "string"
+      },
+      "V1Store": {
+        "$defs": {
+          "Address": {
+            "properties": {
+              "city": {
+                "description": "The city of the address.",
+                "type": "string"
+              },
+              "countryCode": {
+                "description": "The country code of the address",
+                "type": "string"
+              },
+              "createdAt": {
+                "description": "The time (in ISO-8601 format) at which the address was created. E.g. 2014-09-11T23:14:44Z.",
+                "readonly": true,
+                "type": "string"
+              },
+              "id": {
+                "type": "integer"
+              },
+              "line1": {
+                "description": "The first line of the address.",
+                "type": "string"
+              },
+              "line2": {
+                "description": "The second line of the address.",
+                "type": "string"
+              },
+              "postalCode": {
+                "description": "The postal code of the address.",
+                "type": "string"
+              },
+              "postalCodeExtension": {
+                "description": "The postal code extension of the address.",
+                "type": "string"
+              },
+              "primary": {
+                "description": "Indicates if this is the primary address.",
+                "type": "boolean"
+              },
+              "status": {
+                "const": "ADDED",
+                "description": "The status of the address.",
+                "type": "string"
+              },
+              "territory": {
+                "description": "The territory of the address.",
+                "type": "string"
+              },
+              "territoryType": {
+                "description": "TerritoryType enum and territory go hand in hand. This enum specifies what kind of territory is in the territory field. E.g. in the US, this will typically be STATE.",
+                "enum": [
+                  "STATE",
+                  "PROVINCE",
+                  "OTHER"
+                ],
+                "type": "string"
+              },
+              "type": {
+                "description": "The type of the address.",
+                "enum": [
+                  "HOME",
+                  "WORK",
+                  "BUSINESS",
+                  "TRANSACTION",
+                  "OTHER"
+                ],
+                "type": "string"
+              },
+              "updatedAt": {
+                "description": "The time (in ISO-8601 format) at which the address was updated. E.g. 2014-09-11T23:14:44Z.",
+                "readonly": true,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "Phone": {
+            "description": "Contact Phone",
+            "properties": {
+              "areaCode": {
+                "description": "The area code of the phone number.",
+                "type": "string"
+              },
+              "createdAt": {
+                "readonly": true,
+                "type": "string"
+              },
+              "extensionNumber": {
+                "description": "The extension number of the phone number.",
+                "type": "string"
+              },
+              "id": {
+                "description": "The id of the phone number.",
+                "type": "integer"
+              },
+              "ituCountryCode": {
+                "description": "The country code of the phone number.",
+                "type": "string"
+              },
+              "localPhoneNumber": {
+                "description": "The local phone number.",
+                "type": "string"
+              },
+              "primaryDayTime": {
+                "description": "Indicates if this is the primary day time phone number.",
+                "type": "boolean"
+              },
+              "primaryEvening": {
+                "description": "Indicates if this is the primary evening phone number.",
+                "type": "boolean"
+              },
+              "status": {
+                "description": "The status of the phone number.",
+                "enum": [
+                  "ADDED",
+                  "CONFIRMED"
+                ],
+                "type": "string"
+              },
+              "type": {
+                "description": "The type of the phone number.",
+                "enum": [
+                  "HOME",
+                  "WORK",
+                  "BUSINESS",
+                  "MOBILE",
+                  "FAX",
+                  "PAGER",
+                  "RECEIPT",
+                  "OTHER"
+                ],
+                "type": "string"
+              },
+              "updatedAt": {
+                "readonly": true,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "$id": "https://godaddy.com/schemas/commerce/store.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Store represent a physical location where a merchant conducts business",
+        "properties": {
+          "acquirer": {
+            "$ref": "#/components/schemas/V1Processor",
+            "description": "The acquirer for this merchant."
+          },
+          "address": {
+            "properties": {
+              "city": {
+                "description": "The city of the address.",
+                "type": "string"
+              },
+              "countryCode": {
+                "description": "The country code of the address",
+                "type": "string"
+              },
+              "createdAt": {
+                "description": "The time (in ISO-8601 format) at which the address was created. E.g. 2014-09-11T23:14:44Z.",
+                "readonly": true,
+                "type": "string"
+              },
+              "id": {
+                "type": "integer"
+              },
+              "line1": {
+                "description": "The first line of the address.",
+                "type": "string"
+              },
+              "line2": {
+                "description": "The second line of the address.",
+                "type": "string"
+              },
+              "postalCode": {
+                "description": "The postal code of the address.",
+                "type": "string"
+              },
+              "postalCodeExtension": {
+                "description": "The postal code extension of the address.",
+                "type": "string"
+              },
+              "primary": {
+                "description": "Indicates if this is the primary address.",
+                "type": "boolean"
+              },
+              "status": {
+                "const": "ADDED",
+                "description": "The status of the address.",
+                "type": "string"
+              },
+              "territory": {
+                "description": "The territory of the address.",
+                "type": "string"
+              },
+              "territoryType": {
+                "description": "TerritoryType enum and territory go hand in hand. This enum specifies what kind of territory is in the territory field. E.g. in the US, this will typically be STATE.",
+                "enum": [
+                  "STATE",
+                  "PROVINCE",
+                  "OTHER"
+                ],
+                "type": "string"
+              },
+              "type": {
+                "description": "The type of the address.",
+                "enum": [
+                  "HOME",
+                  "WORK",
+                  "BUSINESS",
+                  "TRANSACTION",
+                  "OTHER"
+                ],
+                "type": "string"
+              },
+              "updatedAt": {
+                "description": "The time (in ISO-8601 format) at which the address was updated. E.g. 2014-09-11T23:14:44Z.",
+                "readonly": true,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "attributes": {
+            "$ref": "#/components/schemas/V1Dictionary",
+            "description": "A name/value pair list that could be persisted and later retrieved."
+          },
+          "businessId": {
+            "type": "string"
+          },
+          "channelId": {
+            "deprecated": true,
+            "description": "The id of the channel that this store is associated with. A channel could be a web site, a physical store, or any avenue where the merchant is doing commerce.",
+            "type": "string"
+          },
+          "channelType": {
+            "deprecated": true,
+            "description": "The channel type can be a website, a physical store, or any avenue where the merchant is doing commerce. Example: gopay.client.int.godaddy.com, mwp.godaddy-payments",
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "The createdAt of the store.  This createdAt is generated internally during create store.",
+            "readOnly": true,
+            "type": "string"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/V1currency-code",
+            "description": "The primary transaction currency for this merchant."
+          },
+          "defaultChannelId": {
+            "$ref": "#/components/schemas/V1uuid",
+            "description": "The default channel of the store, where uncategorized transactions are mapped to"
+          },
+          "defaultRetailChannelId": {
+            "$ref": "#/components/schemas/V1uuid",
+            "description": "The default retail channel of the store, where uncategorized transactions from terminals in retail store are mapped to"
+          },
+          "displayName": {
+            "description": "The store name (used in various displays). It is recommended to pick a different name for each store in the business.",
+            "type": "string"
+          },
+          "emailAddress": {
+            "description": "The email address of the store.",
+            "type": "string"
+          },
+          "externalStoreId": {
+            "description": "MID (merchantId) assigned to the store by the acquirer.",
+            "type": "string"
+          },
+          "fixedLocation": {
+            "deprecated": true,
+            "description": "Fixed location vs a mobile store (e.g. food truck).",
+            "type": "boolean"
+          },
+          "gatewayStoreId": {
+            "description": "ID assigned to the store by the gateway (some gateways assign their own IDs). This field will typically not be available when the business is initially created in the Poynt system. Once that information is passed to the gateway, they will provide their ID.",
+            "type": "string"
+          },
+          "governmentIds": {
+            "items": {
+              "$ref": "#/components/schemas/V1GovernmentId"
+            },
+            "maxItems": 10,
+            "nullable": true,
+            "type": "array"
+          },
+          "id": {
+            "$ref": "#/components/schemas/V1uuid",
+            "description": "The id of the store.  This id is generated internally during create business."
+          },
+          "latitude": {
+            "deprecated": true,
+            "description": "Latitude of the terminal.",
+            "type": "number"
+          },
+          "longitude": {
+            "deprecated": true,
+            "description": "Longitude of the terminal.",
+            "type": "number"
+          },
+          "mockProcessor": {
+            "deprecated": true,
+            "description": "It indicates if the store is using a mock processor.",
+            "type": "boolean"
+          },
+          "ownerId": {
+            "$ref": "#/components/schemas/V1uuid",
+            "description": "The id of the store owner."
+          },
+          "phone": {
+            "description": "Contact Phone",
+            "properties": {
+              "areaCode": {
+                "description": "The area code of the phone number.",
+                "type": "string"
+              },
+              "createdAt": {
+                "readonly": true,
+                "type": "string"
+              },
+              "extensionNumber": {
+                "description": "The extension number of the phone number.",
+                "type": "string"
+              },
+              "id": {
+                "description": "The id of the phone number.",
+                "type": "integer"
+              },
+              "ituCountryCode": {
+                "description": "The country code of the phone number.",
+                "type": "string"
+              },
+              "localPhoneNumber": {
+                "description": "The local phone number.",
+                "type": "string"
+              },
+              "primaryDayTime": {
+                "description": "Indicates if this is the primary day time phone number.",
+                "type": "boolean"
+              },
+              "primaryEvening": {
+                "description": "Indicates if this is the primary evening phone number.",
+                "type": "boolean"
+              },
+              "status": {
+                "description": "The status of the phone number.",
+                "enum": [
+                  "ADDED",
+                  "CONFIRMED"
+                ],
+                "type": "string"
+              },
+              "type": {
+                "description": "The type of the phone number.",
+                "enum": [
+                  "HOME",
+                  "WORK",
+                  "BUSINESS",
+                  "MOBILE",
+                  "FAX",
+                  "PAGER",
+                  "RECEIPT",
+                  "OTHER"
+                ],
+                "type": "string"
+              },
+              "updatedAt": {
+                "readonly": true,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "processor": {
+            "$ref": "#/components/schemas/V1Processor",
+            "description": "The processor for this merchant.  If this field is left blank it is assumed that the processor is the acquirer itself or CreditCall that happens to be our primary gateway."
+          },
+          "processorAdapterId": {
+            "deprecated": true,
+            "type": "string"
+          },
+          "processorData": {
+            "$ref": "#/components/schemas/V1Dictionary",
+            "description": "The processor data for the store."
+          },
+          "status": {
+            "default": "ACTIVE",
+            "description": "The status of the store.",
+            "enum": [
+              "ACTIVE",
+              "DISABLED",
+              "REMOVED"
+            ],
+            "type": "string"
+          },
+          "subscribedBundles": {
+            "description": "The list of bundles this store has subscribed to.",
+            "items": {
+              "$ref": "#/components/schemas/V1BundledFeatures"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "timezone": {
+            "description": "The timezone of the store.",
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "The updatedAt of the store.  This updatedAt is set internally during store updates.",
+            "readOnly": true,
+            "type": "string"
+          },
+          "ventureId": {
+            "deprecated": true,
+            "description": "The GoDaddy venture Id representing a business initiative of the merchant.",
+            "type": "string"
+          }
+        },
+        "title": "Store",
+        "type": "object"
+      },
+      "V1currency-code": {
+        "$id": "https://godaddy.com/schemas/common/currency-code.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "A three-character ISO-4217 currency code.",
+        "title": "Currency Code",
+        "type": "string"
+      },
+      "V1uuid": {
+        "$id": "https://godaddy.com/schemas/common/uuid.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "A universally unique identifier (UUID) in [RFC-4122 format](https://tools.ietf.org/html/rfc4122).",
+        "type": "string"
+      },
       "address": {
         "$id": "https://godaddy.com/schemas/common/address.v1",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -902,6 +1475,74 @@
   },
   "openapi": "3.0.3",
   "paths": {
+    "/v1/commerce/stores/{storeId}": {
+      "get": {
+        "description": "Retrieve the information of the Store by the Business and Store IDs.",
+        "operationId": "getStoreByIdV1",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Store"
+                }
+              }
+            },
+            "description": "Store Found",
+            "headers": {
+              "Poynt-Request-Id": {
+                "description": "Poynt Request Id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Oauth2": [
+              "commerce.store:read"
+            ]
+          }
+        ],
+        "summary": "Get Store by ID",
+        "tags": [
+          "General Endpoints"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "Request ID",
+          "in": "header",
+          "name": "Poynt-Request-Id",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "Store ID",
+          "in": "path",
+          "name": "storeId",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/V1uuid"
+          }
+        },
+        {
+          "description": "List of fields to include in the response",
+          "example": "address,attributes",
+          "explode": false,
+          "in": "query",
+          "name": "includeField",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "style": "form"
+        }
+      ]
+    },
     "/v2/commerce/stores": {
       "get": {
         "description": "Retrieve the list of stores associated with a Business ID",
