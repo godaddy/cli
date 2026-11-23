@@ -4,7 +4,7 @@ summary: Create a Node.js app on GoDaddy hosting, upload your code, preview the 
 
 # `gddy hosting`: deploy a Node.js application
 
-This guide covers the full lifecycle of a hosted Node.js application. Create an app, upload source code, test on a staging URL, attach to a hosting plan, and publish to production.
+This guide covers the full lifecycle of a hosted Node.js application. You'll create an app, upload source code, test on a staging URL, attach to a hosting plan, and publish to production.
 
 ## Concepts
 
@@ -67,7 +67,7 @@ gddy hosting source status --app-id <app-id> --import-id <import-id>
 
 ## Preview the app
 
-Once the import is COMPLETED the app is live on its PREVIEW URL. Retrieve it:
+After the import is COMPLETED the app is live on its PREVIEW URL. Retrieve it:
 
 ```sh
 gddy hosting app get --app-id <app-id>
