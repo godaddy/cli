@@ -75,7 +75,7 @@ Go to the [extension's README](https://github.com/ChrisChinchilla/vale-vscode#re
 - **Verb-first headings.** Use "Create the site", not "Creating a site" or "Site creation". No numbered headings.
 - **Lead-ins.** Put a sentence between a heading and its first sub-heading.
 - **Soft line breaks.** One paragraph is one line. Hard breaks belong only in shell examples.
-- **`AI assistants:` notes are pinned.** Tests check their exact wording, and Vale skips them. Don't edit or reword them.
+- **`AI assistants:` notes carry consent guidance.** Vale skips them, so don't reword them to fix style findings. The same text sits in Rust constants and next-action descriptions, and tests assert parts of that Rust text. If command behavior changes, update the guide note and the Rust text together, keep the consent meaning, and run the related tests.
 - **Rust tests pin other guide strings.** Before you change a sentence or a heading, search `rust/` for it (for example `rg -F "What the CLI doesn't do" rust`). A test that pins the old wording fails in CI.
 - **Check each claim against the code.** Read the command's source, or run it, before you describe its behavior, error codes or timing.
 - **No internal names.** This repository is public. Leave out ticket keys, internal system and service names, Slack channels, and internal URLs in guides, commits and pull request text.
