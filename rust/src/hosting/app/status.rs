@@ -16,7 +16,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                  (preview and publish). Use this to check whether an environment \
                  is ACTIVE, IDLE, or in a transitional state after a restart or deployment. \
                  The `variants` array contains one entry per environment (PREVIEW and PUBLISH) \
-                 with the runtime status for that environment.",
+                 with the runtime status for that environment. A WordPress (MHWP) site has \
+                 only a PUBLISH entry.",
             )
             .with_system("hosting")
             .with_tier(Tier::Read)
@@ -33,11 +34,6 @@ pub(super) fn command() -> RuntimeCommandSpec {
 
 /// WordPress (MHWP) sites have no deployments and no restart, so they are
 /// pointed back at the site's details instead.
-///
-/// Deliberately independent of the `hosting-mhwp` flag, unlike the retry hint
-/// in `operation get`: this branch only withholds suggestions that were wrong
-/// for a WordPress id whatever the flag said, and `app get` is reachable with
-/// the flag off.
 fn next_actions(app_id: String) -> Vec<NextAction> {
     if is_mhwp_app_id(&app_id) {
         return vec![
@@ -68,6 +64,16 @@ mod tests {
 
     fn commands(actions: &[NextAction]) -> Vec<&str> {
         actions.iter().map(|a| a.command.as_str()).collect()
+    }
+
+    #[tokio::test]
+    async fn status_help_says_a_wordpress_site_has_only_publish() {
+        let help = crate::hosting::test_support::run_hosting(
+            &crate::hosting::test_support::cli(),
+            &["app", "status", "--help"],
+        )
+        .await;
+        assert!(help.contains("only a PUBLISH entry"), "{help}");
     }
 
     #[test]

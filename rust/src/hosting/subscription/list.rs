@@ -125,7 +125,7 @@ fn list_next_actions(items: &[Value]) -> Vec<NextAction> {
     if attachable.is_empty() {
         return vec![next_action(
             "shopping catalog search --category webHosting",
-            "Buy a Web Hosting plan (NODEJS). Other app types will use a different category.",
+            "Buy a Web Hosting plan for a Node.js app (NODEJS)",
         )];
     }
 
@@ -236,6 +236,9 @@ mod tests {
             actions[0].command,
             "gddy shopping catalog search --category webHosting"
         );
+        let description = &actions[0].description;
+        assert!(description.contains("Node.js"), "{description}");
+        assert!(!description.contains("will use"), "{description}");
     }
 
     #[test]

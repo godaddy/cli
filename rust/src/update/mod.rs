@@ -30,6 +30,8 @@ use sha2::{Digest, Sha256};
 use crate::next_action::next_action;
 use crate::output_schema::output_schema;
 
+mod breaking;
+
 output_schema!(UpdateCheckResult {
     "currentVersion": "string";
     "latestVersion": "string";
@@ -77,12 +79,14 @@ pub fn module() -> Module {
                  • apply — download, verify, and install the latest release\n\
                  \n\
                  gddy never updates itself silently — run `gddy update apply` when \
-                 you're ready.",
+                 you're ready. An update that crosses a breaking release points you to \
+                 `gddy guide upgrades`, which lists what to change.",
             ),
         )
         .with_command(check_command())
         .with_command(apply_command())
     })
+    .with_guides_from_markdown([("upgrades.md", breaking::UPGRADES_GUIDE)])
 }
 
 fn check_command() -> RuntimeCommandSpec {
@@ -147,8 +151,14 @@ fn apply_command() -> RuntimeCommandSpec {
         .with_default_fields("previousVersion,newVersion,status"),
         |_cred, args: ApplyArgs| async move {
             let result = run_apply(args.force).await?;
-            let next_actions =
-                completion_next_actions(result["status"].as_str().unwrap_or_default());
+            let status = result["status"].as_str().unwrap_or_default();
+            let version = |field: &str| result[field].as_str().and_then(parse_version);
+            let mut next_actions = breaking::upgrade_guide_next_actions(
+                status,
+                version("previousVersion").as_ref(),
+                version("newVersion").as_ref(),
+            );
+            next_actions.extend(completion_next_actions(status));
             Ok(CommandResult::new(result).with_next_actions(next_actions))
         },
     )

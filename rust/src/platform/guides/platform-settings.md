@@ -4,11 +4,13 @@ summary: How to register an application-settings form via godaddy.toml (settings
 
 # Application settings
 
-An application-settings capability lets a GoDaddy Platform Application (GPA) contribute a form to a Commerce-owned settings surface (e.g. `tax-center`) — merchants fill it out, the GPA's own `load`/`save`/`validate` endpoints own the data. `app-registry-api` stores and validates only the registration and presentation metadata; it never sees merchant values. This covers the `gddy platform app` side of registering one — for the platform contract itself (lifecycle endpoints, signing, `settings-api` composition), see `app-registry-api`'s `docs/GPA-SETTINGS-REGISTRATION.md` and `docs/SETTINGS.md`.
+An application-settings capability lets a GoDaddy Platform Application (GPA) contribute a form to a Commerce-owned settings surface (for example `tax-center`). Merchants fill it out, and the GPA's own `load`, `save`, and `validate` endpoints own the data. `app-registry-api` stores and validates only the registration and presentation metadata. It never sees merchant values. This guide covers the `gddy platform app` side of registering one.
 
-## Workflow
+## Add a settings form to an application
 
-1. **Add the placement** — `gddy platform app add settings` writes the group/slug/entryPath/order/capabilities/icon fields into `godaddy.toml`:
+To add a settings form to an application, add the placement, add the form, release the application, and enable it for a store. After the steps, a section for each of the placement options, the form, release errors, and enabling and backfilling has the details.
+
+1. Add the placement, which writes the group, slug, entryPath, order, capabilities, and icon fields into `godaddy.toml`:
 
    ```sh
    gddy platform app add settings \
@@ -22,13 +24,41 @@ An application-settings capability lets a GoDaddy Platform Application (GPA) con
      --icon-name percent --icon-library lucide
    ```
 
-   `entryPath` is relative to the application's registered `proxy_url`, same as action URLs. `--capability` defaults to `read`+`write` server-side if omitted. `--icon-name`/`--icon-library` must be given together or not at all. A `config` capability requires `read` plus one or more `--config-key` values; the command writes those values to `metadata.configKeys`.
+2. Add the form, either as a `[settings.presentation]` block in the entry `add settings` just wrote, or as a JSON file.
 
-2. **Author the form** — this command only writes placement metadata; the actual field/section definitions (`presentation`) aren't flag-driven. Either hand-add a `[settings.presentation]` block directly into the entry `add settings` just wrote, or point it at a JSON file with `--presentation-file <path>` (or by editing `presentationFile` into the entry afterward). The two are mutually exclusive — see "Presentation shape" below.
+3. Release the application:
 
-3. **Release** — `gddy platform app release --application-id <id> --version <version>` resends every setting in `godaddy.toml`, same as it does for actions/subscriptions/extensions. It rejects any settings entry with neither `presentation` nor `presentationFile` (`{"error":{"code":"VALIDATION_ERROR","message":"settings 'godaddy-tax' has no presentation — add a [settings.presentation] block or a presentationFile before releasing"}}`).
+   ```sh
+   gddy platform app release --application-id <id> --version <version>
+   ```
 
-4. **Enable/backfill** — `gddy platform app enable <name> --store-id <storeId>` makes the placement discoverable for a store. Confirm with `gddy platform app enablement --store-id <storeId>` (lists apps currently enabled on that store). Settings (like actions/subscriptions/uiExtensions) are keyed per-release with no inheritance — a store already enabled against an older release doesn't pick up settings added in a newer one until `enable` is re-run for that store.
+4. Enable the application for a store, then confirm it with `enablement`:
+
+   ```sh
+   gddy platform app enable <name> --store-id <storeId>
+   gddy platform app enablement --store-id <storeId>
+   ```
+
+### Placement options
+
+The following options require a note:
+
+- `entryPath` is relative to the application's registered `proxy_url`, same as action URLs.
+- `--capability` defaults to `read` and `write` server-side if omitted.
+- `--icon-name` and `--icon-library` must be given together or not at all.
+- A `config` capability requires `read` plus one or more `--config-key` values; the command writes those values to `metadata.configKeys`.
+
+### The form
+
+`add settings` only writes placement metadata. The actual field and section definitions (`presentation`) aren't flag-driven. `presentation` and `presentationFile` are mutually exclusive. To use a JSON file, point to it with `--presentation-file <path>`, or edit a `presentationFile` entry into the entry afterward. Go to the "Presentation shape" section later in this guide for the details.
+
+### Release errors
+
+`release` resends every setting in `godaddy.toml`, the same as it does for actions, subscriptions, and extensions. It rejects any settings entry with neither `presentation` nor `presentationFile`. The error has the code `VALIDATION_ERROR`. It says the setting has no presentation, and that you need to add a `[settings.presentation]` block or a `presentationFile` before releasing.
+
+### Enable and backfill
+
+`enable` makes the placement discoverable for a store, and `enablement` lists the apps enabled on that store. Settings, like actions, subscriptions, and uiExtensions, are keyed per release with no inheritance. A store already enabled against an older release doesn't pick up settings added in a newer one until you re-run `enable` for that store.
 
 ## Presentation shape
 
@@ -55,20 +85,20 @@ label = "Order origin"
 value = "origin"
 ```
 
-A field `key` becomes a property in the merchant's saved `values` document and must stay stable once merchants have data — don't rename a field key without a GPA-owned migration. Section keys are display-only and safe to change freely.
+A field `key` becomes a property in the merchant's saved `values` document and must stay stable once merchants have data. Don't rename a field key without a GPA-owned migration. Section keys are display-only and safe to change freely.
 
-Supported field types (`type` discriminates the shape — every field needs `type`, `key`, `label`):
+Supported field types (`type` discriminates the shape; every field needs `type`, `key`, and `label`):
 
-- **`text`** / **`textarea`** — string value. Optional: `placeholder`, `minLength`, `maxLength`, `defaultValue` (string).
-- **`number`** — numeric value. Optional: `min`, `max`, `step`, `suffix`, `defaultValue` (number).
-- **`boolean`** — true/false value. Optional: `defaultValue` (bool).
-- **`select`** — one value chosen from `options` (required, non-empty). Each option: `value`, `label`, optional `description`. Add more by repeating the `[[...options]]` array-of-tables header — one block per option, at whatever nesting depth the field sits (e.g. `[[settings.presentation.sections.fields.item.fields.options]]` inside a `list-group` item field). Optional: `defaultValue` must match one option's `value`.
-- **`multi-select`** — array of values chosen from `options` (required, non-empty). Optional: `minItems`, `maxItems`, `defaultValue` (array, each entry must match an option).
-- **`list-group`** — array of objects, one merchant-added item per array entry. `item.idField` names the item's reserved stable-UUID property (renderer-generated, GPA echoes it back unchanged — it can't also be an editable field key). `item.titleField` (optional) names a `text`/`textarea`/`number`/`select` field used to label each item in the UI. `item.fields` is a list of fields using the same types above — `list-group` may nest one level further (max depth 2), but not deeper.
+- **`text`** and **`textarea`**: string value. Optional: `placeholder`, `minLength`, `maxLength`, `defaultValue` (string).
+- **`number`**: numeric value. Optional: `min`, `max`, `step`, `suffix`, `defaultValue` (number).
+- **`boolean`**: true or false value. Optional: `defaultValue` (bool).
+- **`select`**: one value chosen from `options` (required, non-empty). Each option: `value`, `label`, optional `description`. Add more by repeating the `[[...options]]` array-of-tables header, one block per option, at whatever nesting depth the field sits (for example `[[settings.presentation.sections.fields.item.fields.options]]` inside a `list-group` item field). Optional: `defaultValue` must match one option's `value`.
+- **`multi-select`**: array of values chosen from `options` (required, non-empty). Optional: `minItems`, `maxItems`, `defaultValue` (array, each entry must match an option).
+- **`list-group`**: array of objects, one merchant-added item per array entry. `item.idField` names the item's reserved stable-UUID property (renderer-generated, and the GPA echoes it back unchanged, so it can't also be an editable field key). `item.titleField` (optional) names a `text`, `textarea`, `number`, or `select` field used to label each item in the UI. `item.fields` is a list of fields using the same types as the other bullets. A `list-group` may nest one level further (max depth 2), but not deeper.
 
-Every field, section, and `list-group` item field also accepts `description`. Sections additionally accept `visibleWhen = { field = "...", equals = ... }` to show/hide based on another top-level field's value.
+Every field, section, and `list-group` item field also accepts `description`. Sections also accept `visibleWhen = { field = "...", equals = ... }` to show or hide based on another top-level field's value.
 
-Worked example — the full `godaddy.toml` shape for a manual-tax-style GPA with a nested `list-group`:
+The following example shows the full `godaddy.toml` shape for a manual-tax-style GPA with a nested `list-group`:
 
 ```toml
 [[settings]]
@@ -112,7 +142,7 @@ key = "displayName"
 label = "Display at checkout"
 ```
 
-### Referencing a JSON file instead of inline TOML
+### Reference a JSON file instead of inline TOML
 
 For a GPA that already keeps its presentation as a JSON fixture, point `presentationFile` at it instead of re-authoring the same form as TOML:
 
@@ -124,7 +154,7 @@ entryPath = "/settings/manual-tax"
 presentationFile = "fixtures/manual-tax-registry-presentation.json"
 ```
 
-The referenced file must be the complete API presentation object — `type` (`"form"`), `schemaVersion` (`"settings-form-v1"`), and `sections` — the same shape `createRelease.settings[].presentation` expects, so an existing fixture can be reused verbatim. The path is relative to the directory containing the `godaddy.toml` being released, not the shell's working directory. `presentation` and `presentationFile` are mutually exclusive; both forms run through the same field/section validation and produce an identical release payload. The file is only opened at `release` — like inline `presentation`, it's optional at `add settings`/`config validate` time — and a missing, unreadable, malformed, or wrong-`type`/`schemaVersion` file fails the release with a `VALIDATION_ERROR` naming the resolved path.
+The referenced file must be the complete API presentation object: `type` (`"form"`), `schemaVersion` (`"settings-form-v1"`), and `sections`. This is the same shape `createRelease.settings[].presentation` expects, so you can reuse an existing fixture verbatim. The path is relative to the directory containing the `godaddy.toml` being released, not the shell's working directory. `presentation` and `presentationFile` are mutually exclusive. Both forms run through the same field and section validation and produce an identical release payload. The file is only opened at `release`. Like inline `presentation`, it's optional at `add settings` and `config validate` time. A missing, unreadable, or malformed file, or one with the wrong `type` or `schemaVersion`, fails the release with a `VALIDATION_ERROR` naming the resolved path.
 
 ### Link presentation (`settings-link-v1`)
 
@@ -142,7 +172,7 @@ label = "Configure PayPal"
 openMode = "new-window"
 ```
 
-A link presentation requires the `read` and `open` capabilities and may additionally declare `delete` and `config`; form-only capabilities (`write`, `validate`, and `test`) and duplicates are rejected. `open` is rejected on a form presentation. `label` must be non-empty; `openMode` currently only accepts `"new-window"`. `--presentation-file` also accepts a link's full API object (`type: "link"`, `schemaVersion: "settings-link-v1"`, `label`, `openMode`). See `app-registry-api`'s `docs/SETTINGS.md` for the full lifecycle contract this registers into (App Registry never stores a merchant-specific launch URL — it publishes the placement and lets Settings API request one via the GPA's `open` route at merchant-invoke time).
+A link presentation requires the `read` and `open` capabilities and can also declare `delete` and `config`. Form-only capabilities (`write`, `validate`, and `test`) and duplicates are rejected. `open` is rejected on a form presentation. `label` must be non-empty. `openMode` only accepts `"new-window"` for now. `--presentation-file` also accepts a link's full API object (`type: "link"`, `schemaVersion: "settings-link-v1"`, `label`, `openMode`). App Registry never stores a merchant-specific launch URL. It publishes the placement and lets Settings API request one through the GPA's `open` route when a merchant invokes it.
 
 ### Public config (`gpa-settings-config-v1`)
 
@@ -172,14 +202,25 @@ configKeys = ["clientId", "merchantId", "disableFunding"]
 
 App Registry stores only this allowlist. Settings API strips response properties outside it before returning public config to consumers. `metadata.configKeys` without the `config` capability is rejected.
 
-## What the CLI validates locally vs. server-side
+## What the CLI validates locally and what the server validates
 
-`gddy platform app add settings`/`release` catch cheap, structural problems before any network call: `group`/`slug` match the platform's slug pattern (`lowercase-with-dashes`); `entryPath` is a route-safe path (`/`-prefixed, no query string/fragment/`..`) and doesn't overlap another setting's `entryPath` in the same manifest; `capabilities` are a subset of `read`, `write`, `validate`, `test`, `delete`, `open`, `config`, with `open` only valid on a link presentation and link presentations limited to required `read`+`open` plus optional `config`/`delete`; `config` requires `read` and 1-16 valid, unique `metadata.configKeys`; `icon.library` is one of `ux`, `lucide`, `commerce`; every field/section `key` matches the platform's key pattern, `select`/`multi-select` have at least one option, and no two fields/sections share a key; a link presentation's `label` is non-empty and `openMode` is `"new-window"`; `presentation` and `presentationFile` aren't both set on the same entry — checked as soon as the manifest is touched, not just at release.
+`gddy platform app add settings` and `release` catch cheap, structural problems before any network call:
 
-Deeper semantics stay server-validated — bounds consistency (`maxLength ≥ minLength`), a `defaultValue` actually matching a registered option or satisfying bounds, and `list-group` nesting depth. A rejection there surfaces as a `release` API error, not a local one.
+- `group` and `slug` match the platform's slug pattern (`lowercase-with-dashes`).
+- `entryPath` is a route-safe path (`/`-prefixed, no query string, fragment, or `..`) and doesn't overlap another setting's `entryPath` in the same manifest.
+- `capabilities` are a subset of `read`, `write`, `validate`, `test`, `delete`, `open`, `config`. `open` is only valid on a link presentation. Link presentations are limited to required `read` and `open` plus optional `config` or `delete`.
+- `config` requires `read` and 1-16 valid, unique `metadata.configKeys`.
+- `icon.library` is one of `ux`, `lucide`, `commerce`.
+- Every field and section `key` matches the platform's key pattern, `select` and `multi-select` have at least one option, and no two fields or sections share a key.
+- A link presentation's `label` is non-empty and `openMode` is `"new-window"`.
+- `presentation` and `presentationFile` aren't both set on the same entry.
+
+These checks run as soon as the manifest is touched, not just at release. The exception is a presentation that comes from a `presentationFile`. The CLI reads that file at release, so the checks on its contents (field and section keys, options, and a link's `label` and `openMode`) run then.
+
+Deeper semantics stay server-validated: bounds consistency (`maxLength ≥ minLength`), a `defaultValue` actually matching a registered option or satisfying bounds, and `list-group` nesting depth. A rejection there surfaces as a `release` API error, not a local one.
 
 ## Gotchas
 
 - **No release inheritance.** `release` resends every current setting from `godaddy.toml`; leaving one out doesn't archive it globally, but any store enabled against the *new* release loses it.
-- **Existing stores don't auto-upgrade.** Adding settings to a release only affects stores enabled *after* that release goes active — re-run `gddy platform app enable <name> --store-id <storeId>` per store to backfill, then `gddy platform app enablement --store-id <storeId>` to confirm.
-- **`presentation`/`presentationFile` is mandatory before release, not before `add settings`.** A placement-only entry parses and works fine for every other command (`add action`, `info`, `validate`, `deploy`) — it only fails at `release`, with the message shown above.
+- **Existing stores don't auto-upgrade.** Adding settings to a release only affects stores enabled *after* that release goes active. Re-run `gddy platform app enable <name> --store-id <storeId>` per store to backfill, then `gddy platform app enablement --store-id <storeId>` to confirm.
+- **`presentation` or `presentationFile` is mandatory before release, not before `add settings`.** A placement-only entry parses and works fine for every other command (`add action`, `info`, `validate`, `deploy`). It only fails at `release`, with the error described earlier.

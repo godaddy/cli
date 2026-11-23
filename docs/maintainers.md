@@ -42,6 +42,14 @@ To integrate an API with the CLI you should do the following:
 1. Annotate commands with required scopes to automatically enable consent step-ups.
 1. Ensure the `api.godaddy.com` gateway is configured for coarse-grained authorization with the required scopes.
 
+## Breaking releases
+
+`gddy guide upgrades` lists what users have to change when they upgrade across a breaking release. A release is breaking when it moves the major version, or the minor version while the major version is 0, so release-please makes that jump only when a commit is marked `!` or carries a `BREAKING CHANGE:` footer.
+
+The [Breaking change docs](../.github/workflows/breaking-docs.yml) workflow fails a pull request marked as breaking (a `!` in its title or a commit subject, or a `BREAKING CHANGE:` footer) unless it changes [`upgrades.md`](../rust/src/update/guides/upgrades.md) and the guide has the section for that upgrade. A breaking change that touches nothing under `rust/` (the GitHub Action in `action/` is released on its own) is exempt, since it doesn't change the CLI. Its logic is in [`check-breaking-docs.sh`](../.github/scripts/check-breaking-docs.sh), with tests in `check-breaking-docs-test.sh`. The workflow isn't a required check yet; add it under the branch protection rules to block merges on it.
+
+A second check backs it up at release time. A test in [`update/breaking.rs`](../rust/src/update/breaking.rs) fails when the version in `rust/Cargo.toml` is in a breaking line that has no section in [`upgrades.md`](../rust/src/update/guides/upgrades.md). If the release PR fails that test, add the missing section to `main` and let release-please update the PR. Writing the section in the breaking PR itself avoids the failure. See [`.agents/skills/breaking-changes/SKILL.md`](../.agents/skills/breaking-changes/SKILL.md).
+
 ## Updating CODEOWNERS
 
 The [`CODEOWNERS`](../.github/CODEOWNERS) file is auto-generated. It merges together two sets of reviewers:
