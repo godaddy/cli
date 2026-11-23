@@ -114,9 +114,9 @@ mod tests {
             "(https://airo-builder.godaddy.com/apps)",
             "## Concepts",
             "no source upload, no build",
-            "does not become the WordPress site title",
+            "doesn't become the WordPress site title",
             "placeholder page",
-            "## What the CLI does not do for WordPress sites",
+            "## What the CLI doesn't do for WordPress sites",
             "hosting app update",
             "hosting app delete",
             "There is no operation to poll. If the service is temporarily unavailable, wait a \
