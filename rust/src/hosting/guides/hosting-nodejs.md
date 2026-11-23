@@ -124,14 +124,41 @@ gddy hosting deployment get --app-id <app-id> --deployment-id <deployment-id>
 
 ## Custom domains
 
-Attach after the app is published:
+Every domain on an app has a `domainType`:
+
+- **`PREFIX`**: the hostname GoDaddy gives the app. By default it starts with the app's ID. A `PREFIX` domain replaces that first part with a name you choose, for example `helloworld.c39.airoapp.ai`. You change the prefix in the hosting UI, not with this CLI.
+- **`CUSTOM`**: a hostname you own and attach to the app. If its DNS is on GoDaddy, you don't need to do anything more.
+
+Attach a `CUSTOM` domain after the app is published. Then read it back with all fields, because `domainType` isn't in the default output of `domain get` or `domain list`:
 
 ```sh
 gddy hosting domain attach --app-id <app-id> --hostname www.example.com
-gddy hosting domain get --app-id <app-id> --domain-id <domain-id>
+gddy hosting domain get --app-id <app-id> --domain-id <domain-id> --fields all
 ```
 
-`domainType` on list and get is `CUSTOM` for an attached customer hostname. `PREFIX` is the platform hostname, whose prefix can be changed in the hosting UI (not using this CLI).
+The following examples show the `data` part of the output. The CLI also prints `next_actions`, which suggests the command to detach the domain. This is a `PREFIX` domain:
+
+```json
+{
+  "domainId": "aGVsbG93b3JsZC5jMzkuYWlyb2FwcC5haQ",
+  "domainType": "PREFIX",
+  "hostname": "helloworld.c39.airoapp.ai",
+  "role": "PRIMARY",
+  "verificationStatus": "ACTIVE"
+}
+```
+
+This is a `CUSTOM` domain that isn't verified yet:
+
+```json
+{
+  "domainId": "d3d3LmV4YW1wbGUuY29t",
+  "domainType": "CUSTOM",
+  "hostname": "www.example.com",
+  "role": "PRIMARY",
+  "verificationStatus": "PENDING"
+}
+```
 
 For a CUSTOM domain whose DNS isn't on GoDaddy, poll `hosting domain get` and apply records at the external DNS host as fields become non-null:
 
