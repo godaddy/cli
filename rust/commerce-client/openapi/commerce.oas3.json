@@ -398,7 +398,6 @@
             "description": "The store's phone. This may or may not be different from business phone."
           },
           "status": {
-            "default": "ACTIVE",
             "description": "The status of the store.",
             "enum": [
               "ACTIVE",
@@ -1026,7 +1025,6 @@
             "description": "The processor data for the store."
           },
           "status": {
-            "default": "ACTIVE",
             "description": "The status of the store.",
             "enum": [
               "ACTIVE",
@@ -1259,7 +1257,6 @@
             "type": "string"
           },
           "location": {
-            "default": "body",
             "description": "The location of the field that caused the error. Value is `body`, `path`, or `query`.",
             "type": "string"
           },
@@ -1315,7 +1312,6 @@
             "type": "string"
           },
           "submissionMediaType": {
-            "default": "application/json",
             "description": "The media type with which to submit data with the request.",
             "type": "string"
           },

@@ -140,7 +140,7 @@ mod tests {
 
         mock.assert_async().await;
         assert_eq!(store.display_name, "Shop");
-        assert_eq!(store.status, types::StoreStatus::Active);
+        assert_eq!(store.status, Some(types::StoreStatus::Active));
     }
 
     /// The generator drops every documented non-2xx response so progenitor's
@@ -451,7 +451,7 @@ mod tests {
             "businessId must survive decoding"
         );
         assert_eq!(store.display_name.as_deref(), Some("Shop"));
-        assert_eq!(store.status, types::V1StoreStatus::Active);
+        assert_eq!(store.status, Some(types::V1StoreStatus::Active));
         assert_eq!(store.processor, Some(types::V1Processor::Poynt));
         assert_eq!(store.acquirer, Some(types::V1Processor::Poynt));
         assert_eq!(store.timezone.as_deref(), Some("America/Los_Angeles"));
@@ -479,6 +479,34 @@ mod tests {
             .into_inner();
         assert!(store.display_name.is_none());
         assert!(store.business_id.is_none());
+        assert!(
+            store.status.is_none(),
+            "a store sent without a status must not read as ACTIVE: {:?}",
+            store.status
+        );
+    }
+
+    /// The same holds on v2, which declared the same default.
+    #[tokio::test]
+    async fn a_v2_store_without_a_status_does_not_read_as_active() {
+        let _lock = OBSERVER_TEST_LOCK.lock().await;
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET).path("/v2/commerce/stores/store-1");
+                then.status(200)
+                    .json_body(json!({ "displayName": "Shop", "businessId": "biz-1" }));
+            })
+            .await;
+
+        let store = client_for(&server)
+            .get_store_by_id()
+            .store_id("store-1".to_owned())
+            .send()
+            .await
+            .expect("request succeeds")
+            .into_inner();
+        assert!(store.status.is_none(), "{:?}", store.status);
     }
 
     /// v1's field selector is un-exploded in the spec, which progenitor would
