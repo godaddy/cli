@@ -8,12 +8,19 @@ Use `gddy shopping` to find GoDaddy products, add selected purchase options to a
 
 ## Concepts
 
-- A **product** can have multiple **purchase options**. Choose the purchase option with the features, term, and price you want.
-- A **checkout session** is your cart. It holds the purchase options you intend to purchase, and the `shopping checkout` commands manage it.
-- A checkout session can show eligible saved **payment methods**. Their availability can depend on the checkout session, including its currency.
-- A checkout session can include required agreements. Review every agreement and its link before placing an order.
-- A checkout session includes important links, for example terms, privacy, refund, shipping, or help information. Review every listed link before placing an order.
-- Complete a checkout session to place an **order**.
+The following terms and concepts are relevant to shopping for GoDaddy products:
+
+**Product and purchase option**: a product can have multiple purchase options. Choose the purchase option with the features, term, and price you want.
+
+**Checkout session**: your cart. It holds the purchase options you intend to purchase, and the `shopping checkout` commands manage it.
+
+**Payment methods**: a checkout session can show eligible saved payment methods. Their availability can depend on the checkout session, including its currency.
+
+**Agreements**: a checkout session can include required agreements. Review every agreement and its link before placing an order.
+
+**Links**: a checkout session includes important links, for example terms, privacy, refund, shipping, or help information. Review every listed link before placing an order.
+
+**Order**: complete a checkout session to place an order.
 
 ## Find a product
 
@@ -123,7 +130,7 @@ gddy shopping checkout create --domain example.com:2yr --item <purchase-option-i
 gddy shopping checkout update <checkout-id> --domain example.com --domain example.net
 ```
 
-Then review the checkout session and place the order the same way as for any other product. To choose a domain's registration settings, such as privacy or contacts, before you buy it, use `gddy domain quote` and `gddy domain purchase` instead. See `gddy guide domain-purchase`.
+Then review the checkout session and place the order the same way as for any other product. To choose a domain's registration settings, for example privacy or contacts, before you buy it, use `gddy domain quote` and `gddy domain purchase` instead. Go to `gddy guide domain-purchase` for the full flow.
 
 ## Place an order
 
