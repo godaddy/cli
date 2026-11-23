@@ -16,6 +16,26 @@ The following terms and concepts are relevant to calling GraphQL-backed APIs:
 
 **SDL**: GraphQL's schema definition language, the text form of a GraphQL schema.
 
+## Find a GraphQL operation
+
+Every GraphQL query and mutation has an ID. You pass it to the other `gddy api graphql` commands. To find an ID:
+
+1. List the API domains:
+
+   ```
+   gddy api domain list
+   ```
+
+2. List the operations in a domain that's backed by GraphQL, for example `taxes` or `catalog-products`:
+
+   ```
+   gddy api operation list --domain taxes
+   ```
+
+3. Find the rows whose `operationId` has two `::` in it. Each one is a GraphQL query or mutation, and its ID has three parts: the wrapper operation, `query` or `mutation`, and the field name. For example, `postTaxGraphql::query::classification`.
+
+To search every domain at once, run `gddy api search <keyword>`. It returns the same kind of rows.
+
 ## Inspect a GraphQL operation
 
 GraphQL operations have their own dedicated set of commands. Run this to show a GraphQL operation's details:
