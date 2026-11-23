@@ -54,11 +54,11 @@ The following options require a note:
 
 ### Release errors
 
-`release` resends every setting in `godaddy.toml`, the same as it does for actions, subscriptions, and extensions. It rejects any settings entry with neither `presentation` nor `presentationFile`. The error has the code `VALIDATION_ERROR`. It says the setting has no presentation, and that you need to add a `[settings.presentation]` block or a `presentationFile` before releasing.
+`release` resends every setting in `godaddy.toml`, the same as it does for actions, subscriptions, and extensions. It rejects any settings entry with neither `presentation` nor `presentationFile`. The error has the code `VALIDATION_ERROR`. It says the setting has no presentation, and that you need to add a `[settings.presentation]` block or a `presentationFile` before releasing. A placement-only entry still works for every other command (`add action`, `info`, `validate`, and `deploy`). Only `release` rejects it.
 
 ### Enable and backfill
 
-`enable` makes the placement discoverable for a store, and `enablement` lists the apps enabled on that store. Settings, like actions, subscriptions, and uiExtensions, are keyed per release with no inheritance. A store already enabled against an older release doesn't pick up settings added in a newer one until you re-run `enable` for that store.
+`enable` makes the placement discoverable for a store, and `enablement` lists the apps enabled on that store. Settings, like actions, subscriptions, and uiExtensions, are keyed per release with no inheritance. A store already enabled against an older release doesn't pick up settings added in a newer one until you re-run `enable` for that store. Leaving a setting out of a release doesn't archive it globally, but any store enabled against the new release loses it.
 
 ## Presentation shape
 
@@ -202,25 +202,19 @@ configKeys = ["clientId", "merchantId", "disableFunding"]
 
 App Registry stores only this allowlist. Settings API strips response properties outside it before returning public config to consumers. `metadata.configKeys` without the `config` capability is rejected.
 
-## What the CLI validates locally and what the server validates
+## Check your settings before you release
 
-`gddy platform app add settings` and `release` catch cheap, structural problems before any network call:
+`gddy platform app add settings` and `gddy platform app release` reject settings that break the following rules:
 
-- `group` and `slug` match the platform's slug pattern (`lowercase-with-dashes`).
-- `entryPath` is a route-safe path (`/`-prefixed, no query string, fragment, or `..`) and doesn't overlap another setting's `entryPath` in the same manifest.
-- `capabilities` are a subset of `read`, `write`, `validate`, `test`, `delete`, `open`, `config`. `open` is only valid on a link presentation. Link presentations are limited to required `read` and `open` plus optional `config` or `delete`.
-- `config` requires `read` and 1-16 valid, unique `metadata.configKeys`.
-- `icon.library` is one of `ux`, `lucide`, `commerce`.
-- Every field and section `key` matches the platform's key pattern, `select` and `multi-select` have at least one option, and no two fields or sections share a key.
-- A link presentation's `label` is non-empty and `openMode` is `"new-window"`.
+- `group` and `slug` use lowercase letters and dashes (`lowercase-with-dashes`).
+- `entryPath` starts with `/`, has no query string, fragment, or `..`, and doesn't overlap another setting's `entryPath` in the same `godaddy.toml`.
+- `capabilities` are a subset of `read`, `write`, `validate`, `test`, `delete`, `open`, and `config`. `open` is only valid on a link presentation. Link presentations require `read` and `open`, plus optional `config` or `delete`.
+- `config` requires `read` and 1 to 16 valid, unique `metadata.configKeys`.
+- `icon.library` is one of `ux`, `lucide`, or `commerce`.
+- Every field and section `key` matches the key pattern, `select` and `multi-select` fields have at least one option, and no two fields or sections share a key.
+- A link presentation's `label` isn't empty, and its `openMode` is `"new-window"`.
 - `presentation` and `presentationFile` aren't both set on the same entry.
 
-These checks run as soon as the manifest is touched, not just at release. The exception is a presentation that comes from a `presentationFile`. The CLI reads that file at release, so the checks on its contents (field and section keys, options, and a link's `label` and `openMode`) run then.
+The checks on the contents of a `presentationFile` run only at release, because the file is opened then. They cover field and section keys, options, and a link's `label` and `openMode`.
 
-Deeper semantics stay server-validated: bounds consistency (`maxLength ≥ minLength`), a `defaultValue` actually matching a registered option or satisfying bounds, and `list-group` nesting depth. A rejection there surfaces as a `release` API error, not a local one.
-
-## Gotchas
-
-- **No release inheritance.** `release` resends every current setting from `godaddy.toml`; leaving one out doesn't archive it globally, but any store enabled against the *new* release loses it.
-- **Existing stores don't auto-upgrade.** Adding settings to a release only affects stores enabled *after* that release goes active. Re-run `gddy platform app enable <name> --store-id <storeId>` per store to backfill, then `gddy platform app enablement --store-id <storeId>` to confirm.
-- **`presentation` or `presentationFile` is mandatory before release, not before `add settings`.** A placement-only entry parses and works fine for every other command (`add action`, `info`, `validate`, `deploy`). It only fails at `release`, with the error described earlier.
+The release response reports the remaining limits: bounds (`maxLength` at least `minLength`), a `defaultValue` that matches an option or fits the bounds, and `list-group` nesting depth.
