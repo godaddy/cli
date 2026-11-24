@@ -138,6 +138,12 @@ gddy hosting deployment publish --app-id <app-id>
 
 If publish returns `WH_PLAN_REQUIRED`, the Web Hosting app has no plan. Go to the "Attach a plan" section earlier in this guide.
 
+For an app on Airo App Builder, publish can return these errors:
+
+- `PLAN_UPGRADE_REQUIRED`: your Airo App Builder plan doesn't let the app go live. Upgrade the plan on the page that the error names, then publish again.
+- `APP_SUSPENDED`: the app is suspended. Check the app and your plan in Airo App Builder, then publish again.
+- An error that says going live from the command line isn't available for the app yet: publish the app from Airo App Builder.
+
 Poll until COMPLETED:
 
 ```sh
