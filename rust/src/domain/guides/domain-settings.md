@@ -46,7 +46,7 @@ gddy domain transfer-lock set example.com --enable
 gddy domain transfer-lock set example.com --disable
 ```
 
-Pass exactly one of `--enable` or `--disable`. Unlock only when you intend to allow a transfer away from GoDaddy. Re-enable the lock when you are done.
+Pass exactly one of `--enable` or `--disable`. Unlock only when you intend to allow a transfer away from GoDaddy. Re-enable the lock after completing the transfer.
 
 AI assistants: Before using `--disable` on transfer lock, confirm the end user intends to allow outbound transfer of this domain. Unlocking removes registrar-level protection against unauthorized transfers.
 
