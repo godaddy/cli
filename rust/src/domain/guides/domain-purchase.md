@@ -100,7 +100,7 @@ That writes a starter `contacts.toml` (with every role commented out) to:
 - macOS: `~/Library/Application Support/gddy/contacts.toml`
 - Windows: `%APPDATA%\gddy\contacts.toml`
 
-Open it, uncomment the roles you want, and fill in the values. Each role is an optional table. A role you omit falls back to the account default. A role you uncomment must be **complete**, with every required field from the example that follows, or the file fails to load.
+Open it, uncomment the roles you want, and fill in the values. Each role is an optional table. A role you omit falls back to the account default. A role you uncomment must be complete, with every required field from the example that follows, or the file fails to load.
 
 ```toml
 [registrant]
