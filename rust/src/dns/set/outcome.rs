@@ -156,7 +156,7 @@ pub(super) fn dry_run_set_preview(
     name: &str,
     plan: &[SetAction],
     existing: &[types::DnsRecord],
-    opts: &RecordOptions,
+    opts: &[RecordOptions],
 ) -> Value {
     let count = |predicate: fn(&SetAction) -> bool| plan.iter().filter(|a| predicate(a)).count();
     let stored = |record_id: &str| {
@@ -167,7 +167,7 @@ pub(super) fn dry_run_set_preview(
     // The record a write of `value` would leave: what `--data` and the flags
     // describe, kept at the old record's TTL when none was given (as the real
     // replace does).
-    let wanted = |value: &str, replacing: Option<&types::DnsRecord>| {
+    let wanted = |value: &str, at: usize, replacing: Option<&types::DnsRecord>| {
         as_stored(&types::DnsRecord {
             record_id: replacing.and_then(|r| r.record_id.clone()),
             ..v3_record(
@@ -175,8 +175,8 @@ pub(super) fn dry_run_set_preview(
                 record_type,
                 value,
                 &RecordOptions {
-                    ttl: opts.ttl.or(replacing.map(|r| r.ttl)),
-                    ..opts.clone()
+                    ttl: opts[at].ttl.or(replacing.map(|r| r.ttl)),
+                    ..opts[at].clone()
                 },
             )
         })
@@ -184,16 +184,25 @@ pub(super) fn dry_run_set_preview(
     let records: Vec<Value> = plan
         .iter()
         .map(|action| match action {
-            SetAction::Replace { record_id, data } => {
+            SetAction::Replace {
+                record_id,
+                data,
+                desired,
+            } => {
                 let old = stored(record_id);
-                change_entry("replace", Some(record_id), old, Some(&wanted(data, old)))
+                change_entry(
+                    "replace",
+                    Some(record_id),
+                    old,
+                    Some(&wanted(data, *desired, old)),
+                )
             }
             SetAction::Unchanged { record_id, .. } => {
                 let old = stored(record_id);
                 change_entry("unchanged", Some(record_id), old, old)
             }
-            SetAction::Create { data } => {
-                change_entry("create", None, None, Some(&wanted(data, None)))
+            SetAction::Create { data, desired } => {
+                change_entry("create", None, None, Some(&wanted(data, *desired, None)))
             }
             SetAction::Delete { record_id } => {
                 change_entry("delete", Some(record_id), stored(record_id), None)
@@ -321,6 +330,7 @@ mod tests {
         SetAction::Replace {
             record_id: id.into(),
             data: data.into(),
+            desired: 0,
         }
     }
 
@@ -328,11 +338,12 @@ mod tests {
         SetAction::Unchanged {
             record_id: id.into(),
             data: data.into(),
+            desired: 0,
         }
     }
 
     fn preview(plan: &[SetAction], existing: &[types::DnsRecord]) -> Value {
-        dry_run_set_preview("example.com", "A", "www", plan, existing, &opts())
+        dry_run_set_preview("example.com", "A", "www", plan, existing, &[opts()])
     }
 
     #[test]
@@ -373,6 +384,7 @@ mod tests {
             },
             SetAction::Create {
                 data: "8.8.8.8".into(),
+                desired: 0,
             },
         ];
         let preview = preview(&plan, &existing);
@@ -412,7 +424,7 @@ mod tests {
             ttl: Some(900),
             ..opts()
         };
-        let changed = dry_run_set_preview("example.com", "A", "www", &plan, &[slow], &asked);
+        let changed = dry_run_set_preview("example.com", "A", "www", &plan, &[slow], &[asked]);
         assert_eq!(changed["records"][0]["new"]["ttl"], 900);
     }
 
@@ -535,6 +547,7 @@ mod tests {
             replace("r1", "9.9.9.9"),
             SetAction::Create {
                 data: "8.8.8.8".into(),
+                desired: 0,
             },
         ];
         let rendered = cli_engine::preview_human_view(
@@ -579,7 +592,7 @@ mod tests {
                 record_id: "r2".into(),
             },
         ];
-        let result = dry_run_set_preview("example.com", "SRV", "chat", &plan, &existing, &opts());
+        let result = dry_run_set_preview("example.com", "SRV", "chat", &plan, &existing, &[opts()]);
         let rendered = cli_engine::preview_human_view(result, &columns);
         assert!(
             rendered.contains("SERVICE") && rendered.contains("PORT"),
@@ -597,5 +610,30 @@ mod tests {
         for sparse in ["SERVICE", "PORT", "PRIORITY", "PROTOCOL"] {
             assert!(!rendered.contains(sparse), "{sparse} shown: {rendered}");
         }
+    }
+
+    /// Each value is previewed with its own priority, not the first one given.
+    #[test]
+    fn the_preview_shows_each_new_record_with_its_own_priority() {
+        let plan = [
+            SetAction::Create {
+                data: "a.example.com".into(),
+                desired: 0,
+            },
+            SetAction::Create {
+                data: "b.example.com".into(),
+                desired: 1,
+            },
+        ];
+        let per_record = [1, 5].map(|priority| RecordOptions {
+            priority: Some(priority),
+            ..opts()
+        });
+        let result = dry_run_set_preview("example.com", "MX", "@", &plan, &[], &per_record);
+        let records = result["records"].as_array().expect("records");
+        assert_eq!(records[0]["new"]["priority"], 1);
+        assert_eq!(records[1]["new"]["priority"], 5);
+        assert_eq!(records[0]["new"]["data"], "a.example.com.");
+        assert_eq!(records[1]["new"]["data"], "b.example.com.");
     }
 }

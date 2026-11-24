@@ -266,9 +266,9 @@ async fn fetch_records_keeps_server_side_filtering_everywhere_else() {
 }
 
 #[derive(Debug, clap::Parser)]
-struct WriteCli {
+pub(super) struct WriteCli {
     #[command(flatten)]
-    args: RecordWriteArgs,
+    pub(super) args: RecordWriteArgs,
 }
 
 fn parse_ttl(ttl: &str) -> Result<Option<i64>, clap::Error> {
@@ -338,7 +338,7 @@ fn verified_result_shows_the_requested_form_of_zone_and_name() {
     assert_eq!(ascii.data["name"], "xn--bcher-kva");
 }
 
-fn opts() -> RecordOptions {
+pub(super) fn opts() -> RecordOptions {
     RecordOptions {
         ttl: None,
         priority: None,
@@ -386,7 +386,7 @@ fn v3_records_builds_one_per_data_value_with_default_ttl() {
         "www",
         "A",
         &["1.2.3.4".to_string(), "5.6.7.8".to_string()],
-        &opts(),
+        &[opts(), opts()],
     );
     assert_eq!(recs.len(), 2);
     assert_eq!(recs[0].name, "www");
@@ -636,12 +636,12 @@ fn service_and_protocol_are_normalized_when_the_arguments_are_parsed() {
     ] {
         let ok = parse(service, protocol).expect("valid");
         assert_eq!(
-            ok.args.service.as_deref(),
+            ok.args.service.first().map(String::as_str),
             Some("_sip"),
             "{service} {protocol}"
         );
         assert_eq!(
-            ok.args.protocol.as_deref(),
+            ok.args.protocol.first().map(String::as_str),
             Some("_tcp"),
             "{service} {protocol}"
         );
