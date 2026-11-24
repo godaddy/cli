@@ -1,10 +1,10 @@
 ---
-summary: Create a Node.js app on GoDaddy hosting, upload your code, preview the app, attach it to a plan, and publish it
+summary: Create a Node.js app on GoDaddy hosting, upload your code, preview the app, and publish it, on a Web Hosting plan or on Airo App Builder
 ---
 
 # `gddy hosting`: deploy a Node.js application
 
-This guide covers the full lifecycle of a hosted Node.js application. You'll create an app, upload source code, test on a staging URL, attach to a hosting plan, and publish to production.
+This guide covers the full lifecycle of a hosted Node.js application. You'll create an app, upload source code, test on a staging URL, and publish to production. An app on a Web Hosting plan also needs that plan attached before it can publish.
 
 ## Concepts
 
@@ -12,9 +12,11 @@ The following terms and concepts are relevant to deploying a Node.js application
 
 **App**: the hosted Node.js application. Create it first to get the `--app-id` used for later commands.
 
+**Hosting product**: what hosts the app. A Node.js app runs either on a Web Hosting plan you own (`WEB_HOSTING`) or on your Airo App Builder plan (`AIRO`). The app's `hostingProduct` field shows which one.
+
 **Environment**: each app has a PREVIEW (staging) and PUBLISH (production) environment. The CLI calls an environment a `variant`. Uploads land on PREVIEW and then can be promoted to PUBLISH once accepted.
 
-**Subscription**: a hosting plan you pay for. A subscription can host one or more apps. Attach the app to one before the first publish. If you don't have a plan, go to the "Buy a plan" section in this guide.
+**Subscription**: a Web Hosting plan you pay for. A subscription can host one or more apps. Attach a Web Hosting app to one before its first publish. An app on Airo App Builder has no subscription to attach. If you don't have a plan, go to the "Buy a plan" section in this guide.
 
 **Slot**: available space within a subscription for an attached app. Each app attached to a subscription takes up one slot, and a given subscription can have one or more slots.
 
@@ -26,11 +28,29 @@ App creation is asynchronous. The command returns an operation ID immediately:
 gddy hosting app create --app-type NODEJS --name my-app
 ```
 
+Without more flags, GoDaddy chooses the hosting product for your account. To choose it yourself, add `--hosting-product WEB_HOSTING` or `--hosting-product AIRO`. The flag works with `--app-type NODEJS` only.
+
+```sh
+gddy hosting app create --app-type NODEJS --name my-app --hosting-product AIRO
+```
+
+If create fails because Airo App Builder isn't available for your account, check that your Airo App Builder plan is active. Or run the command again with `--hosting-product WEB_HOSTING` to host the app on a Web Hosting plan.
+
 Poll until COMPLETED, then note the `app.id` in the response:
 
 ```sh
 gddy hosting operation get --operation-id <operation-id>
 ```
+
+## Check where the app runs
+
+Both products take the same steps up to the preview. The steps after that differ, so check which one your app uses:
+
+```sh
+gddy hosting app get --app-id <app-id>
+```
+
+The `hostingProduct` field is `WEB_HOSTING` or `AIRO`. Go to the "Attach a plan" section later in this guide only if it's `WEB_HOSTING`. An app on `AIRO` has no plan to attach, so skip that section and the "Buy a plan" section.
 
 ## Prepare the source
 
@@ -75,7 +95,9 @@ gddy hosting app get --app-id <app-id>
 
 The `urls` field shows the address for each environment.
 
-## Attach a plan (first deploy only)
+## Attach a plan (Web Hosting apps, first deploy only)
+
+An app on a Web Hosting plan must have that plan attached before its first publish. Skip this section for an app on Airo App Builder. Its `subscription get` and `subscription attach` commands fail because the app has no hosting plan.
 
 Check whether the app is already on a subscription:
 
@@ -98,7 +120,7 @@ Skip this on later deploys.
 
 ## Buy a plan
 
-To publish to a live URL, the app must be attached to a Web Hosting plan you own. Buy a plan if none has an open slot, or if you want a separate one. Find one in the catalog, then check out by following `gddy guide shopping`:
+To publish an app on a Web Hosting plan to a live URL, the app must be attached to a plan you own. An app on Airo App Builder uses your Airo App Builder plan instead, so don't buy a Web Hosting plan for it. Buy a plan if none has an open slot, or if you want a separate one. Find one in the catalog, then check out by following `gddy guide shopping`:
 
 ```sh
 gddy shopping catalog search --category webHosting
@@ -114,7 +136,7 @@ When the order completes, poll `gddy hosting subscription list --hosting-product
 gddy hosting deployment publish --app-id <app-id>
 ```
 
-If publish returns `WH_PLAN_REQUIRED`, the app has no plan. Go to the "Attach a plan" section earlier in this guide.
+If publish returns `WH_PLAN_REQUIRED`, the Web Hosting app has no plan. Go to the "Attach a plan" section earlier in this guide.
 
 Poll until COMPLETED:
 
@@ -171,7 +193,7 @@ Keep polling until `verificationStatus` is `ACTIVE`. `cdnStatus` follows CDN pro
 
 ## Redeploy the app
 
-Upload the source again, wait for the import to complete, then publish again. Skip the "Create the app" and "Attach a plan" sections.
+Upload the source again, wait for the import to complete, then publish again. Skip the "Create the app" and "Attach a plan" sections. The app already exists, and a Web Hosting app already has its plan.
 
 ## Other commands
 
