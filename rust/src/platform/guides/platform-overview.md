@@ -12,7 +12,7 @@ summary: How to build, configure, and ship a GoDaddy Platform Application (GPA) 
 gddy platform app init --name my-app --url https://example.com --proxy-url https://example.com/proxy --scopes commerce.order:read,commerce.order:update
 ```
 
-This calls the app-registry API to create the application, then writes `godaddy.toml` (and a per-env secrets file) to the current directory. `url` and `proxy-url` must be publicly resolvable HTTP or HTTPS. Localhost, loopback, and private IPs are rejected. Re-run with `--config <path>` to seed flags from an existing manifest instead of retyping them. Covered by the default login. A PAT needs the `apps.app-registry:read` and `apps.app-registry:write` scopes.
+This calls the app-registry API to create the application, then writes `godaddy.toml` (and a per-env secrets file) to the current directory. `url` and `proxy-url` must be publicly resolvable HTTP or HTTPS (you can't use localhost, loopback, or private IPs). Re-run with `--config <path>` to seed flags from an existing manifest instead of retyping them. Covered by the default login. A PAT needs the `apps.app-registry:read` and `apps.app-registry:write` scopes.
 
 To allow additional OAuth callbacks, add `redirect_uris` to the manifest passed with `--config`:
 
