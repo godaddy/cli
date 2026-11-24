@@ -9,10 +9,12 @@ on:
   pull_request:
 
 # A new push to a pull request replaces the run still in flight for it, instead
-# of queueing behind it. Runs on `main` always finish, so every merge gets a
-# complete result.
+# of queueing behind it. Runs on `main` each get a group of their own: a shared
+# group would still let GitHub drop an older *pending* run when two merges
+# land back to back, even without `cancel-in-progress`, and every merge should
+# get a complete result.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
