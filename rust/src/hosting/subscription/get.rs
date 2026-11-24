@@ -1,6 +1,7 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 
-use crate::hosting::common::{AppIdArgs, HostingSubscriptionAttachment, client_err, make_client};
+use super::attachment_err;
+use crate::hosting::common::{AppIdArgs, HostingSubscriptionAttachment, make_client};
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_SUBSCRIPTION_READ as SUB_READ;
 
@@ -23,7 +24,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let data = client
                 .get_app_subscription(&app_id)
                 .await
-                .map_err(client_err)?;
+                .map_err(|e| attachment_err(e, &app_id))?;
             Ok(CommandResult::new(data).with_next_actions(vec![
                 next_action(
                     "hosting subscription attach --app-id <app-id> --subscription-id <id>",

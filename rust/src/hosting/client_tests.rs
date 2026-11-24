@@ -82,6 +82,7 @@ async fn create_app_sends_app_type_query_and_json_body() {
             when.method(POST)
                 .path("/v1/hosting/apps")
                 .query_param("appType", "NODEJS")
+                .query_param_missing("hostingProduct")
                 .header("idempotency-key", "5d3c7f0e-2b8a-4f61-9a0d-7c1e3b2a4f50")
                 .json_body(json!({ "name": "my-app" }));
             then.status(202)
@@ -92,6 +93,7 @@ async fn create_app_sends_app_type_query_and_json_body() {
     let body = client(&server.base_url())
         .create_app(
             "NODEJS",
+            None,
             json!({ "name": "my-app" }),
             "5d3c7f0e-2b8a-4f61-9a0d-7c1e3b2a4f50",
         )
@@ -100,6 +102,50 @@ async fn create_app_sends_app_type_query_and_json_body() {
 
     mock.assert_async().await;
     assert_eq!(body["operationId"], "op-1");
+}
+
+#[tokio::test]
+async fn create_app_sends_the_hosting_product_when_one_is_named() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/hosting/apps")
+                .query_param("appType", "NODEJS")
+                .query_param("hostingProduct", "AIRO")
+                .json_body(json!({ "name": "my-app" }));
+            then.status(202)
+                .json_body(json!({ "operationId": "op-1", "status": "PENDING" }));
+        })
+        .await;
+
+    client(&server.base_url())
+        .create_app("NODEJS", Some("AIRO"), json!({ "name": "my-app" }), "key-1")
+        .await
+        .expect("create app");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn get_app_keeps_the_hosting_product() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/v1/hosting/apps/NODEJS-aBcDeFgHiJ");
+            then.status(200).json_body(json!({
+                "id": "NODEJS-aBcDeFgHiJ", "name": "my-app", "appType": "NODEJS",
+                "hostingProduct": "AIRO", "status": "ACTIVE"
+            }));
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .get_app("NODEJS-aBcDeFgHiJ")
+        .await
+        .expect("get app");
+
+    assert_eq!(body["hostingProduct"], "AIRO");
 }
 
 #[tokio::test]
@@ -214,7 +260,7 @@ async fn set_publish_state_surfaces_the_error_body() {
         .await
         .expect_err("cap breach is an error");
 
-    let ClientError::Http { status, body } = err else {
+    let ClientError::Http { status, body, .. } = err else {
         unreachable!("a 422 is an HTTP error: {err:?}");
     };
     assert_eq!(status, 422);
@@ -302,6 +348,55 @@ async fn create_deployment_posts_empty_json_body() {
         .expect("create deployment");
 
     mock.assert_async().await;
+}
+
+/// `Retry-After` is kept on the error, from the hand-written publish call and
+/// from a generated one alike; a date or an unreadable value is not a delay.
+#[tokio::test]
+async fn http_errors_keep_the_retry_after_delay() {
+    let server = MockServer::start_async().await;
+    for (app, header) in [
+        ("app-1", Some("30")),
+        ("app-2", Some("Wed, 21 Oct 2026 07:28:00 GMT")),
+        ("app-3", None),
+    ] {
+        for method in [POST, GET] {
+            server
+                .mock_async(|when, then| {
+                    when.method(method)
+                        .path(format!("/v1/hosting/apps/{app}/deployments"));
+                    let then = then.status(503).json_body(json!({
+                        "message": "Cannot publish app",
+                        "details": [{ "issue": "UPSTREAM_UNAVAILABLE" }]
+                    }));
+                    if let Some(value) = header {
+                        then.header("retry-after", value);
+                    }
+                })
+                .await;
+        }
+    }
+    let api = client(&server.base_url());
+    for (app, expected) in [("app-1", Some(30)), ("app-2", None), ("app-3", None)] {
+        let expected = expected.map(std::time::Duration::from_secs);
+        let errors = [
+            api.create_deployment(app).await.expect_err("503"),
+            api.list_deployments(app, None, None)
+                .await
+                .expect_err("503"),
+        ];
+        for err in errors {
+            let ClientError::Http {
+                status,
+                retry_after,
+                ..
+            } = err
+            else {
+                unreachable!("a 503 is an HTTP error: {err:?}");
+            };
+            assert_eq!((status, retry_after), (503, expected), "{app}");
+        }
+    }
 }
 
 #[tokio::test]

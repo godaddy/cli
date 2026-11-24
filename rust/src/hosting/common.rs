@@ -20,6 +20,11 @@ output_schema!(HostingDeploymentSummary {
     "createdAt": "string";
     "updatedAt": "string";
     "gitHash": "string";
+    // Why a FAILED deployment did not complete: `message`, `details[].issue`,
+    // and `links` (rel `upgrade` when the plan has to be upgraded).
+    "error": "object", optional;
+    // Build and publish log lines captured so far, oldest first.
+    "logs": "array", optional;
 });
 
 output_schema!(HostingSecretSummary {
@@ -65,6 +70,8 @@ output_schema!(HostingApplication {
     "urls": "object";
     "createdAt": "string";
     "updatedAt": "string";
+    // What hosts a Node.js app: WEB_HOSTING or AIRO. Left out for WordPress.
+    "hostingProduct": "string", optional;
     "source": "string", optional;
     "sourceDetails": "object", optional;
 });
@@ -135,7 +142,7 @@ pub fn client_err(e: ClientError) -> CliCoreError {
         );
     }
     match e {
-        ClientError::Http { status, body } => {
+        ClientError::Http { status, body, .. } => {
             GddyError::from_http(status, format_api_error_body(&body), "hosting").into_cli_error()
         }
         other => GddyError::from(other).into_cli_error(),
@@ -145,7 +152,7 @@ pub fn client_err(e: ClientError) -> CliCoreError {
 /// Like [`client_err`], but overrides the fix hint.
 pub fn client_err_with_fix(e: ClientError, fix: impl Into<String>) -> CliCoreError {
     match e {
-        ClientError::Http { status, body } => {
+        ClientError::Http { status, body, .. } => {
             GddyError::from_http(status, format_api_error_body(&body), "hosting")
                 .with_fix(fix)
                 .into_cli_error()
@@ -157,7 +164,7 @@ pub fn client_err_with_fix(e: ClientError, fix: impl Into<String>) -> CliCoreErr
 /// [`client_err`], except that a `503` on a WordPress write says to retry.
 /// The service answers `503` both when another change holds the site and when
 /// a dependency is down, and only the first sets `Retry-After`, which is not
-/// kept here, so the text has to be true for either.
+/// used here, so the text has to be true for either.
 pub fn client_err_retry_on_503(e: ClientError, mhwp: bool) -> CliCoreError {
     if mhwp && matches!(e, ClientError::Http { status: 503, .. }) {
         return client_err_with_fix(
@@ -189,6 +196,48 @@ pub fn error_issues(e: &ClientError) -> Vec<String> {
     serde_json::from_str::<ApiErrorBody>(body)
         .map(|b| b.details.into_iter().filter_map(|d| d.issue).collect())
         .unwrap_or_default()
+}
+
+/// The `href` of an API error's `links[rel]` entry: where the service sends
+/// the customer to resolve the error. See [`printable_link`].
+pub fn error_link(e: &ClientError, rel: &str) -> Option<String> {
+    let ClientError::Http { body, .. } = e else {
+        return None;
+    };
+    // Read apart from `ApiErrorBody`, so that a `links` value of another shape
+    // cannot hide the error's message and issue codes.
+    printable_link(&serde_json::from_str(body).ok()?, rel)
+}
+
+/// The `href` of the `links[rel]` entry of `error`, an API error object such
+/// as an error response or the `error` of a failed deployment. The link is
+/// printed as it is, so only an absolute `https` URL of visible ASCII
+/// characters with a host and no user name or password (no `@` before the
+/// path) is returned.
+pub fn printable_link(error: &Value, rel: &str) -> Option<String> {
+    error
+        .get("links")?
+        .as_array()?
+        .iter()
+        .filter(|link| link.get("rel").and_then(Value::as_str) == Some(rel))
+        .filter_map(|link| link.get("href").and_then(Value::as_str))
+        .find(|href| is_safe_to_print_https_url(href))
+        .map(str::to_owned)
+}
+
+fn is_safe_to_print_https_url(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("https://") else {
+        return false;
+    };
+    if !rest.bytes().all(|b| b.is_ascii_graphic()) {
+        return false;
+    }
+    // Raw check too: the parser turns `https:///x` into host `x` and drops an
+    // empty `@` user name.
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    !authority.is_empty()
+        && !authority.contains('@')
+        && url::Url::parse(url).is_ok_and(|parsed| parsed.host_str().is_some())
 }
 
 fn format_api_error_body(body: &str) -> String {
@@ -289,6 +338,41 @@ pub fn is_mhwp_app_id(app_id: &str) -> bool {
     HostingAppType::of_id(app_id) == Some(HostingAppType::Mhwp)
 }
 
+/// A Node.js id ends in a nanoid. Only its alphabet is checked, which keeps the
+/// id URL-safe; the contract's examples disagree on the length, so the API
+/// judges the rest.
+pub fn is_nodejs_app_id(value: &str) -> bool {
+    strip_id_prefix(value, HostingAppType::Nodejs.id_prefix()).is_some_and(|body| {
+        !body.is_empty()
+            && body
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+    })
+}
+
+/// The edge route's id shape, `(?i)^mhwp-[a-z0-9]{10}$`: the prefix matches
+/// case-insensitively, the ten characters after it do not. Anything else never
+/// reaches the service, so it is refused here rather than sent out to collect
+/// a 404.
+pub fn is_wordpress_site_id(value: &str) -> bool {
+    strip_id_prefix(value, HostingAppType::Mhwp.id_prefix()).is_some_and(|body| {
+        body.len() == 10 && body.bytes().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9'))
+    })
+}
+
+/// `--app-id <app_id>`, for a command written out in an error's fix: the id
+/// itself when it has the shape of a Node.js app or WordPress site id, whose
+/// letters, digits, `_` and `-` a shell takes as they are, and the
+/// `<app-id>` placeholder for anything else.
+pub fn app_id_arg(app_id: &str) -> String {
+    let id = if is_nodejs_app_id(app_id) || is_wordpress_site_id(app_id) {
+        app_id
+    } else {
+        "<app-id>"
+    };
+    format!("--app-id {id}")
+}
+
 /// Markdown for `gddy guide hosting`, the index of the per-product guides.
 pub const HOSTING_GUIDE: &str = include_str!("guides/hosting.md");
 /// Markdown for `gddy guide hosting-nodejs`.
@@ -309,6 +393,25 @@ impl HostingProduct {
         match self {
             Self::WebHosting => "WEB_HOSTING",
             Self::ManagedWordpress => "MANAGED_WORDPRESS",
+        }
+    }
+}
+
+/// The product that hosts a new Node.js app, for `hosting app create`. Not the
+/// same set as [`HostingProduct`], which filters `hosting subscription list`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum AppHostingProduct {
+    #[value(name = "WEB_HOSTING")]
+    WebHosting,
+    #[value(name = "AIRO")]
+    Airo,
+}
+
+impl AppHostingProduct {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::WebHosting => "WEB_HOSTING",
+            Self::Airo => "AIRO",
         }
     }
 }
@@ -450,6 +553,20 @@ mod tests {
     }
 
     #[test]
+    fn app_hosting_product_parses_known_values_only() {
+        for (value, expected) in [
+            ("WEB_HOSTING", AppHostingProduct::WebHosting),
+            ("airo", AppHostingProduct::Airo),
+        ] {
+            let parsed = AppHostingProduct::from_str(value, true).expect(value);
+            assert_eq!(parsed, expected);
+            assert!(parsed.as_str().eq_ignore_ascii_case(value));
+        }
+        // The subscription filter's value is not a product an app is created on.
+        assert!(AppHostingProduct::from_str("MANAGED_WORDPRESS", true).is_err());
+    }
+
+    #[test]
     fn next_page_token_extracts_from_links() {
         let response = json!({
             "items": [],
@@ -511,6 +628,7 @@ mod tests {
             ClientError::Http {
                 status: 422,
                 body: r#"{"message":"This app must be attached to a Web Hosting plan to publish.","details":[{"issue":"WH_PLAN_REQUIRED"}]}"#.to_owned(),
+                retry_after: None,
             },
             "Run: gddy hosting subscription list --hosting-product=WEB_HOSTING",
         );
@@ -532,6 +650,7 @@ mod tests {
         let unavailable = || ClientError::Http {
             status: 503,
             body: r#"{"message":"m","details":[{"issue":"UPSTREAM_UNAVAILABLE"}]}"#.to_owned(),
+            retry_after: None,
         };
         let fix = |e, mhwp| {
             cli_engine::build_error_envelope(&client_err_retry_on_503(e, mhwp), "hosting").fix
@@ -561,6 +680,7 @@ mod tests {
             ClientError::Http {
                 status: 404,
                 body: r#"{"message":"m"}"#.to_owned(),
+                retry_after: None,
             },
             true,
         );
@@ -578,6 +698,7 @@ mod tests {
             status: 422,
             body: r#"{"message":"m","details":[{"issue":"VALIDATION_FAILED"},{"description":"d"},{"issue":"APP_LIMIT_EXCEEDED"}]}"#
                 .to_owned(),
+            retry_after: None,
         };
         assert_eq!(
             error_issues(&err),
@@ -586,9 +707,93 @@ mod tests {
         let plain = ClientError::Http {
             status: 500,
             body: "not json".to_owned(),
+            retry_after: None,
         };
         assert!(error_issues(&plain).is_empty());
         assert!(error_issues(&ClientError::Network("down".to_owned())).is_empty());
+    }
+
+    #[test]
+    fn error_link_returns_the_href_of_the_named_link() {
+        let http = |body: &str| ClientError::Http {
+            status: 422,
+            body: body.to_owned(),
+            retry_after: None,
+        };
+        let err = http(
+            r#"{"message":"m","details":[{"issue":"PLAN_UPGRADE_REQUIRED"}],"links":[
+                {"rel":"self","href":"https://api.godaddy.com/x"},
+                {"rel":"upgrade","href":"https://www.godaddy.com/airo/plans/NODEJS-aBcDeFgHiJ"}]}"#,
+        );
+        assert_eq!(
+            error_link(&err, "upgrade").as_deref(),
+            Some("https://www.godaddy.com/airo/plans/NODEJS-aBcDeFgHiJ")
+        );
+        assert_eq!(error_link(&err, "next"), None);
+
+        for href in [
+            "https://www.example.com/airo/plans/NODEJS-aBcDeFgHiJ",
+            "https://www.example.com:8443/airo/plans?plan=paid#upgrade",
+        ] {
+            let err = http(&format!(
+                r#"{{"links":[{{"rel":"upgrade","href":"{href}"}}]}}"#
+            ));
+            assert_eq!(error_link(&err, "upgrade").as_deref(), Some(href));
+        }
+
+        for body in [
+            r#"{"message":"m"}"#,
+            r#"{"message":"m","links":null}"#,
+            r#"{"message":"m","links":[{"rel":"upgrade"}]}"#,
+            "not json",
+        ] {
+            assert_eq!(error_link(&http(body), "upgrade"), None, "{body}");
+        }
+        assert_eq!(
+            error_link(&ClientError::Network("down".to_owned()), "upgrade"),
+            None
+        );
+    }
+
+    #[test]
+    fn error_link_drops_a_link_that_is_not_safe_to_print() {
+        for href in [
+            "http://www.godaddy.com/airo",
+            "javascript:alert(1)",
+            "https://",
+            "https://www.godaddy.com/a b",
+            // A right-to-left override would change how the link reads.
+            "https://www.godaddy.com/\u{202e}moc.live",
+            // JSON escapes: an escape character and a line break.
+            r"https://www.godaddy.com/\u001b[31m",
+            r"https://www.godaddy.com/\n",
+            "",
+            // No host, or a host hidden behind a user name.
+            "https://?plan=paid",
+            "https://#upgrade",
+            "https:///airo/plans",
+            "https://www.godaddy.com@evil.example/x",
+        ] {
+            let err = ClientError::Http {
+                status: 422,
+                body: format!(r#"{{"links":[{{"rel":"upgrade","href":"{href}"}}]}}"#),
+                retry_after: None,
+            };
+            assert_eq!(error_link(&err, "upgrade"), None, "{href:?}");
+        }
+    }
+
+    /// A `links` value of an unexpected shape must not hide the issue codes.
+    #[test]
+    fn error_issues_survive_malformed_links() {
+        let err = ClientError::Http {
+            status: 422,
+            body: r#"{"message":"m","details":[{"issue":"PLAN_UPGRADE_REQUIRED"}],"links":"x"}"#
+                .to_owned(),
+            retry_after: None,
+        };
+        assert_eq!(error_issues(&err), ["PLAN_UPGRADE_REQUIRED"]);
+        assert_eq!(error_link(&err, "upgrade"), None);
     }
 
     #[test]
@@ -597,6 +802,7 @@ mod tests {
             status: 501,
             body: r#"{"message":"Not supported for MHWP apps.","details":[{"issue":"NOT_APPLICABLE"}]}"#
                 .to_owned(),
+            retry_after: None,
         });
         let envelope = cli_engine::build_error_envelope(&err, "hosting");
         assert_eq!(
@@ -614,6 +820,7 @@ mod tests {
         let err = client_err(ClientError::Http {
             status: 404,
             body: r#"{"message":"app not found"}"#.to_owned(),
+            retry_after: None,
         });
         let envelope = cli_engine::build_error_envelope(&err, "hosting");
         assert_eq!(

@@ -9,6 +9,11 @@ use serde_json::json;
 use super::*;
 
 const NAME: &str = "my-site";
+const SITE: create_keys::Create<'static> = create_keys::Create {
+    app_type: HostingAppType::Mhwp,
+    hosting_product: None,
+    name: NAME,
+};
 const ISSUE_BODY: &str = r#"{"message":"m","details":[{"issue":"ISSUE"}]}"#;
 
 struct Setup {
@@ -33,7 +38,7 @@ impl Setup {
     }
 
     async fn submit(&self) -> cli_engine::Result<Value> {
-        submit(&self.client(), Some(&self.keys), HostingAppType::Mhwp, NAME).await
+        submit(&self.client(), Some(&self.keys), SITE).await
     }
 
     /// Answers every create with `status` and `body`.
@@ -73,14 +78,7 @@ impl Setup {
     /// The key a create of `NAME` would send now, without sending one.
     fn saved_key(&self) -> String {
         let base_url = self.server.base_url();
-        let claim = create_keys::claim(
-            Some(&self.keys),
-            &base_url,
-            HostingAppType::Mhwp,
-            NAME,
-            Utc::now(),
-        );
-        claim.key
+        create_keys::claim(Some(&self.keys), &base_url, SITE, Utc::now()).key
     }
 }
 
@@ -133,10 +131,10 @@ async fn a_lost_connection_keeps_the_key_for_the_next_run() {
     let url = format!("http://{}", closed.local_addr().expect("addr"));
     drop(closed);
     let unreachable = HostingClient::new(url.clone(), "test-token");
-    let saved = |now| create_keys::claim(Some(&keys), &url, HostingAppType::Mhwp, NAME, now).key;
+    let saved = |now| create_keys::claim(Some(&keys), &url, SITE, now).key;
     let before = saved(Utc::now());
 
-    let err = submit(&unreachable, Some(&keys), HostingAppType::Mhwp, NAME)
+    let err = submit(&unreachable, Some(&keys), SITE)
         .await
         .expect_err("connection refused");
 
@@ -319,7 +317,7 @@ async fn a_create_without_a_saved_key_still_sends_one_and_promises_nothing() {
     let s = setup().await;
     s.answer(503, &issue("UPSTREAM_UNAVAILABLE")).await;
 
-    let err = submit(&s.client(), None, HostingAppType::Mhwp, NAME)
+    let err = submit(&s.client(), None, SITE)
         .await
         .expect_err("server error");
 
@@ -379,13 +377,7 @@ async fn a_fresh_key_names_the_time_a_rerun_is_safe_until() {
     // the one expected here come from the same moment, even across a minute.
     let started = Utc::now();
     let base_url = s.server.base_url();
-    create_keys::claim(
-        Some(&s.keys),
-        &base_url,
-        HostingAppType::Mhwp,
-        NAME,
-        started,
-    );
+    create_keys::claim(Some(&s.keys), &base_url, SITE, started);
 
     let err = s.submit().await.expect_err("server error");
 
@@ -435,4 +427,66 @@ async fn a_mismatched_key_that_cannot_be_removed_says_how_to_clear_it() {
             .is_some_and(|f| f.contains(&file) && f.contains("Make sure you can write")),
         "{fix:?}"
     );
+}
+
+/// A Node.js create sends the hosting product it was asked for, and its saved
+/// key is for that product only.
+#[tokio::test]
+async fn a_nodejs_create_sends_its_hosting_product_and_keys_it() {
+    let s = setup().await;
+    let airo = create_keys::Create {
+        app_type: HostingAppType::Nodejs,
+        hosting_product: Some(AppHostingProduct::Airo),
+        name: NAME,
+    };
+    let refused = s
+        .server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/hosting/apps")
+                .query_param("appType", "NODEJS")
+                .query_param("hostingProduct", "AIRO");
+            then.status(422)
+                .header("content-type", "application/json")
+                .body(issue("AIRO_NOT_AVAILABLE"));
+        })
+        .await;
+    let chosen = s
+        .server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/hosting/apps")
+                .query_param("appType", "NODEJS")
+                .query_param_missing("hostingProduct");
+            then.status(202)
+                .json_body(json!({ "operationId": "NODEJS-op12345", "status": "PENDING" }));
+        })
+        .await;
+    let base_url = s.server.base_url();
+    let key = |create| create_keys::claim(Some(&s.keys), &base_url, create, Utc::now()).key;
+    let airo_key = key(airo);
+
+    let err = submit(&s.client(), Some(&s.keys), airo)
+        .await
+        .expect_err("refused");
+
+    refused.assert_async().await;
+    let fix = cli_engine::build_error_envelope(&err, "hosting").fix;
+    assert!(
+        fix.as_deref()
+            .is_some_and(|f| f.contains("--hosting-product WEB_HOSTING")),
+        "{fix:?}"
+    );
+
+    // The same name without a product is another request, with its own key.
+    let plain = create_keys::Create {
+        hosting_product: None,
+        ..airo
+    };
+    assert_ne!(key(plain), airo_key);
+    submit(&s.client(), Some(&s.keys), plain)
+        .await
+        .expect("create accepted");
+    chosen.assert_async().await;
+    assert_eq!(key(airo), airo_key, "the refused create keeps its key");
 }
