@@ -26,7 +26,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
                  `hosting source github`. Keep polling until status is COMPLETED or FAILED. \
                  Once COMPLETED, publish with `hosting deployment publish`. An app on a Web \
                  Hosting plan needs that plan attached first; check with `hosting subscription \
-                 get`. An app on Airo App Builder has no plan to attach.",
+                 get`. An app on Airo App Builder has no plan to attach. `hosting app get` shows \
+                 which one an app is on as `hostingProduct`.",
             )
             .with_system("hosting")
             .with_tier(Tier::Read)
@@ -51,8 +52,9 @@ fn next_actions(data: &Value, app_id: &str) -> Vec<NextAction> {
     }
     vec![
         next_action(
-            "hosting subscription get --app-id <app-id>",
-            "Check the attached plan before publishing. Only for an app on a Web Hosting plan",
+            "hosting app get --app-id <app-id>",
+            "Check whether the app is on a Web Hosting plan, which must be attached before \
+             publishing, or on Airo App Builder",
         )
         .with_param("app-id", NextActionParam::value(app_id)),
         next_action(
@@ -70,13 +72,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn completed_import_suggests_plan_check_then_publish() {
+    fn completed_import_suggests_app_check_then_publish() {
+        // The import does not say which product the app is on, and `hosting
+        // subscription get` fails for an app on Airo App Builder, so the check
+        // offered is one that works for every Node.js app.
         let actions = next_actions(&json!({ "status": "COMPLETED" }), "NODEJS-1");
         let commands: Vec<&str> = actions.iter().map(|a| a.command.as_str()).collect();
         assert_eq!(
             commands,
             [
-                "gddy hosting subscription get --app-id <app-id>",
+                "gddy hosting app get --app-id <app-id>",
                 "gddy hosting deployment publish --app-id <app-id>",
             ]
         );
