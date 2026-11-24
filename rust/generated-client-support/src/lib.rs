@@ -127,6 +127,29 @@ pub fn notify_request(request: &reqwest::Request) {
     }
 }
 
+/// Reported to the [`TransportObserver`] in place of a request body that
+/// [`notify_request_metadata_only`] withholds.
+pub const WITHHELD_REQUEST_BODY: &[u8] = b"<redacted: request body withheld>";
+
+/// Like [`notify_request`], but the observer sees only the method, URL and
+/// headers, with [`WITHHELD_REQUEST_BODY`] in place of a body (and no body at
+/// all for a request that has none). The observer gets a copy; `request`
+/// itself is never touched, so what is sent is unchanged.
+///
+/// The request-side counterpart of [`execute_and_observe_metadata_only`], for
+/// APIs whose request bodies carry personal or payment data that must not
+/// reach a `--debug transport` trace.
+pub fn notify_request_metadata_only(request: &reqwest::Request) {
+    if let Some(observer) = current_observer() {
+        let mut redacted = reqwest::Request::new(request.method().clone(), request.url().clone());
+        *redacted.headers_mut() = request.headers().clone();
+        if request.body().is_some() {
+            *redacted.body_mut() = Some(reqwest::Body::from(WITHHELD_REQUEST_BODY));
+        }
+        observer.on_request(&redacted);
+    }
+}
+
 /// Executes `request` on `client`, then — if a [`TransportObserver`] is
 /// registered — reads the response body, forwards it to the observer, and
 /// returns a freshly built `Response` carrying the same status, headers,
@@ -313,6 +336,89 @@ mod tests {
                 .lock()
                 .expect("lock is never held across a panic"),
             vec!["GET".to_owned()]
+        );
+    }
+
+    #[tokio::test]
+    async fn notify_request_metadata_only_withholds_the_request_body_and_leaves_the_request_intact()
+    {
+        #[derive(Debug, PartialEq)]
+        struct Seen {
+            path: String,
+            body: Option<Vec<u8>>,
+            has_authorization: bool,
+        }
+
+        #[derive(Default)]
+        struct BodyObserver(std::sync::Mutex<Vec<Seen>>);
+
+        impl TransportObserver for BodyObserver {
+            fn on_request(&self, request: &reqwest::Request) {
+                self.0
+                    .lock()
+                    .expect("lock is never held across a panic")
+                    .push(Seen {
+                        path: request.url().path().to_owned(),
+                        body: request
+                            .body()
+                            .and_then(reqwest::Body::as_bytes)
+                            .map(<[u8]>::to_vec),
+                        has_authorization: request.headers().contains_key("authorization"),
+                    });
+            }
+
+            fn on_response(
+                &self,
+                _status: reqwest::StatusCode,
+                _headers: &reqwest::header::HeaderMap,
+                _body: &[u8],
+            ) {
+            }
+        }
+
+        let _guard = TEST_LOCK.lock().await;
+        let _clear = ClearObserver;
+        let observer = Arc::new(BodyObserver::default());
+        set_transport_observer(Some(observer.clone()));
+
+        let client = reqwest::Client::new();
+        let with_body = client
+            .put("https://example.test/a")
+            .header("authorization", "Bearer tok")
+            .body("secret")
+            .build()
+            .expect("valid request");
+        let without_body = client
+            .get("https://example.test/b")
+            .build()
+            .expect("valid request");
+
+        notify_request_metadata_only(&with_body);
+        notify_request_metadata_only(&without_body);
+
+        assert_eq!(
+            *observer
+                .0
+                .lock()
+                .expect("lock is never held across a panic"),
+            vec![
+                Seen {
+                    path: "/a".to_owned(),
+                    body: Some(WITHHELD_REQUEST_BODY.to_vec()),
+                    has_authorization: true,
+                },
+                Seen {
+                    path: "/b".to_owned(),
+                    body: None,
+                    has_authorization: false,
+                },
+            ],
+            "headers are kept, a body is replaced by the placeholder, and a bodyless request stays bodyless"
+        );
+        assert_eq!(
+            with_body.body().and_then(reqwest::Body::as_bytes),
+            Some(&b"secret"[..]),
+            "the request that is actually sent still carries its body"
         );
     }
 

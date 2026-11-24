@@ -16,6 +16,7 @@ members = [
     "generated-client-support",
     "platform-app-client",
     "rfc1035-format",
+    "commerce-client",
 ]
 
 [[bin]]
