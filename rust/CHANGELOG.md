@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.3.0](https://github.com/godaddy/cli/compare/v0.2.42...v0.3.0) (2026-11-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **dns:** make dry runs and real writes report the same records ([#383](https://github.com/godaddy/cli/issues/383))
+
+### Features
+
+* **dns:** add `dns export` and `dns import` ([#408](https://github.com/godaddy/cli/issues/408)) ([53f9d47](https://github.com/godaddy/cli/commit/53f9d47dda3b38e9ff33fe1ec2cd6d1abf982bee))
+* **dns:** let add and set take a different priority, tag or port for each --data value ([#386](https://github.com/godaddy/cli/issues/386)) ([9db0bba](https://github.com/godaddy/cli/commit/9db0bbafbe1cbf57b6a3e60ee1ccb34b6c2c9f9b))
+* **hosting:** support Node.js apps hosted on Airo App Builder ([#419](https://github.com/godaddy/cli/issues/419)) ([94e7e1f](https://github.com/godaddy/cli/commit/94e7e1fe82dabf1b6b9c1bb8558a28a941b41868))
+
+
+### Bug Fixes
+
+* **dns:** make dry runs and real writes report the same records ([#383](https://github.com/godaddy/cli/issues/383)) ([53172c0](https://github.com/godaddy/cli/commit/53172c01ca17792f59087e0338bd61e8986fc487))
+* **dns:** report DNS failures with stable error codes and reject flags a record type ignores ([#395](https://github.com/godaddy/cli/issues/395)) ([b1c673c](https://github.com/godaddy/cli/commit/b1c673ce5e89d650f1f4901a8c3dcd0b05d58d62))
+
+
+### Documentation
+
+* **api:** split the GraphQL commands into their own guide ([#401](https://github.com/godaddy/cli/issues/401)) ([84d94f7](https://github.com/godaddy/cli/commit/84d94f780f8cf7582b3b5ce9c19ce8f341f36c49))
+* **platform:** rework gotchas and validation sections of the settings guide ([#414](https://github.com/godaddy/cli/issues/414)) ([0e5db36](https://github.com/godaddy/cli/commit/0e5db3630596a7b93409b02b66dd4e47c5488a1b))
+
 ## [0.2.42](https://github.com/godaddy/cli/compare/v0.2.41...v0.2.42) (2026-11-23)
 
 
