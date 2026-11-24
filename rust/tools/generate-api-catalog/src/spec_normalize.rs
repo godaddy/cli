@@ -5,6 +5,8 @@
 //! path (`dereference.rs`/`openapi.rs`) — its output isn't a real OpenAPI
 //! document, so it never needs a `components.schemas` shaped this way.
 
+use std::collections::HashSet;
+
 use anyhow::{Context, Result};
 use serde_json::Value;
 
@@ -200,6 +202,133 @@ pub(crate) fn add_required_response_descriptions(value: &mut Value) {
             }
         }
         _ => {}
+    }
+}
+
+/// Reduces a response's `content` map to just `application/json`, when
+/// present — the API also advertises identical-schema xml/javascript
+/// variants that would otherwise multiply progenitor's generated surface for
+/// no benefit to a JSON-only client.
+pub(crate) fn keep_only_json_content(op: &mut Value) {
+    let Some(responses) = op.get_mut("responses").and_then(Value::as_object_mut) else {
+        return;
+    };
+    for response in responses.values_mut() {
+        let Some(content) = response.get_mut("content").and_then(Value::as_object_mut) else {
+            continue;
+        };
+        if let Some(json_body) = content.remove("application/json") {
+            content.clear();
+            content.insert("application/json".to_owned(), json_body);
+        }
+    }
+}
+
+/// Collects the set of `#/components/schemas/<name>` targets referenced in
+/// `value` (OAS3 side only — narrower than [`collect_ref_names`], which
+/// would also match parameter/response refs).
+pub(crate) fn collect_schema_ref_names(value: &Value) -> HashSet<String> {
+    let mut out = HashSet::new();
+    collect_schema_ref_names_into(value, &mut out);
+    out
+}
+
+fn collect_schema_ref_names_into(value: &Value, out: &mut HashSet<String>) {
+    match value {
+        Value::Object(map) => {
+            if let Some(Value::String(r)) = map.get("$ref")
+                && let Some(name) = r.strip_prefix("#/components/schemas/")
+            {
+                out.insert(name.to_owned());
+            }
+            for v in map.values() {
+                collect_schema_ref_names_into(v, out);
+            }
+        }
+        Value::Array(items) => {
+            for v in items {
+                collect_schema_ref_names_into(v, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Rewrites every `#/components/<section>/<name>` `$ref` via `rename`.
+pub(crate) fn rewrite_refs(value: &mut Value, rename: fn(&str, &str) -> String) {
+    match value {
+        Value::Object(map) => {
+            if let Some(Value::String(r)) = map.get("$ref") {
+                let parts: Vec<&str> = r.split('/').collect();
+                if parts.len() == 4 && parts[0] == "#" && parts[1] == "components" {
+                    let renamed = rename(parts[2], parts[3]);
+                    map.insert(
+                        "$ref".to_owned(),
+                        Value::String(format!("#/components/{}/{renamed}", parts[2])),
+                    );
+                }
+            }
+            for v in map.values_mut() {
+                rewrite_refs(v, rename);
+            }
+        }
+        Value::Array(items) => {
+            for v in items {
+                rewrite_refs(v, rename);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Drops component schemas unreachable from the (2xx-stripped) paths and the
+/// other component sections. After stripping error responses this removes
+/// the orphaned error-envelope model whose sanitized Rust name (`Error`)
+/// would otherwise collide with the common `error` schema.
+pub(crate) fn prune_unreferenced_schemas(doc: &mut Value) {
+    let Some(schemas) = doc
+        .pointer("/components/schemas")
+        .and_then(Value::as_object)
+        .cloned()
+    else {
+        return;
+    };
+
+    let mut seed = doc
+        .get("paths")
+        .map(collect_schema_ref_names)
+        .unwrap_or_default();
+    if let Some(components) = doc.pointer("/components").and_then(Value::as_object) {
+        for (section, members) in components {
+            if section != "schemas" {
+                seed.extend(collect_schema_ref_names(members));
+            }
+        }
+    }
+
+    let mut reachable: HashSet<String> = HashSet::new();
+    let mut stack: Vec<String> = seed.into_iter().collect();
+    while let Some(name) = stack.pop() {
+        if !reachable.insert(name.clone()) {
+            continue;
+        }
+        if let Some(schema) = schemas.get(&name) {
+            stack.extend(collect_schema_ref_names(schema));
+        }
+    }
+
+    if let Some(schemas) = doc
+        .pointer_mut("/components/schemas")
+        .and_then(Value::as_object_mut)
+    {
+        let to_remove: Vec<String> = schemas
+            .keys()
+            .filter(|k| !reachable.contains(k.as_str()))
+            .cloned()
+            .collect();
+        for name in to_remove {
+            schemas.remove(&name);
+        }
     }
 }
 

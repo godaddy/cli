@@ -17,6 +17,23 @@ use crate::spec_normalize;
 /// runtime.
 const BASE_PATH: &str = "/v2/commerce";
 
+/// Path prefix of the v1 Stores API, served from the same host.
+const V1_BASE_PATH: &str = "/v1/commerce";
+
+/// The one v1 operation the client keeps: reading a store by id. v2 declares it
+/// too, but the v2 route is not served everywhere yet (an unrouted path answers
+/// with an empty 404), while v1 is. Every other v1 store operation is either
+/// private upstream or already covered by v2, so nothing else is merged.
+const V1_STORE_PATH: &str = "/stores/{storeId}";
+
+/// The generated builder for the v1 operation reads `get_store_by_id_v1`, so it
+/// cannot be mistaken for the v2 `get_store_by_id`.
+const V1_STORE_OPERATION_ID: &str = "getStoreByIdV1";
+
+/// Name prefix for every v1 schema, since v1 and v2 both define `Store`,
+/// `Dictionary` and others with different shapes.
+const V1_SCHEMA_PREFIX: &str = "V1";
+
 pub(crate) fn commerce_client_oas3_path() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest_dir.join("../../commerce-client/openapi/commerce.oas3.json")
@@ -39,8 +56,10 @@ pub(crate) fn refresh(
     }
     eprintln!("Refreshing commerce-client codegen spec (stores)...");
 
-    let stores = load_and_lift(stores_spec_path, common_types)
+    let mut stores = load_and_lift(stores_spec_path, common_types)
         .with_context(|| format!("failed to dereference {}", stores_spec_path.display()))?;
+    merge_v1_get_store(&mut stores, stores_spec_path, common_types)
+        .context("failed to merge the v1 getStoreById operation")?;
     ensure_refs_resolved(&stores)?;
 
     let json = serde_json::to_string_pretty(&stores).context("failed to serialize spec")?;
@@ -52,6 +71,242 @@ pub(crate) fn refresh(
         .with_context(|| format!("failed to write {}", out_path.display()))?;
     eprintln!("   wrote {}", out_path.display());
     Ok(())
+}
+
+/// `<repo>/v1/schemas/openapi.yaml`, given the `<repo>/<version>/schemas/openapi.yaml`
+/// the generator chose for the catalog. The pulled repository holds every
+/// version side by side, so the v1 spec is already on disk and needs no fetch.
+fn v1_spec_path(chosen: &Path) -> Result<PathBuf> {
+    // .../<version>/schemas/openapi.yaml -> .../
+    let repo_root = chosen
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::parent)
+        .with_context(|| format!("cannot find the repository root from {}", chosen.display()))?;
+    Ok(repo_root.join("v1").join("schemas").join("openapi.yaml"))
+}
+
+/// Adds the v1 `getStoreById` operation to `doc`, so one generated client serves
+/// both API generations from one host, the way `domains-client` does.
+///
+/// v1 is kept to that one read, and its schemas are renamed with a [`V1_SCHEMA_PREFIX`]
+/// prefix. `businessId` is declared when v1 requires it but never defines it (see
+/// [`declare_required_business_id`]). On any failure `doc` is left unchanged.
+fn merge_v1_get_store(
+    doc: &mut Value,
+    chosen_spec: &Path,
+    common_types: Option<&Path>,
+) -> Result<()> {
+    let v1_path = v1_spec_path(chosen_spec)?;
+    anyhow::ensure!(
+        v1_path.exists(),
+        "the v1 stores spec {} does not exist",
+        v1_path.display()
+    );
+    let mut v1 = load_and_lift_v1(&v1_path, common_types)
+        .with_context(|| format!("failed to read the v1 stores spec {}", v1_path.display()))?;
+
+    let mut path_item = v1
+        .get_mut("paths")
+        .and_then(Value::as_object_mut)
+        .and_then(|paths| paths.remove(V1_STORE_PATH))
+        .with_context(|| format!("the v1 stores spec has no {V1_STORE_PATH}"))?;
+    let mut operation = path_item
+        .as_object_mut()
+        .and_then(|item| item.remove("get"))
+        .with_context(|| format!("the v1 stores spec has no GET {V1_STORE_PATH}"))?;
+    operation["operationId"] = Value::String(V1_STORE_OPERATION_ID.to_owned());
+    spec_normalize::keep_only_json_content(&mut operation);
+
+    // The path item's own parameters (store id, request id, field selection)
+    // apply to the operation, so they travel with it. Dropping the item's
+    // other methods drops the private PATCH.
+    let mut kept = serde_json::Map::new();
+    if let Some(parameters) = path_item.get("parameters") {
+        kept.insert("parameters".to_owned(), parameters.clone());
+    }
+    kept.insert("get".to_owned(), operation);
+    let kept = Value::Object(kept);
+
+    // Keep only the schemas the kept operation reaches. Pruning is done on a
+    // v1-only document, so it can never remove anything from the v2 one.
+    let schemas = v1
+        .pointer("/components/schemas")
+        .cloned()
+        .unwrap_or_else(|| Value::Object(serde_json::Map::new()));
+    let mut v1_only = serde_json::json!({
+        "paths": { V1_STORE_PATH: kept },
+        "components": { "schemas": schemas },
+    });
+    spec_normalize::prune_unreferenced_schemas(&mut v1_only);
+    let mut kept = v1_only["paths"][V1_STORE_PATH].take();
+    let mut schemas = v1_only["components"]["schemas"].take();
+    spec_normalize::rewrite_refs(&mut kept, rename_v1);
+    spec_normalize::rewrite_refs(&mut schemas, rename_v1);
+    // Only schemas are merged, so a reference into any other component section
+    // (a shared response, parameter or header) would dangle. v1's reads inline
+    // theirs today; if that changes, say so instead of writing a broken document.
+    ensure_only_schema_refs(&kept)?;
+    ensure_only_schema_refs(&schemas)?;
+
+    let v1_path_key = format!("{V1_BASE_PATH}{V1_STORE_PATH}");
+    let mut merged = doc.clone();
+    let paths = merged
+        .pointer_mut("/paths")
+        .and_then(Value::as_object_mut)
+        .context("the stores document has no paths")?;
+    anyhow::ensure!(
+        !paths.contains_key(&v1_path_key),
+        "{v1_path_key} is already in the document"
+    );
+    paths.insert(v1_path_key, kept);
+
+    let target = merged
+        .pointer_mut("/components/schemas")
+        .and_then(Value::as_object_mut)
+        .context("the stores document has no components.schemas")?;
+    for (name, body) in schemas.as_object().into_iter().flatten() {
+        let renamed = format!("{V1_SCHEMA_PREFIX}{name}");
+        anyhow::ensure!(
+            !target.contains_key(&renamed),
+            "components.schemas.{renamed} is already in the document"
+        );
+        target.insert(renamed, body.clone());
+    }
+
+    // Before relaxing: `relax` drops the `required` list this reads.
+    declare_required_business_id(&mut merged);
+    relax_v1_schemas(&mut merged);
+
+    // A reference to a schema the document does not define would stop
+    // `progenitor`. `ensure_refs_resolved` only sees references that leave the
+    // document, so check the local ones here, while `doc` can still be left alone.
+    let missing = unresolved_local_schema_refs(&merged);
+    anyhow::ensure!(
+        missing.is_empty(),
+        "the merged stores document references schemas it does not define: {missing:?}"
+    );
+    *doc = merged;
+    Ok(())
+}
+
+/// Names that a `#/components/schemas/<name>` reference points at but that
+/// `components.schemas` does not define, sorted and without duplicates.
+fn unresolved_local_schema_refs(doc: &Value) -> Vec<String> {
+    let defined: HashSet<&str> = doc
+        .pointer("/components/schemas")
+        .and_then(Value::as_object)
+        .map(|schemas| schemas.keys().map(String::as_str).collect())
+        .unwrap_or_default();
+    let mut missing: Vec<String> = spec_normalize::collect_schema_ref_names(doc)
+        .into_iter()
+        .filter(|name| !defined.contains(name.as_str()))
+        .collect();
+    missing.sort();
+    missing
+}
+
+/// Removes every `default` from the schemas under `components.schemas`.
+/// `progenitor` turns a property default into a value it fills in when the field
+/// is absent, so a store the API sent without a `status` would read as `ACTIVE`,
+/// indistinguishable from one that was. Without the default the field is an
+/// `Option` and the CLI shows only what the API said. The hosting spec does the
+/// same for the one default it has.
+///
+/// Walks schemas, not data: the keys of a `properties` map are property names
+/// (one may be called `default`), and an `enum`, `const` or example holds values,
+/// so none of those are touched.
+fn strip_property_defaults(doc: &mut Value) {
+    fn strip(schema: &mut Value) {
+        match schema {
+            Value::Object(map) => {
+                map.remove("default");
+                for (key, child) in map.iter_mut() {
+                    match key.as_str() {
+                        "properties" | "patternProperties" | "$defs" | "definitions" => {
+                            for sub_schema in
+                                child.as_object_mut().into_iter().flatten().map(|(_, v)| v)
+                            {
+                                strip(sub_schema);
+                            }
+                        }
+                        "enum" | "const" | "example" | "examples" => {}
+                        _ => strip(child),
+                    }
+                }
+            }
+            Value::Array(items) => items.iter_mut().for_each(strip),
+            _ => {}
+        }
+    }
+    if let Some(schemas) = doc
+        .pointer_mut("/components/schemas")
+        .and_then(Value::as_object_mut)
+    {
+        schemas.values_mut().for_each(strip);
+    }
+}
+
+/// Fails if `value` holds a `$ref` into a `components` section other than
+/// `schemas`, which the merge does not carry over.
+fn ensure_only_schema_refs(value: &Value) -> Result<()> {
+    match value {
+        Value::Object(map) => {
+            if let Some(Value::String(reference)) = map.get("$ref")
+                && reference.starts_with("#/components/")
+                && !reference.starts_with("#/components/schemas/")
+            {
+                anyhow::bail!(
+                    "the v1 operation references {reference}, but only schemas are merged"
+                );
+            }
+            map.values().try_for_each(ensure_only_schema_refs)
+        }
+        Value::Array(items) => items.iter().try_for_each(ensure_only_schema_refs),
+        _ => Ok(()),
+    }
+}
+
+/// Relaxes every v1 schema to a tolerant reader. All of them are response-only,
+/// since the only v1 operation kept is a read, so none needs to stay strict.
+fn relax_v1_schemas(doc: &mut Value) {
+    if let Some(schemas) = doc
+        .pointer_mut("/components/schemas")
+        .and_then(Value::as_object_mut)
+    {
+        for (name, schema) in schemas.iter_mut() {
+            if name.starts_with(V1_SCHEMA_PREFIX) {
+                relax(schema);
+            }
+        }
+    }
+}
+
+fn rename_v1(_section: &str, name: &str) -> String {
+    format!("{V1_SCHEMA_PREFIX}{name}")
+}
+
+/// The v1 spec lists `businessId` as required on a store but never declares the
+/// property (v2 declares it), while a live v1 record does carry it. Without a
+/// declaration the generated v1 store would have no `business_id` at all, so
+/// declare it, as the string id it is, when it is required and missing.
+fn declare_required_business_id(doc: &mut Value) {
+    let Some(store) = doc.pointer_mut(&format!("/components/schemas/{V1_SCHEMA_PREFIX}Store"))
+    else {
+        return;
+    };
+    let requires = store
+        .get("required")
+        .and_then(Value::as_array)
+        .is_some_and(|required| required.iter().any(|name| name == "businessId"));
+    if !requires {
+        return;
+    }
+    if let Some(properties) = store.get_mut("properties").and_then(Value::as_object_mut) {
+        properties
+            .entry("businessId")
+            .or_insert_with(|| serde_json::json!({ "type": "string" }));
+    }
 }
 
 /// Fails if any `$ref` still points outside the document. The dereferencer
@@ -82,23 +337,7 @@ fn ensure_refs_resolved(spec: &Value) -> Result<()> {
 /// collide with `progenitor`'s own `Error<E>`, and real non-2xx responses are
 /// still fully visible at request time via `commerce_client::Error::status()`.
 fn load_and_lift(spec_path: &Path, common_types: Option<&Path>) -> Result<Value> {
-    let (mut dereffed, defs) = crate::dereference::load_and_dereference(spec_path, common_types)?;
-
-    let schemas = dereffed
-        .as_object_mut()
-        .context("spec is not a JSON object")?
-        .entry("components")
-        .or_insert_with(|| Value::Object(Map::new()))
-        .as_object_mut()
-        .context("components is not a JSON object")?
-        .entry("schemas")
-        .or_insert_with(|| Value::Object(Map::new()))
-        .as_object_mut()
-        .context("components.schemas is not a JSON object")?;
-    for (key, def) in defs {
-        schemas.insert(key, def);
-    }
-    spec_normalize::rewrite_defs_refs(&mut dereffed);
+    let mut dereffed = dereference_and_lift_defs(spec_path, common_types)?;
 
     dereffed
         .as_object_mut()
@@ -121,8 +360,48 @@ fn load_and_lift(spec_path: &Path, common_types: Option<&Path>) -> Result<Value>
             }
         }
     }
+    strip_property_defaults(&mut dereffed);
 
     Ok(dereffed)
+}
+
+/// Dereferences `spec_path` and lifts the schemas it pulled in from other files
+/// into `components.schemas`, rewriting `#/$defs/X` refs to
+/// `#/components/schemas/X`: the shape `progenitor` expects. Shared by the v2
+/// document and the v1 operation merged into it.
+fn dereference_and_lift_defs(spec_path: &Path, common_types: Option<&Path>) -> Result<Value> {
+    let (mut dereffed, defs) = crate::dereference::load_and_dereference(spec_path, common_types)?;
+
+    let schemas = dereffed
+        .as_object_mut()
+        .context("spec is not a JSON object")?
+        .entry("components")
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .context("components is not a JSON object")?
+        .entry("schemas")
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .context("components.schemas is not a JSON object")?;
+    for (key, def) in defs {
+        schemas.insert(key, def);
+    }
+    spec_normalize::rewrite_defs_refs(&mut dereffed);
+    Ok(dereffed)
+}
+
+/// The v1 spec, prepared the way the v2 one is for the parts that apply to a
+/// kept read: lifted schemas, only 2xx responses, no external formats or length
+/// bounds, and un-exploded array query parameters (v1's `includeField`) turned
+/// into strings. Paths are not prefixed here; the merge places the one operation
+/// it keeps.
+fn load_and_lift_v1(spec_path: &Path, common_types: Option<&Path>) -> Result<Value> {
+    let mut v1 = dereference_and_lift_defs(spec_path, common_types)?;
+    spec_normalize::retain_2xx_responses(&mut v1);
+    spec_normalize::strip_external_formats(&mut v1, true);
+    flatten_unexploded_query_arrays(&mut v1);
+    strip_property_defaults(&mut v1);
+    Ok(v1)
 }
 
 /// Names of the `components.schemas` entries a request body can reach,
@@ -223,151 +502,4 @@ fn relax(defn: &mut Value) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    /// A schema is strict if a request body reaches it directly or through
-    /// nested refs, including through an array and through a cycle; a schema
-    /// only a response reaches is not.
-    #[test]
-    fn request_reachable_schemas_follow_refs_and_ignore_response_only_ones() {
-        let spec = json!({
-            "paths": {
-                "/stores/{id}/attributes/{name}": {
-                    "put": {
-                        "requestBody": { "content": { "application/json": {
-                            "schema": { "$ref": "#/components/schemas/AttributeUpdate" }
-                        } } },
-                        "responses": { "200": { "content": { "application/json": {
-                            "schema": { "$ref": "#/components/schemas/Store" }
-                        } } } }
-                    }
-                },
-                "/stores": {
-                    "get": { "responses": { "200": { "content": { "application/json": {
-                        "schema": { "$ref": "#/components/schemas/StoreList" }
-                    } } } } }
-                }
-            },
-            "components": { "schemas": {
-                "AttributeUpdate": { "properties": {
-                    "value": { "$ref": "#/components/schemas/Value" },
-                    "tags": { "type": "array", "items": { "$ref": "#/components/schemas/Tag" } }
-                } },
-                "Value": { "properties": { "self": { "$ref": "#/components/schemas/Value" } } },
-                "Tag": { "type": "object" },
-                "Store": { "type": "object" },
-                "StoreList": { "properties": { "items": { "$ref": "#/components/schemas/Store" } } }
-            } }
-        });
-
-        let strict = request_reachable_schemas(&spec);
-
-        for name in ["AttributeUpdate", "Value", "Tag"] {
-            assert!(strict.contains(name), "{name} should be strict: {strict:?}");
-        }
-        for name in ["Store", "StoreList"] {
-            assert!(
-                !strict.contains(name),
-                "{name} is response-only: {strict:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn an_unresolved_external_ref_stops_the_refresh() {
-        let unresolved = json!({
-            "paths": { "/stores": { "get": { "responses": { "200": {
-                "content": { "application/json": {
-                    "schema": { "$ref": "../common-types/store.yaml#/Store" }
-                } }
-            } } } } }
-        });
-        let error = ensure_refs_resolved(&unresolved).expect_err("an external ref is unresolved");
-        assert!(
-            error
-                .to_string()
-                .contains("../common-types/store.yaml#/Store"),
-            "the error should name the ref: {error}"
-        );
-
-        let resolved = json!({
-            "paths": { "/stores": { "get": { "responses": { "200": {
-                "content": { "application/json": {
-                    "schema": { "$ref": "#/components/schemas/Store" }
-                } }
-            } } } } }
-        });
-        assert!(ensure_refs_resolved(&resolved).is_ok());
-    }
-
-    #[test]
-    fn only_unexploded_query_arrays_become_strings() {
-        let mut spec = json!({
-            "components": { "parameters": {
-                "includeFields": {
-                    "name": "includeFields", "in": "query", "explode": false, "style": "form",
-                    "schema": { "type": "array", "items": { "type": "string" } }
-                }
-            } },
-            "paths": { "/stores": { "get": { "parameters": [
-                {
-                    "name": "ids", "in": "query", "explode": true,
-                    "schema": { "type": "array", "items": { "type": "string" } }
-                },
-                {
-                    "name": "tags", "in": "query",
-                    "schema": { "type": "array", "items": { "type": "string" } }
-                },
-                {
-                    "name": "sort", "in": "query", "explode": false,
-                    "schema": { "type": "string" }
-                },
-                {
-                    "name": "fields", "in": "header", "explode": false,
-                    "schema": { "type": "array", "items": { "type": "string" } }
-                }
-            ] } } }
-        });
-
-        flatten_unexploded_query_arrays(&mut spec);
-
-        assert_eq!(
-            spec["components"]["parameters"]["includeFields"]["schema"],
-            json!({ "type": "string" })
-        );
-        let params = &spec["paths"]["/stores"]["get"]["parameters"];
-        for (index, name) in [(0, "ids"), (1, "tags"), (3, "fields")] {
-            assert_eq!(
-                params[index]["schema"]["type"], "array",
-                "{name} should stay an array"
-            );
-        }
-        assert_eq!(params[2]["schema"], json!({ "type": "string" }));
-    }
-
-    #[test]
-    fn a_spec_with_no_request_bodies_has_no_strict_schemas() {
-        let spec = json!({
-            "paths": { "/stores": { "get": { "responses": { "200": {} } } } },
-            "components": { "schemas": { "Store": { "required": ["id"] } } }
-        });
-        assert!(request_reachable_schemas(&spec).is_empty());
-    }
-
-    #[test]
-    fn relax_drops_required_and_makes_only_array_properties_nullable() {
-        let mut schema = json!({
-            "required": ["id"],
-            "properties": {
-                "tags": { "type": "array", "items": { "type": "string" } },
-                "name": { "type": "string" }
-            }
-        });
-        relax(&mut schema);
-        assert!(schema.get("required").is_none());
-        assert_eq!(schema["properties"]["tags"]["nullable"], true);
-        assert!(schema["properties"]["name"].get("nullable").is_none());
-    }
-}
+mod tests;
