@@ -10,8 +10,8 @@ use super::create_keys;
 use crate::error::GddyError;
 use crate::hosting::client::{ClientError, HostingClient};
 use crate::hosting::common::{
-    CREATE_APP, HostingAppOperation, HostingAppType, client_err, client_err_with_fix, error_issues,
-    make_client, with_operation_type,
+    AppHostingProduct, CREATE_APP, HostingAppOperation, HostingAppType, client_err,
+    client_err_with_fix, error_issues, make_client, with_operation_type,
 };
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_APPLICATION_CREATE as APP_CREATE;
@@ -25,7 +25,40 @@ struct AppCreateArgs {
     /// Human-readable display name (1–200 characters).
     #[arg(long, value_name = "NAME")]
     name: String,
+
+    /// What hosts a new Node.js app: WEB_HOSTING (a Web Hosting plan) or AIRO
+    /// (your Airo App Builder plan). Omit it to get WEB_HOSTING if you have a
+    /// Web Hosting plan. Only for --app-type NODEJS.
+    #[arg(long, value_name = "PRODUCT", ignore_case = true)]
+    hosting_product: Option<AppHostingProduct>,
 }
+
+impl AppCreateArgs {
+    /// The create these arguments ask for. A hosting product is a choice only
+    /// a Node.js app has, so it is refused for any other type here, before
+    /// the create is sent.
+    fn create(&self) -> Result<create_keys::Create<'_>, GddyError> {
+        if self.hosting_product.is_some() && self.app_type != HostingAppType::Nodejs {
+            return Err(GddyError::validation(format!(
+                "--hosting-product applies to --app-type NODEJS only, not {}",
+                self.app_type.as_str()
+            ))
+            .with_fix("Run the command again without --hosting-product.")
+            .with_system("hosting"));
+        }
+        Ok(create_keys::Create {
+            app_type: self.app_type,
+            hosting_product: self.hosting_product,
+            name: &self.name,
+        })
+    }
+}
+
+const NODEJS_HELP: &str = "\n\nA Node.js app is hosted on a Web Hosting plan or on your Airo \
+     App Builder plan. `--hosting-product` chooses which one, and `hosting app get` shows it \
+     as `hostingProduct`. Without the flag, you get a Web Hosting app if you have a Web \
+     Hosting plan; otherwise the choice depends on your account. Only a WEB_HOSTING app \
+     needs a plan attached before it goes live. An AIRO app has no plan to attach.";
 
 const MHWP_HELP: &str = "\n\nMHWP creates a WordPress site and needs an Airo App Builder \
      subscription. The site starts behind a placeholder page, and its WordPress title is \
@@ -46,7 +79,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                  Poll `hosting operation get --operation-id <id>` until \
                  status is COMPLETED or FAILED. On COMPLETED, the operation's \
                  `app` field carries the created app; use `app.id` \
-                 as the --app-id for all subsequent calls.{MHWP_HELP}"
+                 as the --app-id for all subsequent calls.{NODEJS_HELP}{MHWP_HELP}"
             ))
             .with_system("hosting")
             .with_tier(Tier::Mutate)
@@ -54,10 +87,10 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_scopes(&[APP_CREATE])
             .with_output_schema::<HostingAppOperation>(),
         |ctx, args: AppCreateArgs| async move {
-            let app_type = args.app_type;
-            let name = args.name;
+            let create = args.create().map_err(GddyError::into_cli_error)?;
+            let app_type = create.app_type;
             let client = make_client(&ctx, &[APP_CREATE]).await?;
-            let data = submit(&client, create_keys::path().as_deref(), app_type, &name).await?;
+            let data = submit(&client, create_keys::path().as_deref(), create).await?;
             let data = with_operation_type(data, CREATE_APP);
 
             let operation_id = data
@@ -112,18 +145,23 @@ fn poll_description(app_type: HostingAppType) -> &'static str {
 async fn submit(
     client: &HostingClient,
     keys: Option<&Path>,
-    app_type: HostingAppType,
-    name: &str,
+    create: create_keys::Create<'_>,
 ) -> cli_engine::Result<Value> {
     let base_url = client.base_url();
-    let claim = create_keys::claim(keys, base_url, app_type, name, Utc::now());
+    let app_type = create.app_type;
+    let claim = create_keys::claim(keys, base_url, create, Utc::now());
     let result = client
-        .create_app(app_type.as_str(), json!({ "name": name }), &claim.key)
+        .create_app(
+            app_type.as_str(),
+            create.hosting_product.map(AppHostingProduct::as_str),
+            json!({ "name": create.name }),
+            &claim.key,
+        )
         .await
         .and_then(require_operation_id);
     let mismatch = result.as_ref().err().is_some_and(is_key_mismatch);
     let released = if result.is_ok() || mismatch {
-        create_keys::release(keys, base_url, app_type, name, Utc::now())
+        create_keys::release(keys, base_url, create, Utc::now())
     } else {
         true
     };
@@ -264,6 +302,15 @@ fn issue_fix(e: &ClientError, mhwp: bool, list: &str) -> Option<String> {
         "MULTIPLE_SYSTEMS_AMBIGUOUS" if mhwp => Some(
             "Your Airo App Builder account has more than one hosting system. \
              Create the site in Airo App Builder instead."
+                .to_owned(),
+        ),
+        // Sent for a create that asked for an Airo App Builder app, and for
+        // one that left the choice open and has no Web Hosting plan.
+        "AIRO_NOT_AVAILABLE" if !mhwp => Some(
+            "A Node.js app on Airo App Builder is not available for this account. Check that \
+             your Airo App Builder plan is active, then run this command again. To host the \
+             app on a Web Hosting plan instead, run the command again with \
+             --hosting-product WEB_HOSTING."
                 .to_owned(),
         ),
         "APP_LIMIT_EXCEEDED" => Some(format!(
@@ -498,6 +545,24 @@ mod tests {
     }
 
     #[test]
+    fn create_err_explains_an_airo_app_that_is_not_available() {
+        let fix = fix_for(422, "AIRO_NOT_AVAILABLE", HostingAppType::Nodejs);
+        assert!(
+            fix.as_deref().is_some_and(|f| {
+                f.contains("Airo App Builder plan is active")
+                    && f.contains("--hosting-product WEB_HOSTING")
+            }),
+            "{fix:?}"
+        );
+        // Another 422 on a Node.js create keeps the default fix.
+        let fix = fix_for(422, "SOMETHING_ELSE", HostingAppType::Nodejs);
+        assert!(
+            fix.as_deref().is_some_and(|f| !f.contains("Airo")),
+            "{fix:?}"
+        );
+    }
+
+    #[test]
     fn poll_description_adds_wordpress_notes_for_mhwp() {
         assert_eq!(
             poll_description(HostingAppType::Nodejs),
@@ -537,6 +602,89 @@ mod tests {
             "{help}"
         );
         assert!(help.contains("possible values: NODEJS, MHWP"), "{help}");
+    }
+
+    #[test]
+    fn a_hosting_product_is_refused_for_a_wordpress_site() {
+        let args = |app_type, hosting_product| AppCreateArgs {
+            app_type,
+            name: "s".to_owned(),
+            hosting_product,
+        };
+        let err = args(HostingAppType::Mhwp, Some(AppHostingProduct::Airo))
+            .create()
+            .expect_err("refused");
+        assert_eq!(
+            err.to_string(),
+            "--hosting-product applies to --app-type NODEJS only, not MHWP"
+        );
+        let fix = fix_of(&err.into_cli_error());
+        assert_eq!(
+            fix.as_deref(),
+            Some("Run the command again without --hosting-product.")
+        );
+
+        for (app_type, product) in [
+            (HostingAppType::Mhwp, None),
+            (HostingAppType::Nodejs, None),
+            (HostingAppType::Nodejs, Some(AppHostingProduct::Airo)),
+            (HostingAppType::Nodejs, Some(AppHostingProduct::WebHosting)),
+        ] {
+            let args = args(app_type, product);
+            let create = args.create().expect("accepted");
+            assert_eq!(create.app_type, app_type);
+            assert_eq!(create.hosting_product, product);
+            assert_eq!(create.name, "s");
+        }
+    }
+
+    #[tokio::test]
+    async fn hosting_product_is_a_documented_nodejs_only_choice() {
+        let cli = cli();
+        for product in ["AIRO", "web_hosting"] {
+            let out = run(
+                &cli,
+                &[
+                    "create",
+                    "--app-type",
+                    "NODEJS",
+                    "--name",
+                    "s",
+                    "--hosting-product",
+                    product,
+                ],
+            )
+            .await;
+            assert!(out.contains(PARSED), "{product}: {out}");
+        }
+
+        // Not a product an app is created on: refused while parsing.
+        let unknown = run(
+            &cli,
+            &[
+                "create",
+                "--app-type",
+                "NODEJS",
+                "--name",
+                "s",
+                "--hosting-product",
+                "MANAGED_WORDPRESS",
+            ],
+        )
+        .await;
+        assert!(
+            unknown.contains("possible values: WEB_HOSTING, AIRO"),
+            "{unknown}"
+        );
+        assert!(!unknown.contains(PARSED), "{unknown}");
+
+        let help = run(&cli, &["create", "--help"]).await;
+        assert!(help.contains("--hosting-product <PRODUCT>"), "{help}");
+        assert!(
+            help.contains("possible values: WEB_HOSTING, AIRO"),
+            "{help}"
+        );
+        assert!(help.contains("has no plan to attach"), "{help}");
     }
 }
 

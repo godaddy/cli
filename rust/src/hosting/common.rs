@@ -65,6 +65,8 @@ output_schema!(HostingApplication {
     "urls": "object";
     "createdAt": "string";
     "updatedAt": "string";
+    // What hosts a Node.js app: WEB_HOSTING or AIRO. Left out for WordPress.
+    "hostingProduct": "string", optional;
     "source": "string", optional;
     "sourceDetails": "object", optional;
 });
@@ -191,6 +193,40 @@ pub fn error_issues(e: &ClientError) -> Vec<String> {
         .unwrap_or_default()
 }
 
+#[derive(Debug, Deserialize)]
+struct ApiErrorLinks {
+    links: Vec<ApiErrorLink>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiErrorLink {
+    rel: Option<String>,
+    href: Option<String>,
+}
+
+/// The `href` of an API error's `links[rel]` entry: where the service sends
+/// the customer to resolve the error. Only an `https` URL of visible ASCII
+/// characters is returned, because the link is printed as it is.
+pub fn error_link(e: &ClientError, rel: &str) -> Option<String> {
+    let ClientError::Http { body, .. } = e else {
+        return None;
+    };
+    // Read apart from `ApiErrorBody`, so that a `links` value of another shape
+    // cannot hide the error's message and issue codes.
+    serde_json::from_str::<ApiErrorLinks>(body)
+        .ok()?
+        .links
+        .into_iter()
+        .filter(|link| link.rel.as_deref() == Some(rel))
+        .filter_map(|link| link.href)
+        .find(|href| is_printable_https_url(href))
+}
+
+fn is_printable_https_url(url: &str) -> bool {
+    url.strip_prefix("https://")
+        .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_graphic()))
+}
+
 fn format_api_error_body(body: &str) -> String {
     let Ok(parsed) = serde_json::from_str::<ApiErrorBody>(body) else {
         return body.to_owned();
@@ -309,6 +345,25 @@ impl HostingProduct {
         match self {
             Self::WebHosting => "WEB_HOSTING",
             Self::ManagedWordpress => "MANAGED_WORDPRESS",
+        }
+    }
+}
+
+/// The product that hosts a new Node.js app, for `hosting app create`. Not the
+/// same set as [`HostingProduct`], which filters `hosting subscription list`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum AppHostingProduct {
+    #[value(name = "WEB_HOSTING")]
+    WebHosting,
+    #[value(name = "AIRO")]
+    Airo,
+}
+
+impl AppHostingProduct {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::WebHosting => "WEB_HOSTING",
+            Self::Airo => "AIRO",
         }
     }
 }
@@ -447,6 +502,20 @@ mod tests {
             HostingProduct::ManagedWordpress
         );
         assert_eq!(HostingProduct::WebHosting.as_str(), "WEB_HOSTING");
+    }
+
+    #[test]
+    fn app_hosting_product_parses_known_values_only() {
+        for (value, expected) in [
+            ("WEB_HOSTING", AppHostingProduct::WebHosting),
+            ("airo", AppHostingProduct::Airo),
+        ] {
+            let parsed = AppHostingProduct::from_str(value, true).expect(value);
+            assert_eq!(parsed, expected);
+            assert!(parsed.as_str().eq_ignore_ascii_case(value));
+        }
+        // The subscription filter's value is not a product an app is created on.
+        assert!(AppHostingProduct::from_str("MANAGED_WORDPRESS", true).is_err());
     }
 
     #[test]
@@ -589,6 +658,71 @@ mod tests {
         };
         assert!(error_issues(&plain).is_empty());
         assert!(error_issues(&ClientError::Network("down".to_owned())).is_empty());
+    }
+
+    #[test]
+    fn error_link_returns_the_href_of_the_named_link() {
+        let http = |body: &str| ClientError::Http {
+            status: 422,
+            body: body.to_owned(),
+        };
+        let err = http(
+            r#"{"message":"m","details":[{"issue":"PLAN_UPGRADE_REQUIRED"}],"links":[
+                {"rel":"self","href":"https://api.godaddy.com/x"},
+                {"rel":"upgrade","href":"https://www.godaddy.com/airo/plans/NODEJS-aBcDeFgHiJ"}]}"#,
+        );
+        assert_eq!(
+            error_link(&err, "upgrade").as_deref(),
+            Some("https://www.godaddy.com/airo/plans/NODEJS-aBcDeFgHiJ")
+        );
+        assert_eq!(error_link(&err, "next"), None);
+
+        for body in [
+            r#"{"message":"m"}"#,
+            r#"{"message":"m","links":null}"#,
+            r#"{"message":"m","links":[{"rel":"upgrade"}]}"#,
+            "not json",
+        ] {
+            assert_eq!(error_link(&http(body), "upgrade"), None, "{body}");
+        }
+        assert_eq!(
+            error_link(&ClientError::Network("down".to_owned()), "upgrade"),
+            None
+        );
+    }
+
+    #[test]
+    fn error_link_drops_a_link_that_is_not_safe_to_print() {
+        for href in [
+            "http://www.godaddy.com/airo",
+            "javascript:alert(1)",
+            "https://",
+            "https://www.godaddy.com/a b",
+            // A right-to-left override would change how the link reads.
+            "https://www.godaddy.com/\u{202e}moc.live",
+            // JSON escapes: an escape character and a line break.
+            r"https://www.godaddy.com/\u001b[31m",
+            r"https://www.godaddy.com/\n",
+            "",
+        ] {
+            let err = ClientError::Http {
+                status: 422,
+                body: format!(r#"{{"links":[{{"rel":"upgrade","href":"{href}"}}]}}"#),
+            };
+            assert_eq!(error_link(&err, "upgrade"), None, "{href:?}");
+        }
+    }
+
+    /// A `links` value of an unexpected shape must not hide the issue codes.
+    #[test]
+    fn error_issues_survive_malformed_links() {
+        let err = ClientError::Http {
+            status: 422,
+            body: r#"{"message":"m","details":[{"issue":"PLAN_UPGRADE_REQUIRED"}],"links":"x"}"#
+                .to_owned(),
+        };
+        assert_eq!(error_issues(&err), ["PLAN_UPGRADE_REQUIRED"]);
+        assert_eq!(error_link(&err, "upgrade"), None);
     }
 
     #[test]

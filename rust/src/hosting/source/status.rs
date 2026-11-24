@@ -24,8 +24,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_long(
                 "Poll the status of a source import started with `hosting source upload` or \
                  `hosting source github`. Keep polling until status is COMPLETED or FAILED. \
-                 Once COMPLETED, check that the app has a hosting plan with \
-                 `hosting subscription get`, then publish with `hosting deployment publish`.",
+                 Once COMPLETED, publish with `hosting deployment publish`. An app on a Web \
+                 Hosting plan needs that plan attached first; check with `hosting subscription \
+                 get`. An app on Airo App Builder has no plan to attach.",
             )
             .with_system("hosting")
             .with_tier(Tier::Read)
@@ -51,12 +52,12 @@ fn next_actions(data: &Value, app_id: &str) -> Vec<NextAction> {
     vec![
         next_action(
             "hosting subscription get --app-id <app-id>",
-            "Check the app has a hosting plan before publishing",
+            "Check the attached plan before publishing. Only for an app on a Web Hosting plan",
         )
         .with_param("app-id", NextActionParam::value(app_id)),
         next_action(
             "hosting deployment publish --app-id <app-id>",
-            "Publish to production. The app needs a hosting plan",
+            "Publish to production",
         )
         .with_param("app-id", NextActionParam::value(app_id)),
     ]

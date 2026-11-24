@@ -1,6 +1,6 @@
 use hosting_client::types::{
-    AppType, AttachDomainRequest, AttachSubscriptionRequest, CreateAppRequest, Environment,
-    HostingProduct, ImportGitHubSourceRequest, PublishState, RestartRequest,
+    AppHostingProduct, AppType, AttachDomainRequest, AttachSubscriptionRequest, CreateAppRequest,
+    Environment, HostingProduct, ImportGitHubSourceRequest, PublishState, RestartRequest,
 };
 use reqwest::{Client, Method};
 use serde_json::{Value, json};
@@ -268,24 +268,26 @@ impl HostingClient {
         response(client.get_app().app_id(app_id).send().await).await
     }
 
+    /// Starts the creation of an app. `hosting_product` names what hosts a
+    /// Node.js app; `None` leaves the choice to the service.
     pub async fn create_app(
         &self,
         app_type: &str,
+        hosting_product: Option<&str>,
         body: Value,
         idempotency_key: &str,
     ) -> Result<Value, ClientError> {
         let client = self.api()?;
         let body: CreateAppRequest = deserialize(body)?;
-        response(
-            client
-                .create_app()
-                .app_type(AppType::from(app_type.to_owned()))
-                .idempotency_key(idempotency_key)
-                .body(body)
-                .send()
-                .await,
-        )
-        .await
+        let mut request = client
+            .create_app()
+            .app_type(AppType::from(app_type.to_owned()))
+            .idempotency_key(idempotency_key)
+            .body(body);
+        if let Some(product) = hosting_product {
+            request = request.hosting_product(AppHostingProduct::from(product.to_owned()));
+        }
+        response(request.send().await).await
     }
 
     pub async fn update_app(&self, app_id: &str, patch: Value) -> Result<Value, ClientError> {

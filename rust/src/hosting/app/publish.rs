@@ -13,9 +13,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
                  \n\
                  • Node.js (NODEJS-…): builds the latest source from `hosting source upload` or \
                  `hosting source github` and deploys it to the PUBLISH environment, exactly as \
-                 `hosting deployment publish` does. Every run deploys again. The app must be \
-                 attached to a hosting plan first, which can be done by running `hosting \
-                 subscription list` then `hosting subscription attach`. Returns a deployment ID; \
+                 `hosting deployment publish` does. Every run deploys again. An app on a Web \
+                 Hosting plan must have that plan attached first, which can be done by running \
+                 `hosting subscription list` then `hosting subscription attach`. An app on Airo \
+                 App Builder has no plan to attach: it goes live when your Airo App Builder plan \
+                 allows it, and the error names the page to upgrade the plan on when it does \
+                 not. Returns a deployment ID; \
                  poll `hosting deployment get` until the status is COMPLETED or FAILED.\n\
                  \n\
                  • WordPress (MHWP-…): switches the site from its placeholder page to its live \

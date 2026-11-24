@@ -34,7 +34,8 @@ pub fn module() -> Module {
                  1. `hosting app create` — provision the app, poll `hosting operation get`\n\
                  2. `hosting source upload` — upload source, poll `hosting source status`\n\
                  3. Preview at the PREVIEW URL from `hosting app get` (no plan needed)\n\
-                 4. `hosting subscription attach` — one-time; required before publish\n\
+                 4. `hosting subscription attach` — one-time; required before publish for an app \
+                 on a Web Hosting plan. An app on Airo App Builder skips this step\n\
                  5. `hosting deployment publish` — deploy to PUBLISH, poll `hosting deployment get`\n\
                  \n\
                  To redeploy: repeat steps 2–3, then 5.\n\

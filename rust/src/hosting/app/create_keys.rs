@@ -3,9 +3,9 @@
 //! A create can reach the service and still fail on the way back (a timeout, a
 //! dropped connection, a server error). Run again without the first request's
 //! key, it would create a second app in a paid slot. So the key is saved before
-//! the request and reused while the same environment, app type and name are
-//! created again; the service then returns the first request's operation. The
-//! entry is removed once the service accepts the create.
+//! the request and reused while the same environment, app type, hosting product
+//! and name are created again; the service then returns the first request's
+//! operation. The entry is removed once the service accepts the create.
 //!
 //! The service keeps a key for 24 hours, so entries older than that are dropped
 //! whenever the file is read. The name is matched exactly as typed, because the
@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, TimeDelta, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::hosting::common::HostingAppType;
+use crate::hosting::common::{AppHostingProduct, HostingAppType};
 
 const FILE_NAME: &str = "hosting-create-keys.json";
 
@@ -44,15 +44,32 @@ struct KeyFile {
 struct Entry {
     base_url: String,
     app_type: String,
+    /// The `--hosting-product` asked for, if any. A create that names one is a
+    /// different request from one that lets the service choose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    hosting_product: Option<String>,
     name: String,
     key: String,
     created_at: DateTime<Utc>,
 }
 
 impl Entry {
-    fn is_for(&self, base_url: &str, app_type: HostingAppType, name: &str) -> bool {
-        self.base_url == base_url && self.app_type == app_type.as_str() && self.name == name
+    fn is_for(&self, base_url: &str, create: Create<'_>) -> bool {
+        self.base_url == base_url
+            && self.app_type == create.app_type.as_str()
+            && self.hosting_product.as_deref()
+                == create.hosting_product.map(AppHostingProduct::as_str)
+            && self.name == create.name
     }
+}
+
+/// What a create asks for: the part of the request, besides the environment,
+/// that a saved key belongs to.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Create<'a> {
+    pub(super) app_type: HostingAppType,
+    pub(super) hosting_product: Option<AppHostingProduct>,
+    pub(super) name: &'a str,
 }
 
 /// The key to send with a create.
@@ -84,8 +101,7 @@ pub(super) fn path() -> Option<PathBuf> {
 pub(super) fn claim(
     path: Option<&Path>,
     base_url: &str,
-    app_type: HostingAppType,
-    name: &str,
+    create: Create<'_>,
     now: DateTime<Utc>,
 ) -> Claim {
     let Some(path) = path else {
@@ -96,11 +112,7 @@ pub(super) fn claim(
         };
     };
     let mut file = load(path, now);
-    if let Some(entry) = file
-        .entries
-        .iter()
-        .find(|e| e.is_for(base_url, app_type, name))
-    {
+    if let Some(entry) = file.entries.iter().find(|e| e.is_for(base_url, create)) {
         return Claim {
             key: entry.key.clone(),
             expires_at: Some(entry.created_at + KEY_TTL),
@@ -109,8 +121,11 @@ pub(super) fn claim(
     let key = new_key();
     file.entries.push(Entry {
         base_url: base_url.to_owned(),
-        app_type: app_type.as_str().to_owned(),
-        name: name.to_owned(),
+        app_type: create.app_type.as_str().to_owned(),
+        hosting_product: create
+            .hosting_product
+            .map(|product| product.as_str().to_owned()),
+        name: create.name.to_owned(),
         key: key.clone(),
         created_at: now,
     });
@@ -130,8 +145,7 @@ pub(super) fn claim(
 pub(super) fn release(
     path: Option<&Path>,
     base_url: &str,
-    app_type: HostingAppType,
-    name: &str,
+    create: Create<'_>,
     now: DateTime<Utc>,
 ) -> bool {
     let Some(path) = path else {
@@ -139,7 +153,7 @@ pub(super) fn release(
     };
     let mut file = load(path, now);
     let before = file.entries.len();
-    file.entries.retain(|e| !e.is_for(base_url, app_type, name));
+    file.entries.retain(|e| !e.is_for(base_url, create));
     if file.entries.len() == before {
         return true;
     }
@@ -179,7 +193,15 @@ mod tests {
     use super::*;
 
     const PROD: &str = "https://api.godaddy.com";
-    const MHWP: HostingAppType = HostingAppType::Mhwp;
+
+    /// A WordPress create of `name`.
+    const fn site(name: &str) -> Create<'_> {
+        Create {
+            app_type: HostingAppType::Mhwp,
+            hosting_product: None,
+            name,
+        }
+    }
 
     fn now() -> DateTime<Utc> {
         "2026-11-13T12:00:00Z".parse().expect("valid time")
@@ -194,8 +216,8 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join(FILE_NAME);
 
-        let first = claim(Some(&path), PROD, MHWP, "my-site", now());
-        let again = claim(Some(&path), PROD, MHWP, "my-site", now());
+        let first = claim(Some(&path), PROD, site("my-site"), now());
+        let again = claim(Some(&path), PROD, site("my-site"), now());
 
         assert_eq!(first.expires_at, Some(now() + KEY_TTL));
         assert_eq!(again.expires_at, first.expires_at);
@@ -205,32 +227,63 @@ mod tests {
     }
 
     #[test]
-    fn another_environment_type_or_name_gets_its_own_key() {
+    fn another_environment_type_product_or_name_gets_its_own_key() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join(FILE_NAME);
-        let base = claim(Some(&path), PROD, MHWP, "my-site", now()).key;
+        let base = claim(Some(&path), PROD, site("my-site"), now()).key;
+        let nodejs = |hosting_product| Create {
+            app_type: HostingAppType::Nodejs,
+            hosting_product,
+            name: "my-site",
+        };
 
-        for (url, app_type, name) in [
-            ("https://api.ote-godaddy.com", MHWP, "my-site"),
-            (PROD, HostingAppType::Nodejs, "my-site"),
-            (PROD, MHWP, "other-site"),
+        let mut keys = vec![base];
+        for (url, create) in [
+            ("https://api.ote-godaddy.com", site("my-site")),
+            (PROD, site("other-site")),
             // The service compares the name as sent, so a space makes it another request.
-            (PROD, MHWP, "my-site "),
+            (PROD, site("my-site ")),
+            (PROD, nodejs(None)),
+            // Naming a product asks for something else than letting the service choose.
+            (PROD, nodejs(Some(AppHostingProduct::Airo))),
+            (PROD, nodejs(Some(AppHostingProduct::WebHosting))),
         ] {
-            let key = claim(Some(&path), url, app_type, name, now()).key;
-            assert_ne!(key, base, "{url} {app_type:?} {name:?}");
+            let key = claim(Some(&path), url, create, now()).key;
+            assert!(!keys.contains(&key), "{url} {create:?}");
+            keys.push(key);
         }
-        assert_eq!(entries(&path).len(), 5);
+        assert_eq!(entries(&path).len(), keys.len());
+
+        // Each is still found again, and released on its own.
+        let airo = nodejs(Some(AppHostingProduct::Airo));
+        assert!(keys.contains(&claim(Some(&path), PROD, airo, now()).key));
+        assert!(release(Some(&path), PROD, airo, now()));
+        assert_eq!(entries(&path).len(), keys.len() - 1);
+    }
+
+    #[test]
+    fn a_key_saved_before_hosting_products_still_matches_a_plain_create() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join(FILE_NAME);
+        let saved = serde_json::json!({ "entries": [{
+            "baseUrl": PROD, "appType": "MHWP", "name": "my-site",
+            "key": "5d3c7f0e-2b8a-4f61-9a0d-7c1e3b2a4f50", "createdAt": now(),
+        }] });
+        std::fs::write(&path, saved.to_string()).expect("write key file");
+
+        let claimed = claim(Some(&path), PROD, site("my-site"), now());
+
+        assert_eq!(claimed.key, "5d3c7f0e-2b8a-4f61-9a0d-7c1e3b2a4f50");
     }
 
     #[test]
     fn a_key_older_than_a_day_is_replaced_and_dropped() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join(FILE_NAME);
-        let old = claim(Some(&path), PROD, MHWP, "my-site", now()).key;
+        let old = claim(Some(&path), PROD, site("my-site"), now()).key;
 
         let later = now() + KEY_TTL;
-        let new = claim(Some(&path), PROD, MHWP, "my-site", later).key;
+        let new = claim(Some(&path), PROD, site("my-site"), later).key;
 
         assert_ne!(new, old);
         let left = load(&path, later).entries;
@@ -242,14 +295,9 @@ mod tests {
     fn a_rerun_does_not_extend_the_first_attempt() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join(FILE_NAME);
-        claim(Some(&path), PROD, MHWP, "my-site", now());
-        let again = claim(
-            Some(&path),
-            PROD,
-            MHWP,
-            "my-site",
-            now() + TimeDelta::hours(1),
-        );
+        claim(Some(&path), PROD, site("my-site"), now());
+        let later = now() + TimeDelta::hours(1);
+        let again = claim(Some(&path), PROD, site("my-site"), later);
 
         assert_eq!(entries(&path)[0].created_at, now());
         assert_eq!(again.expires_at, Some(now() + KEY_TTL));
@@ -259,7 +307,7 @@ mod tests {
     fn a_rerun_is_promised_only_while_enough_of_the_key_time_is_left() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join(FILE_NAME);
-        let claimed = claim(Some(&path), PROD, MHWP, "my-site", now());
+        let claimed = claim(Some(&path), PROD, site("my-site"), now());
         let expires = now() + KEY_TTL;
 
         assert_eq!(claimed.rerun_deadline(now()), Some(expires));
@@ -268,7 +316,7 @@ mod tests {
         assert_eq!(claimed.rerun_deadline(expires - RERUN_MARGIN), None);
         assert_eq!(claimed.rerun_deadline(expires), None);
 
-        let unsaved = claim(None, PROD, MHWP, "my-site", now());
+        let unsaved = claim(None, PROD, site("my-site"), now());
         assert_eq!(unsaved.rerun_deadline(now()), None);
     }
 
@@ -276,13 +324,13 @@ mod tests {
     fn a_run_before_the_deadline_resends_the_key() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join(FILE_NAME);
-        let first = claim(Some(&path), PROD, MHWP, "my-site", now());
+        let first = claim(Some(&path), PROD, site("my-site"), now());
         let deadline = first.rerun_deadline(now()).expect("deadline");
 
         let just_before = deadline - TimeDelta::seconds(1);
-        let again = claim(Some(&path), PROD, MHWP, "my-site", just_before);
+        let again = claim(Some(&path), PROD, site("my-site"), just_before);
         assert_eq!(again.key, first.key);
-        let at_deadline = claim(Some(&path), PROD, MHWP, "my-site", deadline);
+        let at_deadline = claim(Some(&path), PROD, site("my-site"), deadline);
         assert_ne!(at_deadline.key, first.key);
     }
 
@@ -290,15 +338,15 @@ mod tests {
     fn release_removes_only_its_own_entry() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join(FILE_NAME);
-        claim(Some(&path), PROD, MHWP, "my-site", now());
-        let other = claim(Some(&path), PROD, MHWP, "other-site", now()).key;
+        claim(Some(&path), PROD, site("my-site"), now());
+        let other = claim(Some(&path), PROD, site("other-site"), now()).key;
 
-        assert!(release(Some(&path), PROD, MHWP, "my-site", now()));
+        assert!(release(Some(&path), PROD, site("my-site"), now()));
 
         let left = entries(&path);
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].key, other);
-        let fresh = claim(Some(&path), PROD, MHWP, "my-site", now());
+        let fresh = claim(Some(&path), PROD, site("my-site"), now());
         assert!(fresh.expires_at.is_some());
     }
 
@@ -307,8 +355,8 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join(FILE_NAME);
 
-        assert!(release(Some(&path), PROD, MHWP, "my-site", now()));
-        assert!(release(None, PROD, MHWP, "my-site", now()));
+        assert!(release(Some(&path), PROD, site("my-site"), now()));
+        assert!(release(None, PROD, site("my-site"), now()));
         assert!(!path.exists(), "nothing to remove, so nothing is written");
     }
 
@@ -319,7 +367,7 @@ mod tests {
 
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join(FILE_NAME);
-        let key = claim(Some(&path), PROD, MHWP, "my-site", now()).key;
+        let key = claim(Some(&path), PROD, site("my-site"), now()).key;
         let set_mode = |mode| {
             std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(mode))
                 .expect("chmod");
@@ -331,11 +379,11 @@ mod tests {
             return;
         }
 
-        let released = release(Some(&path), PROD, MHWP, "my-site", now());
+        let released = release(Some(&path), PROD, site("my-site"), now());
         set_mode(0o755);
 
         assert!(!released);
-        assert_eq!(claim(Some(&path), PROD, MHWP, "my-site", now()).key, key);
+        assert_eq!(claim(Some(&path), PROD, site("my-site"), now()).key, key);
     }
 
     #[test]
@@ -344,7 +392,7 @@ mod tests {
         let path = dir.path().join(FILE_NAME);
         std::fs::write(&path, "{ not json").expect("write corrupt file");
 
-        let claimed = claim(Some(&path), PROD, MHWP, "my-site", now());
+        let claimed = claim(Some(&path), PROD, site("my-site"), now());
 
         assert!(claimed.expires_at.is_some());
         assert_eq!(entries(&path).len(), 1);
@@ -358,7 +406,7 @@ mod tests {
         let path = blocker.join(FILE_NAME);
 
         for path in [Some(path.as_path()), None] {
-            let claimed = claim(path, PROD, MHWP, "my-site", now());
+            let claimed = claim(path, PROD, site("my-site"), now());
             assert_eq!(claimed.expires_at, None, "{path:?}");
             assert!(uuid::Uuid::parse_str(&claimed.key).is_ok(), "{path:?}");
         }
