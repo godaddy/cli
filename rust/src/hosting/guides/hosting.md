@@ -4,7 +4,7 @@ summary: Start here for GoDaddy hosting, including what the hosting products sha
 
 # `gddy hosting`: GoDaddy hosting
 
-`gddy hosting` creates and manages hosted apps. Each hosting product has its own guide with the full walkthrough; this page covers what the products share and points you to the right guide.
+`gddy hosting` creates and manages hosted apps. Each hosting product has its own guide with the full walkthrough. This page covers what the products share and points you to the right guide.
 
 ## Concepts
 
@@ -14,7 +14,7 @@ The following terms and concepts are relevant to hosting apps with `gddy hosting
 
 **Operation**: creating an app, and some other changes that take a while, return an operation ID straight away. Poll it with `gddy hosting operation get --operation-id <operation-id>` until its status is COMPLETED or FAILED.
 
-**Plan**: what an app is billed to. How you get one, and when an app needs it, differs by product. A Node.js app runs on either a Web Hosting plan or your Airo App Builder plan, and only the Web Hosting one needs a plan attached. The product's guide explains it.
+**Plan**: the subscription tier which affects the app's features and billing. How you get one, and when an app needs it, differs by product. A Node.js app runs on either a Web Hosting plan or your Airo App Builder plan, and only the Web Hosting one needs a plan attached. The product's guide explains it.
 
 ## Pick your product
 

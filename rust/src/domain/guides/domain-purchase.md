@@ -45,7 +45,7 @@ To buy a domain, run up to four commands in order. The first two are optional. Q
 
 ### Find a name
 
-Give `suggest` a seed word or phrase, or leave the phrase out to get suggestions based on what we know about you and your account. These options narrow the results:
+Give `suggest` a seed word or phrase, or leave the phrase out to get suggestions based on what GoDaddy knows about you and your account. These options narrow the results:
 
 - `--tlds com --tlds dev`: limit the suggestions to these top-level domains (repeatable).
 - `--length-min` and `--length-max`: bound the name length.
@@ -60,7 +60,7 @@ Set registration options when you quote, because they're locked into the quote t
 - `--period <1-10>`: registration length in years (default 1).
 - `--privacy`: add privacy protection.
 - `--no-renew`: disable auto-renew (on by default).
-- `--nameserver <host>`: custom nameserver (repeatable); omit for GoDaddy's.
+- `--nameserver <host>`: custom nameserver (repeatable). Omit for GoDaddy's.
 
 ### Quote lifetime
 
@@ -82,7 +82,7 @@ To buy a domain together with other GoDaddy products, or to pay with the same ch
 
 ## International domain names
 
-You can type a name either as Unicode (`münchen.de`) or in its encoded form (`xn--mnchen-3ya.de`); both reach the same domain. Output shows Unicode by default. Add `--punycode` to any `domain` command that shows names to see the encoded form instead, or make that your default with `gddy config set punycode true` (undo it with `gddy config unset punycode`). Precedence is the `--punycode` flag, then the `GDDY_PUNYCODE` environment variable, then your saved setting, then Unicode, so `--punycode=false` turns the encoded form back off for one command.
+You can type a name either as Unicode (`münchen.de`) or in its encoded form (`xn--mnchen-3ya.de`). Both reach the same domain. Output shows Unicode by default. Add `--punycode` to any `domain` command that shows names to see the encoded form instead, or make that your default with `gddy config set punycode true` (undo it with `gddy config unset punycode`). Precedence is the `--punycode` flag, then the `GDDY_PUNYCODE` environment variable, then your saved setting, then Unicode, so `--punycode=false` turns the encoded form back off for one command.
 
 ## Contacts
 
@@ -100,7 +100,7 @@ That writes a starter `contacts.toml` (with every role commented out) to:
 - macOS: `~/Library/Application Support/gddy/contacts.toml`
 - Windows: `%APPDATA%\gddy\contacts.toml`
 
-Open it, uncomment the role(s) you want, and fill in the values. Each role is an optional table. A role you omit falls back to the account default. A role you uncomment must be **complete**, with every required field from the example that follows, or the file fails to load.
+Open it, uncomment the roles you want, and fill in the values. Each role is an optional table. A role you omit falls back to the account default. A role you uncomment must be complete, with every required field from the example that follows, or the file fails to load.
 
 ```toml
 [registrant]
