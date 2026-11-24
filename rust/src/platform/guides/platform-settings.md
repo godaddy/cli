@@ -85,7 +85,7 @@ label = "Order origin"
 value = "origin"
 ```
 
-A field `key` becomes a property in the merchant's saved `values` document and must stay stable once merchants have data. Don't rename a field key without a GPA-owned migration. Section keys are display-only and safe to change.
+A field `key` becomes a property in the merchant's saved `values` document and must stay stable after merchants have data. Don't rename a field key without a GPA-owned migration. Section keys are display-only and safe to change.
 
 Supported field types (`type` discriminates the shape; every field needs `type`, `key`, and `label`):
 
