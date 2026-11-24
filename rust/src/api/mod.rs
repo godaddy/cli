@@ -89,8 +89,14 @@ pub fn module() -> Module {
         .with_command(search::command())
         .with_command(call::command())
     })
-    .with_guides_from_markdown([(
-        "api-explorer.md",
-        include_bytes!("guides/api-explorer.md").as_slice(),
-    )])
+    .with_guides_from_markdown([
+        (
+            "api-explorer.md",
+            include_bytes!("guides/api-explorer.md").as_slice(),
+        ),
+        (
+            "api-graphql.md",
+            include_bytes!("guides/api-graphql.md").as_slice(),
+        ),
+    ])
 }

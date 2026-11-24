@@ -79,6 +79,10 @@ Full checklist: [Command authoring](./docs/command-authoring.md).
 [Code file structure](./docs/code-structure.md) for specifics.
 - CI fails any `.rs` file over 1000 lines. Split file exceeding this limit.
 
+## Guides (Required)
+
+When you write or change a guide (`rust/src/*/guides/*.md`), follow `.agents/skills/writing-guides/SKILL.md`. It covers the Vale check to run before you open a PR.
+
 ## Extension bundling
 
 - The `bundle_extension` function spawns `esbuild` as a subprocess.
