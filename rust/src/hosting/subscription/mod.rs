@@ -5,14 +5,7 @@ mod list;
 use cli_engine::{CliCoreError, GroupSpec, RuntimeGroupSpec};
 
 use crate::hosting::client::ClientError;
-use crate::hosting::common::{client_err, client_err_with_fix, is_mhwp_app_id};
-
-const NO_PLAN_TO_ATTACH_NODEJS: &str = "This app is on Airo App Builder and is billed by your Airo \
-     App Builder plan, so it has no hosting plan to show or attach. To take it live, run: \
-     gddy hosting app publish --app-id <app-id>";
-const NO_PLAN_TO_ATTACH_WORDPRESS: &str = "A WordPress site is billed by your Airo App Builder \
-     subscription, so it has no hosting plan to show or attach. To take it live, run: \
-     gddy hosting app publish --app-id <app-id>";
+use crate::hosting::common::{app_id_arg, client_err, client_err_with_fix, is_mhwp_app_id};
 
 /// The error of `subscription get` and `subscription attach`. A `501` there
 /// is not a fault: the app is billed by an Airo App Builder plan and takes no
@@ -21,12 +14,19 @@ fn attachment_err(e: ClientError, app_id: &str) -> CliCoreError {
     if !matches!(e, ClientError::Http { status: 501, .. }) {
         return client_err(e);
     }
-    let fix = if is_mhwp_app_id(app_id) {
-        NO_PLAN_TO_ATTACH_WORDPRESS
+    let billed = if is_mhwp_app_id(app_id) {
+        "A WordPress site is billed by your Airo App Builder subscription"
     } else {
-        NO_PLAN_TO_ATTACH_NODEJS
+        "This app is on Airo App Builder and is billed by your Airo App Builder plan"
     };
-    client_err_with_fix(e, fix)
+    client_err_with_fix(
+        e,
+        format!(
+            "{billed}, so it has no hosting plan to show or attach. To take it live, run: \
+             gddy hosting app publish {}",
+            app_id_arg(app_id)
+        ),
+    )
 }
 
 pub(super) fn group() -> RuntimeGroupSpec {
@@ -56,6 +56,7 @@ mod tests {
             ClientError::Http {
                 status,
                 body: r#"{"message":"m","details":[{"issue":"NOT_APPLICABLE"}]}"#.to_owned(),
+                retry_after: None,
             },
             app_id,
         );
@@ -64,16 +65,34 @@ mod tests {
 
     #[test]
     fn a_501_says_the_app_has_no_plan_to_attach() {
-        for (app_id, expected) in [
-            ("NODEJS-aBcDeFgHiJ", "This app is on Airo App Builder"),
-            ("nodejs-aBcDeFgHiJ", "This app is on Airo App Builder"),
-            ("MHWP-a1b2c3d4e5", "A WordPress site is billed"),
+        for (app_id, expected, publish) in [
+            (
+                "NODEJS-aBcDeFgHiJ",
+                "This app is on Airo App Builder",
+                "gddy hosting app publish --app-id NODEJS-aBcDeFgHiJ",
+            ),
+            (
+                "nodejs-aBcDeFgHiJ",
+                "This app is on Airo App Builder",
+                "gddy hosting app publish --app-id nodejs-aBcDeFgHiJ",
+            ),
+            (
+                "MHWP-a1b2c3d4e5",
+                "A WordPress site is billed",
+                "gddy hosting app publish --app-id MHWP-a1b2c3d4e5",
+            ),
+            // Not an id's shape: the placeholder stands in for it.
+            (
+                "NODEJS-x;y",
+                "This app is on Airo App Builder",
+                "gddy hosting app publish --app-id <app-id>",
+            ),
         ] {
             let fix = fix_for(501, app_id);
             assert!(
                 fix.as_deref().is_some_and(|f| f.contains(expected)
                     && f.contains("no hosting plan to show or attach")
-                    && f.contains("gddy hosting app publish --app-id <app-id>")),
+                    && f.ends_with(publish)),
                 "{app_id}: {fix:?}"
             );
         }

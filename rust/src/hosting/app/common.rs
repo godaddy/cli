@@ -5,7 +5,7 @@ use cli_engine::{CommandResult, NextActionParam};
 use crate::hosting::client::{ClientError, HostingClient};
 use crate::hosting::common::{
     HostingAppType, SET_PUBLISH_STATE, client_err, client_err_with_fix, error_issues,
-    strip_id_prefix, with_operation_type,
+    is_nodejs_app_id, is_wordpress_site_id, with_operation_type,
 };
 use crate::hosting::deployment::publish::deploy;
 use crate::next_action::{next_action, required_value};
@@ -72,28 +72,6 @@ fn wordpress_site_id(value: &str) -> Result<String, String> {
         return Err(NOT_A_WORDPRESS_SITE.to_owned());
     }
     Ok(value.to_owned())
-}
-
-/// A Node.js id ends in a nanoid. Only its alphabet is checked, which keeps the
-/// id URL-safe; the contract's examples disagree on the length, so the API
-/// judges the rest.
-fn is_nodejs_app_id(value: &str) -> bool {
-    strip_id_prefix(value, HostingAppType::Nodejs.id_prefix()).is_some_and(|body| {
-        !body.is_empty()
-            && body
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
-    })
-}
-
-/// The edge route's id shape, `(?i)^mhwp-[a-z0-9]{10}$`: the prefix matches
-/// case-insensitively, the ten characters after it do not. Anything else never
-/// reaches the service, so it is refused here rather than sent out to collect
-/// a 404.
-fn is_wordpress_site_id(value: &str) -> bool {
-    strip_id_prefix(value, HostingAppType::Mhwp.id_prefix()).is_some_and(|body| {
-        body.len() == 10 && body.bytes().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9'))
-    })
 }
 
 /// Takes `app` live: a Node.js app by building and deploying its latest
@@ -175,6 +153,7 @@ mod tests {
             ClientError::Http {
                 status,
                 body: format!(r#"{{"message":"m","details":[{{"issue":"{issue}"}}]}}"#),
+                retry_after: None,
             },
             published,
         );

@@ -357,6 +357,7 @@ mod tests {
             ClientError::Http {
                 status,
                 body: format!(r#"{{"message":"m","details":[{{"issue":"{issue}"}}]}}"#),
+                retry_after: None,
             },
             app_type,
             &saved(),
@@ -402,6 +403,7 @@ mod tests {
                 status: 422,
                 body: r#"{"message":"m","details":[{"issue":"VALIDATION_FAILED"},{"issue":"APP_LIMIT_EXCEEDED"}]}"#
                     .to_owned(),
+                retry_after: None,
             },
             HostingAppType::Mhwp,
             &saved(),
@@ -421,6 +423,7 @@ mod tests {
         let server = || ClientError::Http {
             status: 503,
             body: r#"{"message":"m","details":[{"issue":"UPSTREAM_UNAVAILABLE"}]}"#.to_owned(),
+            retry_after: None,
         };
         for make in [network, server] {
             let safe = fix_of(&create_err(make(), HostingAppType::Mhwp, &saved()));
@@ -455,6 +458,7 @@ mod tests {
         let mismatch = || ClientError::Http {
             status: 422,
             body: r#"{"message":"m","details":[{"issue":"IDEMPOTENCY_KEY_MISMATCH"}]}"#.to_owned(),
+            retry_after: None,
         };
         for app_type in [HostingAppType::Mhwp, HostingAppType::Nodejs] {
             let key = KeyState {
@@ -485,6 +489,7 @@ mod tests {
         let limited = || ClientError::Http {
             status: 429,
             body: String::new(),
+            retry_after: None,
         };
         let fix = fix_of(&create_err(limited(), HostingAppType::Mhwp, &saved()));
         assert!(

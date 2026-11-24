@@ -1,9 +1,13 @@
 use cli_engine::{CommandResult, CommandSpec, NextActionParam, RuntimeCommandSpec, Tier};
 
+use super::common::{
+    APP_SUSPENDED, PLAN_UPGRADE_REQUIRED, UPGRADE_LINK, not_offered_text, plan_upgrade_text,
+    suspended_text, wait_for,
+};
 use crate::hosting::client::{ClientError, HostingClient};
 use crate::hosting::common::{
-    AppIdArgs, HostingAppType, HostingDeploymentSummary, client_err, client_err_with_fix,
-    error_issues, error_link, make_client,
+    AppIdArgs, HostingAppType, HostingDeploymentSummary, app_id_arg, client_err,
+    client_err_with_fix, error_issues, error_link, make_client,
 };
 use crate::next_action::next_action;
 use crate::scopes::HOSTING_DEPLOYMENT_EXECUTE as DEPLOY_EXECUTE;
@@ -62,54 +66,48 @@ pub(crate) async fn deploy(
     ]))
 }
 
-/// The `rel` of the error link that leads to the plan page of an app on Airo
-/// App Builder.
-const UPGRADE_LINK: &str = "upgrade";
-
 const ATTACH_A_PLAN: &str = "Run: gddy hosting subscription list --hosting-product=WEB_HOSTING";
-const APP_SUSPENDED: &str = "This app is suspended, so it cannot go live. Check the app and your \
-     plan in Airo App Builder, then run this command again.";
-// The service sends this code when it cannot check the plan, and for other
-// short outages, so the text has to be true for either.
-const TRY_AGAIN_SOON: &str =
-    "The service is temporarily unavailable. Wait a few seconds and run the command again.";
-const NOT_OFFERED_YET: &str = "Going live from the command line is not available for this app \
-     yet. Publish it from Airo App Builder.";
+const THEN: &str = "run this command again";
 
-/// The next step for a refused deployment. An app on a Web Hosting plan is
-/// sent to attach one. An app on Airo App Builder has nothing to attach, so
-/// its errors point at its Airo App Builder plan instead.
+/// The next step for a refused deployment. The app id does not say whether
+/// an app is on a Web Hosting plan or on Airo App Builder, so a fix names a
+/// product only for an issue code that only that product's apps are sent.
 fn publish_err(e: ClientError, app_id: &str) -> cli_engine::CliCoreError {
-    let ClientError::Http { status, .. } = &e else {
+    let ClientError::Http {
+        status,
+        retry_after,
+        ..
+    } = &e
+    else {
         return client_err(e);
     };
     let issues = error_issues(&e);
     let has = |issue: &str| issues.iter().any(|i| i == issue);
     let fix = match *status {
-        422 if has("PLAN_UPGRADE_REQUIRED") => plan_upgrade_fix(error_link(&e, UPGRADE_LINK)),
-        422 if has("APP_SUSPENDED") => APP_SUSPENDED.to_owned(),
-        422 => ATTACH_A_PLAN.to_owned(),
+        422 if has(PLAN_UPGRADE_REQUIRED) => plan_upgrade_text(error_link(&e, UPGRADE_LINK), THEN),
+        422 if has(APP_SUSPENDED) => suspended_text(THEN),
+        // Only an app on a Web Hosting plan is sent these.
+        422 if has("WH_PLAN_REQUIRED") || has("PUBLISH_LIMIT_EXCEEDED") => ATTACH_A_PLAN.to_owned(),
+        422 => format!(
+            "The error message says why this app cannot go live. If `gddy hosting app get {}` \
+             shows `hostingProduct` WEB_HOSTING, check the app's plan with `gddy hosting \
+             subscription list --hosting-product=WEB_HOSTING`.",
+            app_id_arg(app_id)
+        ),
         // Other products answer 501 too, and keep the shared fix for it.
         501 if HostingAppType::of_id(app_id) == Some(HostingAppType::Nodejs) => {
-            NOT_OFFERED_YET.to_owned()
+            not_offered_text(app_id)
         }
-        503 if has("UPSTREAM_UNAVAILABLE") => TRY_AGAIN_SOON.to_owned(),
+        // Sent when the app's plan cannot be checked, and for other short
+        // outages, so the text has to be true for either.
+        503 if has("UPSTREAM_UNAVAILABLE") => format!(
+            "The service is temporarily unavailable, and nothing was published. {} and run \
+             this command again.",
+            wait_for(*retry_after)
+        ),
         _ => return client_err(e),
     };
     client_err_with_fix(e, fix)
-}
-
-/// Where to upgrade the plan of an app on Airo App Builder: the page the
-/// service names, or Airo App Builder itself when it names none.
-fn plan_upgrade_fix(upgrade_url: Option<String>) -> String {
-    let place = upgrade_url.map_or_else(
-        || "in Airo App Builder".to_owned(),
-        |url| format!("at {url}"),
-    );
-    format!(
-        "Your Airo App Builder plan does not let this app go live. Upgrade the plan {place}, \
-         then run this command again."
-    )
 }
 
 #[cfg(test)]
@@ -156,14 +154,16 @@ mod tests {
 
     const APP_ID: &str = "NODEJS-aBcDeFgHiJ";
 
+    fn http(status: u16, body: &str, retry_after: Option<u64>) -> ClientError {
+        ClientError::Http {
+            status,
+            body: body.to_owned(),
+            retry_after: retry_after.map(std::time::Duration::from_secs),
+        }
+    }
+
     fn fix_for(status: u16, body: &str, app_id: &str) -> Option<String> {
-        let err = publish_err(
-            ClientError::Http {
-                status,
-                body: body.to_owned(),
-            },
-            app_id,
-        );
+        let err = publish_err(http(status, body, None), app_id);
         cli_engine::build_error_envelope(&err, "hosting").fix
     }
 
@@ -184,19 +184,16 @@ mod tests {
             }],
             "links": [{ "rel": "upgrade", "href": "https://www.example.com/airo/plans/NODEJS-aBcDeFgHiJ" }]
         }"#;
-        let err = publish_err(
-            ClientError::Http {
-                status: 422,
-                body: body.to_owned(),
-            },
-            APP_ID,
-        );
+        let err = publish_err(http(422, body, None), APP_ID);
         let envelope = cli_engine::build_error_envelope(&err, "hosting");
+        // The link ends the text: no comma or full stop a terminal could take
+        // as part of it.
         assert_eq!(
             envelope.fix.as_deref(),
             Some(
-                "Your Airo App Builder plan does not let this app go live. Upgrade the plan at \
-                 https://www.example.com/airo/plans/NODEJS-aBcDeFgHiJ, then run this command again."
+                "Your Airo App Builder plan does not let this app go live. Upgrade the plan, \
+                 then run this command again. Upgrade page: \
+                 https://www.example.com/airo/plans/NODEJS-aBcDeFgHiJ"
             )
         );
         assert_eq!(
@@ -232,11 +229,15 @@ mod tests {
     }
 
     #[test]
-    fn an_airo_app_is_never_sent_to_attach_a_plan() {
+    fn an_airo_only_refusal_is_never_sent_to_attach_a_plan() {
         for (status, issue_code, expected) in [
             (422, "PLAN_UPGRADE_REQUIRED", "Upgrade the plan"),
             (422, "APP_SUSPENDED", "is suspended"),
-            (501, "NOT_APPLICABLE", "Publish it from Airo App Builder"),
+            (
+                501,
+                "NOT_APPLICABLE",
+                "publish the app from Airo App Builder",
+            ),
             (503, "UPSTREAM_UNAVAILABLE", "Wait a few seconds"),
         ] {
             let fix = fix_for(status, &issue(issue_code), APP_ID);
@@ -248,14 +249,44 @@ mod tests {
         }
     }
 
+    /// The id does not say which product an app is on, so a refusal both
+    /// products can get is worded to be true for either.
     #[test]
-    fn other_refusals_keep_their_fix() {
-        // An app on a Web Hosting plan is still sent to attach one.
-        for issue_code in [
-            "WH_PLAN_REQUIRED",
-            "PUBLISH_LIMIT_EXCEEDED",
-            "COMPAT_BLOCKED",
-        ] {
+    fn a_refusal_either_product_can_get_is_true_for_both() {
+        let fix = fix_for(501, &issue("NOT_APPLICABLE"), APP_ID);
+        assert_eq!(
+            fix.as_deref(),
+            Some(
+                "Going live from the command line is not available for this app yet. If \
+                 `gddy hosting app get --app-id NODEJS-aBcDeFgHiJ` shows `hostingProduct` AIRO, \
+                 publish the app from Airo App Builder."
+            )
+        );
+        for issue_code in ["COMPAT_BLOCKED", "BETA_LIMIT_EXCEEDED", "A_FUTURE_CODE"] {
+            let fix = fix_for(422, &issue(issue_code), APP_ID);
+            assert_eq!(
+                fix.as_deref(),
+                Some(
+                    "The error message says why this app cannot go live. If `gddy hosting app \
+                     get --app-id NODEJS-aBcDeFgHiJ` shows `hostingProduct` WEB_HOSTING, check \
+                     the app's plan with `gddy hosting subscription list \
+                     --hosting-product=WEB_HOSTING`."
+                ),
+                "{issue_code}"
+            );
+        }
+        // An id that is not shaped like one is not written into the command.
+        let fix = fix_for(422, &issue("COMPAT_BLOCKED"), "NODEJS-a b;x");
+        assert!(
+            fix.as_deref()
+                .is_some_and(|f| f.contains("app get --app-id <app-id>`") && !f.contains("a b;x")),
+            "{fix:?}"
+        );
+    }
+
+    #[test]
+    fn a_web_hosting_only_refusal_keeps_its_fix() {
+        for issue_code in ["WH_PLAN_REQUIRED", "PUBLISH_LIMIT_EXCEEDED"] {
             let fix = fix_for(422, &issue(issue_code), APP_ID);
             assert_eq!(fix.as_deref(), Some(ATTACH_A_PLAN), "{issue_code}");
         }
@@ -275,12 +306,87 @@ mod tests {
     }
 
     #[test]
+    fn a_503_names_the_delay_the_service_asked_for() {
+        let fix = |retry_after| {
+            let err = publish_err(
+                http(503, &issue("UPSTREAM_UNAVAILABLE"), retry_after),
+                APP_ID,
+            );
+            cli_engine::build_error_envelope(&err, "hosting").fix
+        };
+        assert_eq!(
+            fix(Some(30)).as_deref(),
+            Some(
+                "The service is temporarily unavailable, and nothing was published. Wait 30 \
+                 seconds and run this command again."
+            )
+        );
+        assert!(
+            fix(None)
+                .as_deref()
+                .is_some_and(|f| f.contains("Wait a few seconds")),
+            "{:?}",
+            fix(None)
+        );
+    }
+
+    /// What the reviewer's "503 followed by a successful publish" amounts to
+    /// for the command: the first run fails with the delay the service sent,
+    /// nothing is kept from it, and the next run starts the deployment.
+    #[tokio::test]
+    async fn a_publish_run_again_after_a_503_starts_the_deployment() {
+        let server = MockServer::start_async().await;
+        let path = "/v1/hosting/apps/NODEJS-aBcDeFgHiJ/deployments";
+        let unavailable = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path);
+                then.status(503)
+                    .header("retry-after", "30")
+                    .json_body(json!({
+                        "name": "ServiceUnavailable",
+                        "message": "Cannot publish app",
+                        "details": [{ "issue": "UPSTREAM_UNAVAILABLE" }]
+                    }));
+            })
+            .await;
+        let client = HostingClient::new(server.base_url(), "test-token");
+
+        let err = deploy(&client, APP_ID.to_owned())
+            .await
+            .expect_err("a 503 is an error");
+        unavailable.assert_async().await;
+        let envelope = cli_engine::build_error_envelope(&err, "hosting");
+        assert!(
+            envelope
+                .fix
+                .as_deref()
+                .is_some_and(|f| f.contains("Wait 30 seconds")),
+            "{envelope:?}"
+        );
+
+        unavailable.delete_async().await;
+        let accepted = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path);
+                then.status(202)
+                    .json_body(json!({ "deploymentId": "dep-2", "status": "PENDING" }));
+            })
+            .await;
+        let result = deploy(&client, APP_ID.to_owned())
+            .await
+            .expect("the next run publishes");
+        accepted.assert_async().await;
+        assert_eq!(result.data["deploymentId"], "dep-2");
+    }
+
+    #[test]
     fn publish_err_points_422_at_subscription_list() {
         let err = publish_err(
-            ClientError::Http {
-                status: 422,
-                body: r#"{"message":"This app must be attached to a Web Hosting plan to publish.","details":[{"issue":"WH_PLAN_REQUIRED"}]}"#.to_owned(),
-            },
+            http(
+                422,
+                r#"{"message":"This app must be attached to a Web Hosting plan to publish.","details":[{"issue":"WH_PLAN_REQUIRED"}]}"#,
+                None,
+            ),
             APP_ID,
         );
         let envelope = cli_engine::build_error_envelope(&err, "hosting");
@@ -299,13 +405,7 @@ mod tests {
 
     #[test]
     fn publish_err_keeps_generic_fix_for_other_client_errors() {
-        let err = publish_err(
-            ClientError::Http {
-                status: 500,
-                body: r#"{"message":"unavailable"}"#.to_owned(),
-            },
-            APP_ID,
-        );
+        let err = publish_err(http(500, r#"{"message":"unavailable"}"#, None), APP_ID);
         let envelope = cli_engine::build_error_envelope(&err, "hosting");
         assert!(
             envelope

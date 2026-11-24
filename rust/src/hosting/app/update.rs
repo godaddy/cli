@@ -182,6 +182,7 @@ mod tests {
             ClientError::Http {
                 status,
                 body: format!(r#"{{"message":"m","details":[{{"issue":"{issue}"}}]}}"#),
+                retry_after: None,
             },
             mhwp,
         );
