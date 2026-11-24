@@ -1,6 +1,6 @@
 [package]
 name = "rfc1035-format"
-version = "0.2.39"
+version = "0.3.0"
 edition = "2024"
 license = "MIT"
 publish = false
