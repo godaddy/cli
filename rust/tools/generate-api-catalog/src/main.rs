@@ -1,10 +1,12 @@
 mod app_registry_spec;
+mod catalog_products_spec;
 mod commerce_merge;
 mod dereference;
 mod domains_spec;
 mod email_spec;
 mod github;
 mod graphql;
+mod graphql_sdl;
 mod hosting_spec;
 mod manifest;
 mod openapi;
@@ -206,6 +208,17 @@ fn main() -> Result<()> {
             .context("failed to serialize catalog domain")?;
         std::fs::write(&out_path, &json)
             .with_context(|| format!("failed to write {}", out_path.display()))?;
+
+        // The Catalog subgraph's SDL rides on its one REST wrapper operation,
+        // so it is vendored from the processed catalog entry rather than from a
+        // spec file of its own.
+        if source.domain == catalog_products_spec::DOMAIN {
+            catalog_products_spec::vendor_sdl(
+                &catalog,
+                &catalog_products_spec::catalog_products_graphql_path(),
+            )
+            .context("failed to vendor the catalog-products GraphQL schema")?;
+        }
 
         let ep_count = catalog.endpoints.len();
         eprintln!(
