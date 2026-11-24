@@ -14,7 +14,7 @@ The following terms and concepts are relevant to hosting apps with `gddy hosting
 
 **Operation**: creating an app, and some other changes that take a while, return an operation ID straight away. Poll it with `gddy hosting operation get --operation-id <operation-id>` until its status is COMPLETED or FAILED.
 
-**Plan**: what an app is billed to. How you get one, and when an app needs it, differs by product. The product's guide explains it.
+**Plan**: the subscription tier which affects the app's features and billing. How you get one, and when an app needs it, differs by product. The product's guide explains it.
 
 ## Pick your product
 
