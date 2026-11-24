@@ -37,7 +37,7 @@ mod transfer_lock;
 
 // Shared with the `dns` module, which builds the same Domains API client and
 // reuses the repeatable-argument helper.
-pub(crate) use common::{api_error, format_api_error, make_client};
+pub(crate) use common::{ApiFailure, api_error, api_failure, make_client};
 
 /// Shown wherever an AI assistant driving `purchase` might look — its help
 /// text, the `--confirm`/`--agree` gate error messages, and the `next_action`
