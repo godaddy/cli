@@ -16,20 +16,21 @@ use domains_client::types;
 /// DNS record types the CLI can create/replace/delete via v3 (`add`/`set`/`delete`).
 /// NS and SOA are registry-managed / read-only, so they're excluded. v3's
 /// `DNSRecordType` is otherwise an open string; this list is the CLI's guardrail
-/// against typos and includes `CAA` and GoDaddy's `ALIAS` extension.
+/// against typos. The spec also names GoDaddy's `ALIAS` extension, but the API
+/// refuses to create one (in test and prod), so it is not listed.
 pub(super) const WRITABLE_TYPES: &[&str] = &[
-    "A", "AAAA", "ALIAS", "CAA", "CNAME", "HTTPS", "MX", "SRV", "SVCB", "TLSA", "TXT",
+    "A", "AAAA", "CAA", "CNAME", "HTTPS", "MX", "SRV", "SVCB", "TLSA", "TXT",
 ];
 /// Record types accepted by the `list` filter — the writable set plus the
 /// read-only NS/SOA, which are listable even though they can't be modified.
 pub(super) const LISTABLE_TYPES: &[&str] = &[
-    "A", "AAAA", "ALIAS", "CAA", "CNAME", "HTTPS", "MX", "NS", "SOA", "SRV", "SVCB", "TLSA", "TXT",
+    "A", "AAAA", "CAA", "CNAME", "HTTPS", "MX", "NS", "SOA", "SRV", "SVCB", "TLSA", "TXT",
 ];
 /// Default TTL (seconds) for `dns add`/`set` when `--ttl` is omitted (v3 requires a ttl).
 pub(super) const DEFAULT_TTL: i64 = 3600;
 /// The TTL range (seconds) the API accepts: 10 minutes to 24 hours.
-const MIN_TTL: i64 = 600;
-const MAX_TTL: i64 = 86_400;
+pub(super) const MIN_TTL: i64 = 600;
+pub(super) const MAX_TTL: i64 = 86_400;
 /// The output fields of a DNS write that hold the zone and the record name.
 pub(super) const ZONE_AND_NAME: &[&str] = &["domain", "name"];
 
@@ -209,7 +210,7 @@ pub(super) struct RecordWriteArgs {
     // output — so without it `--type tlsa` (accepted, and canonicalized to `TLSA`)
     // never trips the `--usage`/`--selector`/`--matching-type` requirement, and
     // `--type caa` never trips `--tag`.
-    /// Record type (A, AAAA, ALIAS, CAA, CNAME, HTTPS, MX, SRV, SVCB, TLSA, TXT).
+    /// Record type (A, AAAA, CAA, CNAME, HTTPS, MX, SRV, SVCB, TLSA, TXT).
     #[arg(long = "type", value_name = "TYPE", value_parser = parse_write_type_arg, ignore_case = true)]
     pub(super) record_type: String,
 
@@ -736,7 +737,7 @@ pub(super) fn comparable(record: &types::DnsRecord, compare_ttl: bool) -> Value 
         }
         if let Some(Value::String(data)) = fields.get_mut("data") {
             match record_type {
-                "ALIAS" | "CNAME" | "MX" | "SRV" | "HTTPS" | "SVCB" => {
+                "CNAME" | "MX" | "SRV" | "HTTPS" | "SVCB" => {
                     *data = data.trim_end_matches('.').to_lowercase();
                 }
                 "CAA" => *data = data.to_lowercase(),
@@ -767,7 +768,7 @@ pub(super) fn as_stored(record: &types::DnsRecord) -> types::DnsRecord {
             && had_data
             && matches!(
                 record.type_.as_str(),
-                "ALIAS" | "CNAME" | "MX" | "SRV" | "HTTPS" | "SVCB"
+                "CNAME" | "MX" | "SRV" | "HTTPS" | "SVCB"
             )
         {
             data.push('.');

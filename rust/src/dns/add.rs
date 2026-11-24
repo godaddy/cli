@@ -114,7 +114,7 @@ fn summarize_add_outcomes(
 /// refuse it — an exact duplicate, or a CNAME against other types — or `None` when
 /// nothing in the zone stands in its way. The API's own checks (value syntax, say)
 /// are not repeated here; a preview can only promise what it can see.
-fn add_blocker(
+pub(super) fn add_blocker(
     domain: &str,
     name: &str,
     record_type: &str,
@@ -171,7 +171,7 @@ fn distinct_owners(name: &str, records: &[types::DnsRecord]) -> Vec<String> {
 
 /// Whether `record` is filed under `owner` — the composed name for SRV and TLSA,
 /// its own name for everything else.
-fn at_owner(record: &types::DnsRecord, owner: &str) -> bool {
+pub(super) fn at_owner(record: &types::DnsRecord, owner: &str) -> bool {
     composed_owner(record).is_some_and(|o| o.eq_ignore_ascii_case(owner))
 }
 

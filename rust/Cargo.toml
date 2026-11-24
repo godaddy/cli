@@ -15,6 +15,7 @@ members = [
     "email-client",
     "generated-client-support",
     "platform-app-client",
+    "rfc1035-format",
 ]
 
 [[bin]]
@@ -36,6 +37,7 @@ email-client = { path = "email-client" }
 generated-client-support = { path = "generated-client-support" }
 hosting-client = { path = "hosting-client" }
 platform-app-client = { path = "platform-app-client" }
+rfc1035-format = { path = "rfc1035-format" }
 shopping-client = { path = "shopping-client" }
 fancy-regex = "0.14"
 flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
