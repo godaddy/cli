@@ -205,8 +205,9 @@ struct ApiErrorLink {
 }
 
 /// The `href` of an API error's `links[rel]` entry: where the service sends
-/// the customer to resolve the error. Only an `https` URL of visible ASCII
-/// characters is returned, because the link is printed as it is.
+/// the customer to resolve the error. The link is printed as it is, so only
+/// an absolute `https` URL of visible ASCII characters with a host and no
+/// user name or password (no `@` before the path) is returned.
 pub fn error_link(e: &ClientError, rel: &str) -> Option<String> {
     let ClientError::Http { body, .. } = e else {
         return None;
@@ -219,12 +220,22 @@ pub fn error_link(e: &ClientError, rel: &str) -> Option<String> {
         .into_iter()
         .filter(|link| link.rel.as_deref() == Some(rel))
         .filter_map(|link| link.href)
-        .find(|href| is_printable_https_url(href))
+        .find(|href| is_safe_to_print_https_url(href))
 }
 
-fn is_printable_https_url(url: &str) -> bool {
-    url.strip_prefix("https://")
-        .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_graphic()))
+fn is_safe_to_print_https_url(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("https://") else {
+        return false;
+    };
+    if !rest.bytes().all(|b| b.is_ascii_graphic()) {
+        return false;
+    }
+    // Raw check too: the parser turns `https:///x` into host `x` and drops an
+    // empty `@` user name.
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    !authority.is_empty()
+        && !authority.contains('@')
+        && url::Url::parse(url).is_ok_and(|parsed| parsed.host_str().is_some())
 }
 
 fn format_api_error_body(body: &str) -> String {
@@ -677,6 +688,16 @@ mod tests {
         );
         assert_eq!(error_link(&err, "next"), None);
 
+        for href in [
+            "https://www.example.com/airo/plans/NODEJS-aBcDeFgHiJ",
+            "https://www.example.com:8443/airo/plans?plan=paid#upgrade",
+        ] {
+            let err = http(&format!(
+                r#"{{"links":[{{"rel":"upgrade","href":"{href}"}}]}}"#
+            ));
+            assert_eq!(error_link(&err, "upgrade").as_deref(), Some(href));
+        }
+
         for body in [
             r#"{"message":"m"}"#,
             r#"{"message":"m","links":null}"#,
@@ -704,6 +725,11 @@ mod tests {
             r"https://www.godaddy.com/\u001b[31m",
             r"https://www.godaddy.com/\n",
             "",
+            // No host, or a host hidden behind a user name.
+            "https://?plan=paid",
+            "https://#upgrade",
+            "https:///airo/plans",
+            "https://www.godaddy.com@evil.example/x",
         ] {
             let err = ClientError::Http {
                 status: 422,
