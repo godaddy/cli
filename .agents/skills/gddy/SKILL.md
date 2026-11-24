@@ -75,7 +75,7 @@ gddy dns delete example.com --type A --name www
 
 `add` appends a new record; `set` replaces every record matching that type+name; `delete` removes every record matching that type+name. Type-specific requirements: `MX`/`SRV` need `--priority`; `SRV` also needs `--port`, `--weight`, `--protocol`, `--service`; `CAA` requires `--tag` (`--flag` is optional).
 
-`set` and `delete` are destructive. Run with `--dry-run` first and show the user what would change before applying it for real.
+To see what the `add`, `set` and `delete` commands will change, add the `--dry-run` flag. This will validate the command and list the modifications. `add --dry-run` also flags values already in the zone that the API would refuse (duplicates, CNAME conflicts). A preview doesn't guarantee the API will accept the write, so check the real result.
 
 ## Payment Methods
 

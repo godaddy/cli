@@ -11,8 +11,8 @@ use crate::scopes::DOMAINS_DNS_UPDATE;
 use domains_client::types;
 
 use super::records::{
-    ZONE_AND_NAME, detail_columns, detail_values, fetch_records, merged_tlsa_data,
-    parse_write_type_arg, record_value, verified_result,
+    ZONE_AND_NAME, change_columns, change_entry, fetch_records, parse_write_type_arg,
+    record_label_value, verified_result,
 };
 
 output_schema!(DnsDeleteResult {
@@ -22,29 +22,72 @@ output_schema!(DnsDeleteResult {
     "deleted": "number";
     "failed": "number";
     "action": "string";
-    "records": "[]object", optional;
+    "records": "[]object";
 });
 
-/// Build the `delete` result from per-record delete outcomes (each matched
-/// record's `data` value paired with `None` on success or `Some(error)`):
-/// `Ok(json)` with the deleted count (0 when nothing matched) if all succeeded,
-/// else `Err(message)` — a non-zero exit — with a per-record ✓/✗ breakdown. Pure
-/// so it's unit-testable.
+/// The `action` of a `delete` that matched nothing, in a preview and a real run alike.
+const NOTHING_TO_DELETE: &str = "nothing to delete";
+
+/// One matched record's delete, as reported: the record, and `None` on success or
+/// `Some(error)` if it could not be removed.
+type DeleteOutcome = (types::DnsRecord, Option<String>);
+
+/// Why a matched record that came back without a recordId can't be deleted. The
+/// real run reports it as a failure and the preview as a `fail` entry, in these
+/// same words.
+fn missing_record_id_reason(domain: &str, record_type: &str, name: &str) -> String {
+    format!(
+        "the API returned this record without a recordId, so it can't be deleted; re-run \
+         `gddy dns list {domain} --type {record_type} --name {name}` and remove it in the \
+         control panel if it persists"
+    )
+}
+
+/// The `delete` result for the matched records — the same builder for the
+/// preview and the real run, so the two cannot drift. `records` lists each record
+/// with its id and value; `deleted`/`failed` count them; a record without a
+/// recordId can't be targeted and counts as failed.
+fn delete_result(
+    domain: &str,
+    record_type: &str,
+    name: &str,
+    deleted: usize,
+    failed: usize,
+    action: &str,
+    records: Vec<Value>,
+) -> Value {
+    json!({
+        "domain": domain,
+        "type": record_type,
+        "name": name,
+        "deleted": deleted,
+        "failed": failed,
+        "action": if records.is_empty() { NOTHING_TO_DELETE } else { action },
+        "records": records,
+    })
+}
+
+/// Build the `delete` result from per-record delete outcomes: `Ok(json)` with the
+/// deleted count (0 when nothing matched) and the removed `records` if all
+/// succeeded, else `Err(message)` — a non-zero exit — with a per-record ✓/✗
+/// breakdown. Pure so it's unit-testable.
 fn summarize_delete_outcomes(
     domain: &str,
     record_type: &str,
     name: &str,
-    outcomes: &[(String, Option<String>)],
+    outcomes: &[DeleteOutcome],
 ) -> Result<Value, String> {
+    let label =
+        |rec: &types::DnsRecord| record_label_value(rec).unwrap_or_else(|| "(no data)".to_owned());
     let failed = outcomes.iter().filter(|(_, e)| e.is_some()).count();
     let deleted = outcomes.len() - failed;
 
     if failed > 0 {
         let breakdown = outcomes
             .iter()
-            .map(|(value, err)| match err {
-                None => format!("  ✓ {value} — deleted"),
-                Some(e) => format!("  ✗ {value} — {e}"),
+            .map(|(rec, err)| match err {
+                None => format!("  ✓ {} — deleted", label(rec)),
+                Some(e) => format!("  ✗ {} — {e}", label(rec)),
             })
             .collect::<Vec<_>>()
             .join("\n");
@@ -57,27 +100,19 @@ fn summarize_delete_outcomes(
         ));
     }
 
-    Ok(json!({
-        "domain": domain,
-        "type": record_type,
-        "name": name,
-        "deleted": deleted,
-        "failed": failed,
-        "action": "delete",
-    }))
-}
-
-/// How a record is named in a delete's preview and in its per-record results: its
-/// value, except for TLSA, whose value alone is just the certificate — two records
-/// that differ only in usage, selector or matching type would otherwise look
-/// identical, and a delete by name removes every one of them. TLSA is shown the
-/// way `dns list` shows it (`usage selector matching-type certificate`).
-fn record_label_value(rec: &types::DnsRecord) -> Option<String> {
-    if rec.type_.as_str() == "TLSA" {
-        Some(merged_tlsa_data(rec)).filter(|text| !text.is_empty())
-    } else {
-        record_value(rec).map(str::to_owned)
-    }
+    let records = outcomes
+        .iter()
+        .map(|(rec, _)| change_entry("delete", rec.record_id.as_deref(), Some(rec), None))
+        .collect();
+    Ok(delete_result(
+        domain,
+        record_type,
+        name,
+        deleted,
+        failed,
+        "delete",
+        records,
+    ))
 }
 
 /// Builds the `dns delete --dry-run` preview from the same matched records the
@@ -93,45 +128,26 @@ fn dry_run_delete_preview(
     // recordId can't actually be deleted (see the handler below), so the
     // preview must not claim it as a delete.
     let would_delete = existing.iter().filter(|r| r.record_id.is_some()).count();
-    let would_fail = existing.len() - would_delete;
-    let records: Vec<Value> = existing
+    let records = existing
         .iter()
-        .map(|rec| {
-            let status = if rec.record_id.is_some() {
-                "would delete"
-            } else {
-                "would fail (missing recordId)"
-            };
-            // The type-specific fields say which of several records under one
-            // name (an SRV's services, say) would go.
-            let mut row = detail_values(rec);
-            row.insert("recordId".to_owned(), json!(rec.record_id));
-            row.insert("data".to_owned(), json!(record_label_value(rec)));
-            row.insert("status".to_owned(), json!(status));
-            Value::Object(row)
+        .map(|rec| match rec.record_id.as_deref() {
+            Some(id) => change_entry("delete", Some(id), Some(rec), None),
+            None => {
+                let mut entry = change_entry("fail", None, Some(rec), None);
+                entry["error"] = json!(missing_record_id_reason(domain, record_type, name));
+                entry
+            }
         })
         .collect();
-
-    json!({
-        "domain": domain,
-        "type": record_type,
-        "name": name,
-        // Reuse DnsDeleteResult's own field names (rather than inventing
-        // "wouldDelete"/"wouldFail") so the preview survives the command's
-        // `with_default_fields` projection instead of being silently
-        // stripped down to just domain/type/name.
-        "deleted": would_delete,
-        "failed": would_fail,
-        "records": records,
-        // "would delete" reads oddly with nothing matched (0 records, 0
-        // deletes) — call out the no-match case explicitly rather than
-        // implying a delete that has nothing to act on.
-        "action": if existing.is_empty() {
-            "nothing to delete"
-        } else {
-            "would delete"
-        },
-    })
+    delete_result(
+        domain,
+        record_type,
+        name,
+        would_delete,
+        existing.len() - would_delete,
+        "would delete",
+        records,
+    )
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -152,10 +168,9 @@ struct DeleteArgs {
     domain_format: DomainFormArgs,
 }
 
-/// `records` only appears on the `--dry-run` preview (the real delete's
-/// success payload has no per-record breakdown), so it renders as an
-/// indented child table there instead of a raw JSON dump — and simply blank
-/// on a real delete, same as any other absent optional field.
+/// `records` lists the matched records, each with its id and what it held — in a
+/// preview and in the real delete — as an indented child table instead of a raw
+/// JSON dump.
 fn view_columns() -> Vec<TableColumn> {
     vec![
         TableColumn::new("domain", "Domain"),
@@ -166,15 +181,7 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("action", "Action"),
         TableColumn::new("records", "Records")
             .hide_when_empty(true)
-            .nested({
-                let mut columns = vec![
-                    TableColumn::new("data", "Data").essential(true),
-                    TableColumn::new("status", "Status").essential(true),
-                ];
-                columns.extend(detail_columns());
-                columns.push(TableColumn::new("recordId", "Record ID"));
-                columns
-            }),
+            .nested(change_columns()),
     ]
 }
 
@@ -223,16 +230,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
                 return Ok(CommandResult::new(preview).with_dry_run());
             }
 
-            let mut outcomes = Vec::with_capacity(existing.len());
-            for rec in &existing {
+            let mut outcomes: Vec<DeleteOutcome> = Vec::with_capacity(existing.len());
+            for rec in existing {
                 // A record with no server id can't be targeted — report it as a
                 // failure (non-zero exit) rather than silently leaving it behind.
                 let err = match rec.record_id.as_deref() {
-                    None => Some(format!(
-                        "the API returned this record without a recordId, so it can't be \
-                         deleted; re-run `gddy dns list {domain} --type {record_type} --name \
-                         {name}` and remove it in the control panel if it persists"
-                    )),
+                    None => Some(missing_record_id_reason(&domain, &record_type, &name)),
                     Some(id) => match client
                         .delete_dns_record()
                         .zone(domain.as_str())
@@ -246,10 +249,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                         }
                     },
                 };
-                outcomes.push((
-                    record_label_value(rec).unwrap_or_else(|| "(no data)".to_owned()),
-                    err,
-                ));
+                outcomes.push((rec, err));
             }
 
             summarize_delete_outcomes(&domain, &record_type, &name, &outcomes)
@@ -266,17 +266,21 @@ mod tests {
     #[test]
     fn summarize_delete_reports_count_zero_and_partial_failure() {
         // Nothing matched → deleted 0, not an error.
-        let none: [(String, Option<String>); 0] = [];
-        let v = summarize_delete_outcomes("example.com", "A", "www", &none).expect("ok");
+        let v = summarize_delete_outcomes("example.com", "A", "www", &[]).expect("ok");
         assert_eq!(v["deleted"], 0);
+        assert_eq!(v["action"], "nothing to delete");
         // All deleted.
-        let ok = vec![("1.2.3.4".to_string(), None), ("5.6.7.8".to_string(), None)];
+        let ok = vec![
+            (test_record("r1", "1.2.3.4"), None),
+            (test_record("r2", "5.6.7.8"), None),
+        ];
         let v = summarize_delete_outcomes("example.com", "A", "www", &ok).expect("ok");
         assert_eq!(v["deleted"], 2);
+        assert_eq!(v["action"], "delete");
         // One failed → non-zero error naming the failed value.
         let mixed = vec![
-            ("1.2.3.4".to_string(), None),
-            ("5.6.7.8".to_string(), Some("nope".to_string())),
+            (test_record("r1", "1.2.3.4"), None),
+            (test_record("r2", "5.6.7.8"), Some("nope".to_string())),
         ];
         let err =
             summarize_delete_outcomes("example.com", "A", "www", &mixed).expect_err("a failure");
@@ -291,6 +295,33 @@ mod tests {
             err.contains("dns list example.com --type A --name www"),
             "{err}"
         );
+    }
+
+    /// The point of one shared shape: the same delete, previewed or done, lists the
+    /// same records with the same ids, old values and actions — a script reads
+    /// both the same way, and a real run says what it removed.
+    #[test]
+    fn a_real_delete_reports_the_same_records_as_its_preview() {
+        let existing = vec![test_record("r1", "1.2.3.4"), test_record("r2", "5.6.7.8")];
+        let preview = dry_run_delete_preview("example.com", "A", "www", &existing);
+        let outcomes: Vec<DeleteOutcome> = existing.iter().cloned().map(|r| (r, None)).collect();
+        let done = summarize_delete_outcomes("example.com", "A", "www", &outcomes).expect("ok");
+
+        assert_eq!(preview["records"], done["records"]);
+        assert_eq!(done["records"][0]["recordId"], "r1");
+        assert_eq!(done["records"][0]["old"]["data"], "1.2.3.4");
+        assert_eq!(done["records"][0]["new"], Value::Null);
+        assert_eq!(done["records"][1]["recordId"], "r2");
+    }
+
+    /// Nothing to delete reads the same in a preview and a real run.
+    #[test]
+    fn nothing_to_delete_is_worded_the_same_in_a_preview_and_a_real_run() {
+        let preview = dry_run_delete_preview("example.com", "A", "www", &[]);
+        let done = summarize_delete_outcomes("example.com", "A", "www", &[]).expect("ok");
+        assert_eq!(preview["action"], "nothing to delete");
+        assert_eq!(done["action"], preview["action"]);
+        assert_eq!(done["deleted"], preview["deleted"]);
     }
 
     fn test_record(record_id: &str, data: &str) -> types::DnsRecord {
@@ -342,8 +373,9 @@ mod tests {
         assert_eq!(preview["action"], "would delete");
         let records = preview["records"].as_array().expect("records array");
         assert_eq!(records.len(), 2);
-        assert_eq!(records[0]["data"], "1.2.3.4");
-        assert_eq!(records[0]["status"], "would delete");
+        assert_eq!(records[0]["old"]["data"], "1.2.3.4");
+        assert_eq!(records[0]["recordId"], "r1");
+        assert_eq!(records[0]["action"], "delete");
     }
 
     /// TLSA's value lives in `certificate_data`, not `data` — the preview
@@ -356,7 +388,7 @@ mod tests {
         let existing = vec![test_tlsa_record("r1", cert)];
         let preview = dry_run_delete_preview("example.com", "TLSA", "www", &existing);
         let records = preview["records"].as_array().expect("records array");
-        assert_eq!(records[0]["data"], cert);
+        assert_eq!(records[0]["old"]["data"], cert);
     }
 
     /// Two TLSA records with the same certificate, port and protocol that differ
@@ -378,9 +410,9 @@ mod tests {
         let preview = dry_run_delete_preview("example.com", "TLSA", "www", &existing);
 
         let records = preview["records"].as_array().expect("records array");
-        assert_eq!(records[0]["data"], format!("3 1 1 {cert}"));
-        assert_eq!(records[1]["data"], format!("1 0 2 {cert}"));
-        assert_ne!(records[0]["data"], records[1]["data"]);
+        assert_eq!(records[0]["old"]["data"], format!("3 1 1 {cert}"));
+        assert_eq!(records[1]["old"]["data"], format!("1 0 2 {cert}"));
+        assert_ne!(records[0]["old"]["data"], records[1]["old"]["data"]);
     }
 
     #[test]
@@ -407,7 +439,13 @@ mod tests {
         assert_eq!(preview["deleted"], 1);
         assert_eq!(preview["failed"], 1);
         let records = preview["records"].as_array().expect("records array");
-        assert_eq!(records[1]["status"], "would fail (missing recordId)");
+        assert_eq!(records[0]["action"], "delete");
+        assert_eq!(records[1]["action"], "fail");
+        assert_eq!(records[1]["recordId"], Value::Null);
+        assert_eq!(
+            records[1]["error"],
+            missing_record_id_reason("example.com", "A", "www")
+        );
     }
 
     /// Nothing matched — "would delete" would misleadingly imply a delete
@@ -472,8 +510,8 @@ mod tests {
         let preview = dry_run_delete_preview("example.com", "SRV", "chat", &existing);
 
         let records = preview["records"].as_array().expect("records array");
-        assert_eq!(records[0]["service"], "_sip");
-        assert_eq!(records[1]["port"], 5222);
+        assert_eq!(records[0]["old"]["service"], "_sip");
+        assert_eq!(records[1]["old"]["port"], 5222);
 
         let rendered = cli_engine::preview_human_view(preview, &view_columns());
         assert!(
@@ -509,7 +547,7 @@ mod tests {
     /// the record breakdown from human output the same way the `api
     /// describe` view once dropped its ambiguous-match fields.
     #[test]
-    fn dry_run_delete_preview_renders_records_as_a_nested_table() {
+    fn dry_run_delete_preview_renders_the_records_as_a_nested_table() {
         let existing = vec![test_record("r1", "1.2.3.4")];
         let preview = dry_run_delete_preview("example.com", "A", "www", &existing);
         let rendered = cli_engine::preview_human_view(preview, &view_columns());

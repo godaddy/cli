@@ -60,3 +60,39 @@ Settings that used to be ignored without a message now stop the command:
 - An unknown name for `--env` fails with an error that lists the known environments. Commands that look up an environment's API address (`gddy api` and `gddy hosting`, for example) used to use the production address without telling you.
 
 If a script began failing after this upgrade, run it with `--debug` and check which environment variable or `--env` value it sets.
+
+## 0.2 to 0.3
+
+This release changes the JSON that `gddy dns add`, `gddy dns set` and `gddy dns delete` print, and what `gddy dns add --dry-run` does. Scripts that only check the exit code, or that read `domain`, `type`, `name`, `created`, `replaced`, `unchanged`, `deleted` or `failed`, aren't affected. Scripts that read a list of records out of the output of these three commands are.
+
+### One `records` list
+
+`add`, `set` and `delete` now return the same `records` list in a dry run and in a real run. Each entry describes one record the command changed, or with `--dry-run` would change. It has an `action`, the record's `recordId`, and the record before (`old`) and after (`new`). `gddy guide dns` describes every field.
+
+| Command | Before | After |
+|---|---|---|
+| `add` | `results` held `{ "data", "status": "created" }` for each value. It showed only with `--fields results`. | `records` has one entry per created record. Read `new.data` for the value and `recordId` for the new id. `action` and `records` are in the default output. |
+| `set` | `records` listed every record at the name after the change, in the form `dns list` prints. Releases before 0.2.38 returned only the counts. | `records` lists what the command did to each record, including the ones it left alone and the ones it deleted (their `new` is `null`). Read `new.data`, `new.ttl` and `recordId`. For every record now at the name, run `gddy dns list`. |
+| `set --dry-run` | `plan` held `{ "action", "recordId", "data" }`, with the new value in `data` and no old value. | `records` replaces `plan`. Read the new value from `new.data` and the value it replaces from `old.data`. |
+| `delete` | Listed no records. | `records` lists each removed record, with its `recordId` and its value in `old.data`. |
+| `delete --dry-run` | `records` held `{ "recordId", "data", "status" }`. `status` was `would delete` or `would fail (missing recordId)`. | `action` replaces `status` and is `delete` or `fail`. Read the value from `old.data`, and the reason for a `fail` from `error`. |
+
+The type-specific fields of a record (`priority`, `port`, `service`, `protocol`, `weight`, `flag`, `tag` and `parameters`) used to sit beside `data` in a delete preview. Now they're inside `old` and `new`.
+
+Scripts that read the old paths get nothing back, with no error. Change them before you upgrade:
+
+| Before | After |
+|---|---|
+| `.data.results[].data` | `.data.records[].new.data` |
+| `.data.plan[] \| select(.action == "replace") \| .data` | `.data.records[] \| select(.action == "replace") \| .new.data` |
+| `.data.records[] \| select(.status == "would delete") \| .recordId` | `.data.records[] \| select(.action == "delete") \| .recordId` |
+
+### When nothing changes
+
+A `set` that changes nothing used to report the action `set`, and a `delete` that matched nothing reported `delete`. They now say `nothing to change` and `nothing to delete`, in a dry run and in a real run. A script that tests `action` for those runs needs the new values. The counts are a steadier test: `replaced`, `created` and `deleted` are all `0` when a `set` changes nothing.
+
+### `add --dry-run` checks your command
+
+`gddy dns add --dry-run` used to print `{ "command": "dns:add", "action": "dry-run: would execute" }` without reading anything. It passed input that the real command rejects. It now runs the same checks as a real `add` and reads the zone. You have to be logged in, and it fails for the same reasons. It returns the same `records` list as a real `add`, with `action` set to `would add`. Each `recordId` is `null`, because the API assigns the id when it writes the record.
+
+The API refuses some values because of what's already in the zone, for example a duplicate or a CNAME conflict. The preview lists each one in `records` with `action` set to `fail` and an `error` that says why. Only a preview has `fail` entries. A real run that fails stops with an error, as before. A preview can't check the API's own rules for a value, so it doesn't promise that a real run succeeds.
