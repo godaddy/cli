@@ -7,8 +7,9 @@ use domains_client::types;
 use crate::dns::conflicts::{
     conflicting_records, conflicting_records_at, describe_duplicate_record, duplicate_record_issue,
 };
+use crate::dns::failure::{DnsFailure, FailureKind};
 use crate::dns::records::{RecordOptions, record_value, v3_record};
-use crate::domain::{api_error, format_api_error};
+use crate::domain::api_failure;
 
 use super::outcome::SetOutcome;
 
@@ -30,12 +31,12 @@ pub(super) struct WriteRequest<'a> {
 }
 
 /// Send `body` as a create, or — when `req.replacing` names a record — as an
-/// in-place replace of that record.
+/// in-place replace of that record. Returns the record as the API now holds it.
 async fn send_record(
     client: &domains_client::Client,
     req: &WriteRequest<'_>,
     body: types::DnsRecord,
-) -> Result<(), Box<domains_client::Error<()>>> {
+) -> Result<types::DnsRecord, Box<domains_client::Error<()>>> {
     match req.replacing {
         Some(record_id) => client
             .replace_dns_record()
@@ -44,7 +45,7 @@ async fn send_record(
             .body(body)
             .send()
             .await
-            .map(|_| ())
+            .map(|response| response.into_inner())
             .map_err(Box::new),
         None => client
             .create_dns_record()
@@ -52,7 +53,7 @@ async fn send_record(
             .body(body)
             .send()
             .await
-            .map(|_| ())
+            .map(|response| response.into_inner())
             .map_err(Box::new),
     }
 }
@@ -79,11 +80,11 @@ async fn delete_conflicts(
             outcomes.push(SetOutcome::new(
                 "deleted",
                 detail,
-                Some(
+                Some(DnsFailure::from(
                     "the API returned this record without a recordId, so it can't be removed \
                      automatically; remove it in the control panel"
                         .to_string(),
-                ),
+                )),
             ));
             continue;
         };
@@ -95,13 +96,15 @@ async fn delete_conflicts(
             .await
         {
             Ok(_) => None,
-            Err(e) => Some(
-                api_error("deleting conflicting DNS record", debug, e)
-                    .await
-                    .to_string(),
-            ),
+            Err(e) => {
+                Some(DnsFailure::from_error("deleting conflicting DNS record", debug, e).await)
+            }
         };
-        outcomes.push(SetOutcome::new("deleted", detail, err));
+        let removed = err.is_none().then(|| rec.clone());
+        let mut outcome = SetOutcome::new("deleted", detail, err);
+        outcome.record_id = Some(record_id.to_owned());
+        outcome.old = removed;
+        outcomes.push(outcome);
     }
     outcomes
 }
@@ -125,41 +128,26 @@ pub(super) async fn write_with_conflict_handling(
     } else {
         "creating DNS record"
     };
-    let outcome = |err: Option<String>| SetOutcome::new("created", req.value.to_string(), err);
+    let outcome = |result: Result<types::DnsRecord, DnsFailure>| match result {
+        Ok(record) => SetOutcome::written("created", req.value.to_string(), record),
+        Err(error) => SetOutcome::new("created", req.value.to_string(), Some(error)),
+    };
 
     let body = v3_record(req.name, req.record_type, req.value, req.opts);
     let err = match send_record(client, req, body).await {
-        Ok(()) => return vec![outcome(None)],
-        Err(e) => *e,
+        Ok(record) => return vec![outcome(Ok(record))],
+        Err(e) => e,
     };
-    let domains_client::Error::UnexpectedResponse(resp) = err else {
-        return vec![outcome(Some(
-            api_error(action, req.debug, err).await.to_string(),
-        ))];
-    };
-    let status = resp.status();
-    let request_id = resp
-        .headers()
-        .get("x-request-id")
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_owned);
-    let resp_body = resp.text().await.unwrap_or_default();
-
-    if !duplicate_record_issue(&resp_body) {
-        let msg = format_api_error(
-            action,
-            status.as_u16(),
-            &status.to_string(),
-            &resp_body,
-            request_id.as_deref(),
-            req.debug,
-        );
-        return vec![outcome(Some(msg))];
+    let failure = api_failure(action, req.debug, *err).await;
+    if !duplicate_record_issue(&failure.body) {
+        return vec![outcome(Err(DnsFailure::from_api(failure)))];
     }
 
     let at_name = match conflicting_records_at(client, req.domain, req.name, req.debug).await {
         Ok(records) => records,
-        Err(e) => return vec![outcome(Some(e.to_string()))],
+        // The lookup only explains the conflict; if it fails, the write's own
+        // duplicate error is what to report.
+        Err(_) => return vec![outcome(Err(DnsFailure::from_api(failure)))],
     };
     let conflicts: Vec<types::DnsRecord> = conflicting_records(req.record_type, &at_name)
         .into_iter()
@@ -178,14 +166,17 @@ pub(super) async fn write_with_conflict_handling(
             &at_name,
             true,
         );
-        return vec![outcome(Some(msg))];
+        return vec![outcome(Err(DnsFailure::new(
+            FailureKind::RecordExists,
+            msg,
+        )))];
     }
 
     let mut outcomes = delete_conflicts(client, req.domain, &conflicts, req.debug).await;
     let retry_body = v3_record(req.name, req.record_type, req.value, req.opts);
     let retried = match send_record(client, req, retry_body).await {
-        Ok(()) => outcome(None),
-        Err(e) => outcome(Some(api_error(action, req.debug, *e).await.to_string())),
+        Ok(record) => outcome(Ok(record)),
+        Err(e) => outcome(Err(DnsFailure::from_error(action, req.debug, *e).await)),
     };
     outcomes.push(retried);
     outcomes

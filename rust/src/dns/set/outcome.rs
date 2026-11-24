@@ -1,43 +1,111 @@
 //! Reporting for `dns set`: tallying applied reconcile outcomes into the
 //! command's success/failure result, and building the `--dry-run` preview
-//! directly from a reconcile plan.
+//! directly from a reconcile plan. Both report the same `records` (see
+//! [`change_entry`]), so a script reads a preview and a real run the same way.
 
 use domains_client::types;
 use serde_json::{Value, json};
 
-use super::super::records::record_value;
+use super::super::failure::{DnsFailure, MutateFailure};
+use super::super::records::{RecordOptions, as_stored, change_entry, record_value, v3_record};
 use super::plan::SetAction;
 
+/// The `action` of a `set` that has nothing to do, in a preview and a real run alike.
+const NOTHING_TO_CHANGE: &str = "nothing to change";
+
 /// Outcome of one applied `set` reconcile action, for reporting.
-pub(super) struct SetOutcome {
+pub(in crate::dns) struct SetOutcome {
     /// What was attempted: `"replaced"`, `"unchanged"`, `"created"`, or `"deleted"`.
-    pub(super) kind: &'static str,
+    pub(in crate::dns) kind: &'static str,
     /// The `--data` value (replace/create) or record id (delete).
-    pub(super) detail: String,
+    pub(in crate::dns) detail: String,
     /// `Some(msg)` if the call failed.
-    pub(super) error: Option<String>,
+    pub(in crate::dns) error: Option<DnsFailure>,
+    /// The record's id: the one replaced, left alone or deleted. A created record
+    /// has it in `new`.
+    pub(in crate::dns) record_id: Option<String>,
+    /// The record as it was before the action; `None` for a create.
+    pub(in crate::dns) old: Option<types::DnsRecord>,
+    /// The record as it is after the action, as the API returned it; `None` for a
+    /// delete.
+    pub(in crate::dns) new: Option<types::DnsRecord>,
 }
 
 impl SetOutcome {
-    pub(super) fn new(kind: &'static str, detail: String, error: Option<String>) -> Self {
+    pub(in crate::dns) fn new(
+        kind: &'static str,
+        detail: String,
+        error: Option<DnsFailure>,
+    ) -> Self {
         Self {
             kind,
             detail,
             error,
+            record_id: None,
+            old: None,
+            new: None,
         }
+    }
+
+    /// A successful write, with the record the API sent back.
+    pub(super) fn written(kind: &'static str, detail: String, record: types::DnsRecord) -> Self {
+        Self {
+            record_id: record.record_id.clone(),
+            new: Some(record),
+            ..Self::new(kind, detail, None)
+        }
+    }
+
+    /// This outcome's entry in the result's `records`.
+    pub(in crate::dns) fn change_entry(&self) -> Value {
+        let action = match self.kind {
+            "replaced" => "replace",
+            "created" => "create",
+            "deleted" => "delete",
+            _ => "unchanged",
+        };
+        let record_id = self
+            .record_id
+            .as_deref()
+            .or_else(|| self.new.as_ref().and_then(|r| r.record_id.as_deref()));
+        change_entry(action, record_id, self.old.as_ref(), self.new.as_ref())
     }
 }
 
+/// The `set` result: the counts, the `records` showing what was (or would be) done to each
+/// record, and an `action` that says `nothing to change` when no record is touched.
+fn set_result(
+    domain: &str,
+    record_type: &str,
+    name: &str,
+    [replaced, unchanged, created, deleted]: [usize; 4],
+    action: &str,
+    records: Vec<Value>,
+) -> Value {
+    json!({
+        "domain": domain,
+        "type": record_type,
+        "name": name,
+        "replaced": replaced,
+        "unchanged": unchanged,
+        "created": created,
+        "deleted": deleted,
+        "action": if replaced + created + deleted == 0 { NOTHING_TO_CHANGE } else { action },
+        "records": records,
+    })
+}
+
 /// Build the `set` result from the applied reconcile outcomes: `Ok(json)` with
-/// replaced/unchanged/created/deleted counts when every action succeeded, or `Err(message)`
-/// — a non-zero exit — with a per-action ✓/✗ breakdown if any failed. Pure so the
-/// success/failure decision and tallies are unit-testable.
+/// replaced/unchanged/created/deleted counts and the executed `records` when every
+/// action succeeded, or `Err(message)` — a non-zero exit — with a per-action ✓/✗
+/// breakdown if any failed. Pure so the success/failure decision and tallies are
+/// unit-testable.
 pub(super) fn summarize_set_outcomes(
     domain: &str,
     record_type: &str,
     name: &str,
     outcomes: &[SetOutcome],
-) -> Result<Value, String> {
+) -> Result<Value, MutateFailure> {
     let failed = outcomes.iter().filter(|o| o.error.is_some()).count();
     let count = |k: &str| {
         outcomes
@@ -45,12 +113,12 @@ pub(super) fn summarize_set_outcomes(
             .filter(|o| o.error.is_none() && o.kind == k)
             .count()
     };
-    let (replaced, unchanged, created, deleted) = (
+    let counts = [
         count("replaced"),
         count("unchanged"),
         count("created"),
         count("deleted"),
-    );
+    ];
 
     if failed > 0 {
         let breakdown = outcomes
@@ -61,74 +129,125 @@ pub(super) fn summarize_set_outcomes(
             })
             .collect::<Vec<_>>()
             .join("\n");
-        return Err(format!(
-            "set for {name} ({record_type}) partially failed — {failed} of {} action(s):\n\
-             {breakdown}\n\nRe-run the original `gddy dns set` command, or `gddy dns list \
-             {domain} --type {record_type} --name {name}` to review the current state.",
-            outcomes.len(),
+        return Err(MutateFailure::new(
+            format!(
+                "set for {name} ({record_type}) partially failed — {failed} of {} action(s):\n\
+                 {breakdown}\n\nRe-run the original `gddy dns set` command, or `gddy dns list \
+                 {domain} --type {record_type} --name {name}` to review the current state.",
+                outcomes.len(),
+            ),
+            outcomes.iter().filter_map(|o| o.error.as_ref()),
         ));
     }
 
-    Ok(json!({
-        "domain": domain,
-        "type": record_type,
-        "name": name,
-        "replaced": replaced,
-        "unchanged": unchanged,
-        "created": created,
-        "deleted": deleted,
-        "action": "set",
-    }))
+    let records = outcomes.iter().map(SetOutcome::change_entry).collect();
+    Ok(set_result(
+        domain,
+        record_type,
+        name,
+        counts,
+        "set",
+        records,
+    ))
 }
 
 /// Builds the `dns set --dry-run` preview directly from the same reconcile
 /// plan the real execution would apply, so the preview can never drift from
-/// what `set` would actually do. Doesn't attempt to predict a name-exclusivity
-/// conflict (that's only known once a write is actually attempted) — the
-/// preview shows the reconcile plan, not whether `--replace-conflicting-types`
-/// would end up mattering.
+/// what `set` would actually do. Each entry shows the record as it is now (`old`)
+/// and as the write would leave it (`new`). Doesn't attempt to predict a
+/// name-exclusivity conflict (that's only known once a write is actually
+/// attempted) — the preview shows the reconcile plan, not whether
+/// `--replace-conflicting-types` would end up mattering.
 pub(super) fn dry_run_set_preview(
     domain: &str,
     record_type: &str,
     name: &str,
     plan: &[SetAction],
+    existing: &[types::DnsRecord],
+    opts: &[RecordOptions],
 ) -> Value {
     let count = |predicate: fn(&SetAction) -> bool| plan.iter().filter(|a| predicate(a)).count();
-    let plan_json: Vec<Value> = plan
-        .iter()
-        .map(|action| match action {
-            SetAction::Replace { record_id, data } => {
-                json!({"action": "replace", "recordId": record_id, "data": data})
-            }
-            SetAction::Unchanged { record_id, data } => {
-                json!({"action": "unchanged", "recordId": record_id, "data": data})
-            }
-            SetAction::Create { data } => json!({"action": "create", "data": data}),
-            SetAction::Delete { record_id } => json!({"action": "delete", "recordId": record_id}),
-        })
-        .collect();
+    let records = preview_entries(record_type, name, plan, existing, opts);
 
-    json!({
-        "domain": domain,
-        "type": record_type,
-        "name": name,
-        // Reuse DnsSetResult's own field names (rather than inventing
-        // "wouldReplace" etc.) so the preview survives the command's
-        // `with_default_fields` projection instead of being silently
-        // stripped down to just domain/type/name.
-        "replaced": count(|a| matches!(a, SetAction::Replace { .. })),
-        "unchanged": count(|a| matches!(a, SetAction::Unchanged { .. })),
-        "created": count(|a| matches!(a, SetAction::Create { .. })),
-        "deleted": count(|a| matches!(a, SetAction::Delete { .. })),
-        "plan": plan_json,
-        "action": "would set",
-    })
+    set_result(
+        domain,
+        record_type,
+        name,
+        [
+            count(|a| matches!(a, SetAction::Replace { .. })),
+            count(|a| matches!(a, SetAction::Unchanged { .. })),
+            count(|a| matches!(a, SetAction::Create { .. })),
+            count(|a| matches!(a, SetAction::Delete { .. })),
+        ],
+        "would set",
+        records,
+    )
+}
+
+/// The `records` entries a reconcile plan would produce, one per action, in plan
+/// order: the record as it is now (`old`) and as the write would leave it (`new`).
+pub(in crate::dns) fn preview_entries(
+    record_type: &str,
+    name: &str,
+    plan: &[SetAction],
+    existing: &[types::DnsRecord],
+    opts: &[RecordOptions],
+) -> Vec<Value> {
+    let stored = |record_id: &str| {
+        existing
+            .iter()
+            .find(|r| r.record_id.as_deref() == Some(record_id))
+    };
+    // The record a write of `value` would leave: what `--data` and the flags
+    // describe, kept at the old record's TTL when none was given (as the real
+    // replace does).
+    let wanted = |value: &str, at: usize, replacing: Option<&types::DnsRecord>| {
+        as_stored(&types::DnsRecord {
+            record_id: replacing.and_then(|r| r.record_id.clone()),
+            ..v3_record(
+                name,
+                record_type,
+                value,
+                &RecordOptions {
+                    ttl: opts[at].ttl.or(replacing.map(|r| r.ttl)),
+                    ..opts[at].clone()
+                },
+            )
+        })
+    };
+    plan.iter()
+        .map(|action| match action {
+            SetAction::Replace {
+                record_id,
+                data,
+                desired,
+            } => {
+                let old = stored(record_id);
+                change_entry(
+                    "replace",
+                    Some(record_id),
+                    old,
+                    Some(&wanted(data, *desired, old)),
+                )
+            }
+            SetAction::Unchanged { record_id, .. } => {
+                let old = stored(record_id);
+                change_entry("unchanged", Some(record_id), old, old)
+            }
+            SetAction::Create { data, desired } => {
+                change_entry("create", None, None, Some(&wanted(data, *desired, None)))
+            }
+            SetAction::Delete { record_id } => {
+                change_entry("delete", Some(record_id), stored(record_id), None)
+            }
+        })
+        .collect()
 }
 
 /// Human-readable `"<TYPE> <DATA>"` label for an existing record id, for
 /// outcome reporting — falls back to the bare id if the record isn't in
 /// `existing` (shouldn't happen; `existing` is what `plan_set` was built from).
-pub(super) fn record_label(
+pub(in crate::dns) fn record_label(
     existing: &[types::DnsRecord],
     record_type: &str,
     record_id: &str,
@@ -194,35 +313,222 @@ mod tests {
 
         let mixed = vec![
             SetOutcome::new("replaced", "9.9.9.9".into(), None),
-            SetOutcome::new("created", "8.8.8.8".into(), Some("422 bad".into())),
+            SetOutcome::new(
+                "created",
+                "8.8.8.8".into(),
+                Some("422 bad".to_string().into()),
+            ),
         ];
         let err = summarize_set_outcomes("example.com", "A", "www", &mixed).expect_err("a failure");
         assert!(err.contains("1 of 2"), "{err}");
         assert!(err.contains("✗ created 8.8.8.8 — 422 bad"), "{err}");
     }
 
+    fn opts() -> RecordOptions {
+        RecordOptions {
+            ttl: None,
+            priority: None,
+            port: None,
+            weight: None,
+            protocol: None,
+            service: None,
+            flag: None,
+            tag: None,
+            usage: None,
+            selector: None,
+            matching_type: None,
+            parameters: None,
+        }
+    }
+
+    /// An existing A record at `www`, as the API returns it.
+    fn stored(id: &str, value: &str) -> types::DnsRecord {
+        types::DnsRecord {
+            record_id: Some(id.to_owned()),
+            ..v3_record("www", "A", value, &opts())
+        }
+    }
+
+    fn replace(id: &str, data: &str) -> SetAction {
+        SetAction::Replace {
+            record_id: id.into(),
+            data: data.into(),
+            desired: 0,
+        }
+    }
+
+    fn unchanged(id: &str, data: &str) -> SetAction {
+        SetAction::Unchanged {
+            record_id: id.into(),
+            data: data.into(),
+            desired: 0,
+        }
+    }
+
+    fn preview(plan: &[SetAction], existing: &[types::DnsRecord]) -> Value {
+        dry_run_set_preview("example.com", "A", "www", plan, existing, &[opts()])
+    }
+
     #[test]
     fn dry_run_set_preview_matches_the_plan_it_would_execute() {
+        let existing = [
+            stored("r1", "1.1.1.1"),
+            stored("r2", "8.8.8.8"),
+            stored("r3", "3.3.3.3"),
+        ];
         let plan = [
-            SetAction::Replace {
-                record_id: "r1".into(),
-                data: "9.9.9.9".into(),
-            },
-            SetAction::Unchanged {
-                record_id: "r2".into(),
-                data: "8.8.8.8".into(),
-            },
+            replace("r1", "9.9.9.9"),
+            unchanged("r2", "8.8.8.8"),
             SetAction::Delete {
                 record_id: "r3".into(),
             },
         ];
-        let preview = dry_run_set_preview("example.com", "A", "www", &plan);
+        let preview = preview(&plan, &existing);
         assert_eq!(preview["replaced"], 1);
         assert_eq!(preview["unchanged"], 1);
         assert_eq!(preview["created"], 0);
         assert_eq!(preview["deleted"], 1);
         assert_eq!(preview["action"], "would set");
-        assert_eq!(preview["plan"].as_array().expect("plan array").len(), 3);
+        assert_eq!(
+            preview["records"].as_array().expect("records array").len(),
+            3
+        );
+    }
+
+    /// The ticket's headline gap: a replace has to show the value it replaces, not
+    /// just the one it writes — and a delete the value it removes.
+    #[test]
+    fn the_preview_shows_the_old_value_the_new_value_and_the_id_of_every_entry() {
+        let existing = [stored("r1", "1.1.1.1"), stored("r2", "3.3.3.3")];
+        let plan = [
+            replace("r1", "9.9.9.9"),
+            SetAction::Delete {
+                record_id: "r2".into(),
+            },
+            SetAction::Create {
+                data: "8.8.8.8".into(),
+                desired: 0,
+            },
+        ];
+        let preview = preview(&plan, &existing);
+        let records = preview["records"].as_array().expect("records array");
+
+        assert_eq!(records[0]["action"], "replace");
+        assert_eq!(records[0]["recordId"], "r1");
+        assert_eq!(records[0]["old"]["data"], "1.1.1.1");
+        assert_eq!(records[0]["new"]["data"], "9.9.9.9");
+
+        assert_eq!(records[1]["action"], "delete");
+        assert_eq!(records[1]["recordId"], "r2");
+        assert_eq!(records[1]["old"]["data"], "3.3.3.3");
+        assert_eq!(records[1]["new"], Value::Null);
+
+        assert_eq!(records[2]["action"], "create");
+        assert_eq!(records[2]["recordId"], Value::Null);
+        assert_eq!(records[2]["old"], Value::Null);
+        assert_eq!(records[2]["new"]["data"], "8.8.8.8");
+    }
+
+    /// A replace keeps the old record's TTL unless `--ttl` is given, as the real
+    /// `PUT` does — so the preview's `new` is the record the write would leave.
+    #[test]
+    fn the_preview_keeps_the_stored_ttl_unless_one_was_asked_for() {
+        let slow = types::DnsRecord {
+            ttl: 600,
+            ..stored("r1", "1.1.1.1")
+        };
+        let plan = [replace("r1", "9.9.9.9")];
+
+        let kept = preview(&plan, std::slice::from_ref(&slow));
+        assert_eq!(kept["records"][0]["old"]["ttl"], 600);
+        assert_eq!(kept["records"][0]["new"]["ttl"], 600);
+
+        let asked = RecordOptions {
+            ttl: Some(900),
+            ..opts()
+        };
+        let changed = dry_run_set_preview("example.com", "A", "www", &plan, &[slow], &[asked]);
+        assert_eq!(changed["records"][0]["new"]["ttl"], 900);
+    }
+
+    /// The ticket's no-op case: setting what is already there is `unchanged`, not
+    /// a replacement, and both the preview and the real run say so in the same words.
+    #[test]
+    fn a_no_op_set_reports_nothing_to_change_in_a_preview_and_a_real_run() {
+        let existing = [stored("r1", "1.1.1.1"), stored("r2", "2.2.2.2")];
+        let plan = [unchanged("r1", "1.1.1.1"), unchanged("r2", "2.2.2.2")];
+        let previewed = preview(&plan, &existing);
+
+        let outcomes: Vec<SetOutcome> = existing
+            .iter()
+            .map(|record| {
+                let mut o = SetOutcome::new("unchanged", "x".into(), None);
+                o.record_id = record.record_id.clone();
+                o.old = Some(record.clone());
+                o.new = Some(record.clone());
+                o
+            })
+            .collect();
+        let done = summarize_set_outcomes("example.com", "A", "www", &outcomes).expect("ok");
+
+        for result in [&previewed, &done] {
+            assert_eq!(result["replaced"], 0);
+            assert_eq!(result["unchanged"], 2);
+            assert_eq!(result["action"], "nothing to change");
+        }
+        assert_eq!(previewed["records"], done["records"]);
+    }
+
+    /// Run for real, a `set` reports the same records its preview did: the same
+    /// actions, old and new values and ids.
+    #[test]
+    fn a_real_set_reports_the_same_records_as_its_preview() {
+        let existing = [stored("r1", "1.1.1.1"), stored("r2", "3.3.3.3")];
+        let plan = [
+            replace("r1", "9.9.9.9"),
+            SetAction::Delete {
+                record_id: "r2".into(),
+            },
+        ];
+        let previewed = preview(&plan, &existing);
+
+        let mut replaced = SetOutcome::written(
+            "replaced",
+            "9.9.9.9".into(),
+            types::DnsRecord {
+                record_id: Some("r1".into()),
+                ..v3_record("www", "A", "9.9.9.9", &opts())
+            },
+        );
+        replaced.old = Some(existing[0].clone());
+        let mut deleted = SetOutcome::new("deleted", "A 3.3.3.3".into(), None);
+        deleted.record_id = Some("r2".into());
+        deleted.old = Some(existing[1].clone());
+        let done =
+            summarize_set_outcomes("example.com", "A", "www", &[replaced, deleted]).expect("ok");
+
+        assert_eq!(previewed["records"], done["records"]);
+        assert_eq!(done["action"], "set");
+        assert_eq!(done["replaced"], 1);
+        assert_eq!(done["deleted"], 1);
+    }
+
+    /// A create made for real has no id in the preview; the result gives
+    /// the id the API assigned.
+    #[test]
+    fn a_real_create_reports_the_id_the_api_assigned() {
+        let made = SetOutcome::written(
+            "created",
+            "8.8.8.8".into(),
+            types::DnsRecord {
+                record_id: Some("new-1".into()),
+                ..v3_record("www", "A", "8.8.8.8", &opts())
+            },
+        );
+        let done = summarize_set_outcomes("example.com", "A", "www", &[made]).expect("ok");
+        assert_eq!(done["records"][0]["action"], "create");
+        assert_eq!(done["records"][0]["recordId"], "new-1");
+        assert_eq!(done["records"][0]["new"]["data"], "8.8.8.8");
     }
 
     /// The command's `--output json` path always projects through
@@ -233,11 +539,8 @@ mod tests {
     /// catch, since it never goes through the projection).
     #[test]
     fn dry_run_set_preview_survives_default_field_projection() {
-        let plan = [SetAction::Replace {
-            record_id: "r1".into(),
-            data: "9.9.9.9".into(),
-        }];
-        let preview = dry_run_set_preview("example.com", "A", "www", &plan);
+        let existing = [stored("r1", "1.1.1.1")];
+        let preview = preview(&[replace("r1", "9.9.9.9")], &existing);
         let projected = cli_engine::output::filter_fields(&preview, super::super::DEFAULT_FIELDS);
         for field in [
             "domain",
@@ -248,7 +551,7 @@ mod tests {
             "created",
             "deleted",
             "action",
-            "plan",
+            "records",
         ] {
             assert!(
                 !projected[field].is_null(),
@@ -257,30 +560,63 @@ mod tests {
         }
     }
 
-    /// The result of a `set` lists the records now in place; for SRV they have
-    /// to be told apart by service and port, not just by their identical data.
+    /// Proves `view_columns()`'s field names actually match what
+    /// `dry_run_set_preview` emits — a mismatch here would silently drop the
+    /// per-record changes from human output.
     #[test]
-    fn the_set_result_shows_srv_service_and_port_and_nothing_extra_for_a_records() {
-        let columns = super::super::view_columns();
-        let srv = |service: &str, port: u64| {
-            serde_json::json!({
-                "type": "SRV", "name": "chat", "data": "t.example.com.", "ttl": 3600,
-                "recordId": service, "service": service, "protocol": "_tcp",
-                "port": port, "priority": 10, "weight": 5
-            })
-        };
-        let result = |records: Vec<Value>| {
-            serde_json::json!({
-                "domain": "example.com", "type": "SRV", "name": "chat",
-                "replaced": 0, "unchanged": 2, "created": 0, "deleted": 0,
-                "action": "set", "records": records
-            })
-        };
-
+    fn dry_run_set_preview_renders_records_as_a_nested_table() {
+        let existing = [stored("r1", "1.1.1.1")];
+        let plan = [
+            replace("r1", "9.9.9.9"),
+            SetAction::Create {
+                data: "8.8.8.8".into(),
+                desired: 0,
+            },
+        ];
         let rendered = cli_engine::preview_human_view(
-            result(vec![srv("_sip", 5060), srv("_xmpp", 5222)]),
-            &columns,
+            preview(&plan, &existing),
+            &super::super::view_columns(),
         );
+        assert!(rendered.contains("Records:"), "{rendered}");
+        assert!(rendered.contains("RECORD ID"), "{rendered}");
+        assert!(rendered.contains("replace"), "{rendered}");
+        assert!(rendered.contains("create"), "{rendered}");
+        assert!(rendered.contains("1.1.1.1"), "{rendered}");
+        assert!(rendered.contains("9.9.9.9"), "{rendered}");
+    }
+
+    /// The records list what was done to SRV records told apart by service and
+    /// port, not just by their identical data — and adds nothing for plain ones.
+    #[test]
+    fn the_records_show_srv_service_and_port_and_nothing_extra_for_a_records() {
+        let columns = super::super::view_columns();
+        let srv = |id: &str, service: &str, port: u16| types::DnsRecord {
+            record_id: Some(id.to_owned()),
+            ..v3_record(
+                "chat",
+                "SRV",
+                "t.example.com.",
+                &RecordOptions {
+                    priority: Some(10),
+                    weight: Some(5),
+                    port: Some(i64::from(port)),
+                    service: Some(service.to_owned()),
+                    protocol: Some("_tcp".to_owned()),
+                    ..opts()
+                },
+            )
+        };
+        let existing = [srv("r1", "_sip", 5060), srv("r2", "_xmpp", 5222)];
+        let plan = [
+            SetAction::Delete {
+                record_id: "r1".into(),
+            },
+            SetAction::Delete {
+                record_id: "r2".into(),
+            },
+        ];
+        let result = dry_run_set_preview("example.com", "SRV", "chat", &plan, &existing, &[opts()]);
+        let rendered = cli_engine::preview_human_view(result, &columns);
         assert!(
             rendered.contains("SERVICE") && rendered.contains("PORT"),
             "{rendered}"
@@ -290,35 +626,37 @@ mod tests {
             "{rendered}"
         );
 
-        let plain = serde_json::json!({
-            "type": "A", "name": "www", "data": "1.2.3.4", "ttl": 3600, "recordId": "r1"
-        });
-        let rendered = cli_engine::preview_human_view(result(vec![plain]), &columns);
+        let rendered = cli_engine::preview_human_view(
+            preview(&[unchanged("r1", "1.1.1.1")], &[stored("r1", "1.1.1.1")]),
+            &columns,
+        );
         for sparse in ["SERVICE", "PORT", "PRIORITY", "PROTOCOL"] {
             assert!(!rendered.contains(sparse), "{sparse} shown: {rendered}");
         }
     }
 
-    /// Proves `view_columns()`'s field names actually match what
-    /// `dry_run_set_preview` emits — a mismatch here would silently drop the
-    /// reconcile plan from human output.
+    /// Each value is previewed with its own priority, not the first one given.
     #[test]
-    fn dry_run_set_preview_renders_plan_as_a_nested_table() {
+    fn the_preview_shows_each_new_record_with_its_own_priority() {
         let plan = [
-            SetAction::Replace {
-                record_id: "r1".into(),
-                data: "9.9.9.9".into(),
+            SetAction::Create {
+                data: "a.example.com".into(),
+                desired: 0,
             },
             SetAction::Create {
-                data: "8.8.8.8".into(),
+                data: "b.example.com".into(),
+                desired: 1,
             },
         ];
-        let preview = dry_run_set_preview("example.com", "A", "www", &plan);
-        let rendered = cli_engine::preview_human_view(preview, &super::super::view_columns());
-        assert!(rendered.contains("Plan:"), "{rendered}");
-        assert!(rendered.contains("RECORD ID"), "{rendered}");
-        assert!(rendered.contains("replace"), "{rendered}");
-        assert!(rendered.contains("create"), "{rendered}");
-        assert!(rendered.contains("9.9.9.9"), "{rendered}");
+        let per_record = [1, 5].map(|priority| RecordOptions {
+            priority: Some(priority),
+            ..opts()
+        });
+        let result = dry_run_set_preview("example.com", "MX", "@", &plan, &[], &per_record);
+        let records = result["records"].as_array().expect("records");
+        assert_eq!(records[0]["new"]["priority"], 1);
+        assert_eq!(records[1]["new"]["priority"], 5);
+        assert_eq!(records[0]["new"]["data"], "a.example.com.");
+        assert_eq!(records[1]["new"]["data"], "b.example.com.");
     }
 }

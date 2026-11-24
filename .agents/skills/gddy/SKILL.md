@@ -73,9 +73,9 @@ gddy dns set example.com --type TXT --name @ --data "v=spf1 -all"
 gddy dns delete example.com --type A --name www
 ```
 
-`add` appends a new record; `set` replaces every record matching that type+name; `delete` removes every record matching that type+name. Type-specific requirements: `MX`/`SRV` need `--priority`; `SRV` also needs `--port`, `--weight`, `--protocol`, `--service`; `CAA` requires `--tag` (`--flag` is optional).
+`add` appends a new record; `set` replaces every record matching that type+name; `delete` removes every record matching that type+name. Type-specific requirements: `MX`/`SRV` need `--priority`; `SRV` also needs `--port`, `--weight`, `--protocol`, `--service`; `CAA` requires `--tag` (`--flag` is optional). To write records that differ, such as MX records at different priorities, repeat the per-record flag once per `--data` value (`--data a --priority 1 --data b --priority 5`); a flag given once applies to all of them. Use `set` to converge on exactly that set.
 
-`set` and `delete` are destructive. Run with `--dry-run` first and show the user what would change before applying it for real.
+To see what the `add`, `set` and `delete` commands will change, add the `--dry-run` flag. This will validate the command and list the modifications. `add --dry-run` also flags values already in the zone that the API would refuse (duplicates, CNAME conflicts). A preview doesn't guarantee the API will accept the write, so check the real result.
 
 ## Payment Methods
 

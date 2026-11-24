@@ -12,46 +12,56 @@
 //!   record id, so these first list the matching records and then act per record
 //!   (`set` reconciles: reuse ids, delete surplus, create shortfall). They are
 //!   therefore not atomic — a partial failure is reported per record.
+//! * **`export`** — `GET` every record and write it as a zone file (RFC 1035, via
+//!   the `rfc1035-format` crate) or as `list`'s JSON; see [`zone_records`].
+//! * **`import`** — read a zone file or `list`'s JSON, check every record, and
+//!   make the changes with `set`'s per-record writes. By default it only adds;
+//!   `--replace` also deletes what the input lacks. See [`import_plan`].
 //!
-//! Reads (`list`) require the `domains.domain:read` scope; mutations (`add`,
-//! `set`, `delete`) require `domains.dns:update`. `set` and `delete` are
-//! [`Tier::Destructive`] — they overwrite or remove existing records — so
-//! `--dry-run` short-circuits them with a preview.
+//! Reads (`list`, `export`) require the `domains.domain:read` scope; mutations
+//! (`add`, `set`, `delete`, `import`) require `domains.dns:update`. `set`,
+//! `delete` and `import` are [`Tier::Destructive`] — they overwrite or remove
+//! existing records (`import` only with `--replace`, but a command has one tier)
+//! — so `--dry-run` short-circuits them with a preview.
 
 use cli_engine::{CliCoreError, GroupSpec, Module, RuntimeGroupSpec};
 
 mod add;
 mod conflicts;
 mod delete;
+mod export;
+mod failure;
+mod import;
+mod import_plan;
 mod list;
 pub(crate) mod records;
 mod set;
+mod zone_records;
 
-/// Partial add/set/delete failure: outcomes may mix validation, API, and
-/// transport errors, so this is classified as unexpected with a DNS-specific fix.
-pub(super) fn mutate_failed(message: impl Into<String>) -> CliCoreError {
-    crate::error::GddyError::unexpected(message)
-        .with_fix(
-            "Re-run with only the failed value(s), or use gddy dns list to inspect the current records.",
-        )
-        .into_cli_error()
+/// A failed add/set/delete: reported with the code of its failures' shared kind
+/// (see [`failure`]), or as unexpected when they differ.
+fn mutate_failed(failure: failure::MutateFailure) -> CliCoreError {
+    failure.into_cli_error()
 }
 
 pub fn module() -> Module {
     Module::new("DNS", |_ctx| {
         RuntimeGroupSpec::new(
             GroupSpec::new("dns", "Manage a domain's DNS records").with_long(
-                "Create, read, and delete DNS records for a GoDaddy-managed domain. \
-                 `add` appends new records without touching existing ones; `set` replaces \
-                 every record for a given type+name pair; `delete` removes all records for \
-                 a type+name pair. `set` and `delete` are destructive; pass `--dry-run` to \
-                 preview the change without writing it.",
+                "Create, read, and delete DNS records for a GoDaddy-managed \
+                domain. `add` appends new records without touching existing \
+                ones; `set` replaces every record for a given type+name pair; \
+                `delete` removes all records for a type+name pair. `export` \
+                writes all records as a zone file, and `import` adds records \
+                from one. Pass `--dry-run` to preview changes from commands.",
             ),
         )
         .with_command(list::command())
         .with_command(add::command())
         .with_command(set::command())
         .with_command(delete::command())
+        .with_command(export::command())
+        .with_command(import::command())
     })
     .with_guides_from_markdown([("dns.md", include_bytes!("guides/dns.md").as_slice())])
 }
@@ -238,14 +248,29 @@ mod tests {
         }
     }
 
-    /// `set`/`delete` opted into handler-driven `--dry-run` (to build a real
+    /// `add`/`set`/`delete` opted into handler-driven `--dry-run` (to build a real
     /// preview via `fetch_records`), which means the handler now runs under
     /// `--dry-run` too — unlike the generic short-circuit, that must not skip
     /// the fail-closed `Required`-auth check.
     #[tokio::test]
-    async fn dns_set_and_delete_dry_run_still_require_auth() {
+    async fn dns_write_dry_runs_still_require_auth() {
         const AUTH_FAILURE_EXIT: i32 = 2;
-        let cases: [&[&str]; 2] = [
+        let cases: [&[&str]; 3] = [
+            &[
+                "gddy",
+                "dns",
+                "add",
+                "example.com",
+                "--type",
+                "A",
+                "--name",
+                "www",
+                "--data",
+                "5.6.7.8",
+                "--dry-run",
+                "--output",
+                "json",
+            ],
             &[
                 "gddy",
                 "dns",

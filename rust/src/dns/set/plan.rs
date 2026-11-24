@@ -7,17 +7,26 @@ use crate::dns::records::{record_value, same_content};
 
 /// One reconcile action for `dns set` over the API's per-record endpoints.
 #[derive(Debug, PartialEq)]
-pub(super) enum SetAction {
+pub(in crate::dns) enum SetAction {
     /// Replace the existing record (`record_id`) in place with the desired
-    /// `--data` value.
-    Replace { record_id: String, data: String },
+    /// `--data` value. `desired` is that value's position among the `--data`
+    /// values, which is also where its own options sit (priority, tag, …).
+    Replace {
+        record_id: String,
+        data: String,
+        desired: usize,
+    },
     /// The existing record (`record_id`) already is the desired one; nothing to
     /// send.
-    Unchanged { record_id: String, data: String },
+    Unchanged {
+        record_id: String,
+        data: String,
+        desired: usize,
+    },
     /// Remove an existing record no longer wanted.
     Delete { record_id: String },
-    /// Create a record for a surplus `--data` value.
-    Create { data: String },
+    /// Create a record for a surplus `--data` value (position `desired`).
+    Create { data: String, desired: usize },
 }
 
 /// Reconcile the existing records for a type+name (in list order) with the
@@ -25,7 +34,7 @@ pub(super) enum SetAction {
 /// `Delete` the surplus existing, `Create` the surplus desired. Pure so the
 /// plan — the least-destructive way to emulate a set-replace over per-record v3
 /// ops — is unit-testable.
-pub(super) fn plan_set(
+pub(in crate::dns) fn plan_set(
     existing: &[types::DnsRecord],
     desired: &[types::DnsRecord],
     ttl: Option<i64>,
@@ -62,9 +71,17 @@ pub(super) fn plan_set(
             let unchanged =
                 same_content(&existing[e], want) && ttl.is_none_or(|t| t == existing[e].ttl);
             actions.push(if unchanged {
-                SetAction::Unchanged { record_id, data }
+                SetAction::Unchanged {
+                    record_id,
+                    data,
+                    desired: d,
+                }
             } else {
-                SetAction::Replace { record_id, data }
+                SetAction::Replace {
+                    record_id,
+                    data,
+                    desired: d,
+                }
             });
         }
     }
@@ -77,7 +94,10 @@ pub(super) fn plan_set(
     }
     for (d, want) in desired.iter().enumerate() {
         if paired[d].is_none() {
-            actions.push(SetAction::Create { data: value(want) });
+            actions.push(SetAction::Create {
+                data: value(want),
+                desired: d,
+            });
         }
     }
     actions
@@ -163,11 +183,13 @@ mod tests {
             vec![
                 SetAction::Replace {
                     record_id: "r1".into(),
-                    data: "9.9.9.9".into()
+                    data: "9.9.9.9".into(),
+                    desired: 0
                 },
                 SetAction::Replace {
                     record_id: "r2".into(),
-                    data: "8.8.8.8".into()
+                    data: "8.8.8.8".into(),
+                    desired: 1
                 },
                 SetAction::Delete {
                     record_id: "r3".into()
@@ -180,16 +202,26 @@ mod tests {
             vec![
                 SetAction::Replace {
                     record_id: "r1".into(),
-                    data: "a".into()
+                    data: "a".into(),
+                    desired: 0
                 },
-                SetAction::Create { data: "b".into() },
-                SetAction::Create { data: "c".into() },
+                SetAction::Create {
+                    data: "b".into(),
+                    desired: 1
+                },
+                SetAction::Create {
+                    data: "c".into(),
+                    desired: 2
+                },
             ]
         );
         // none existing → all creates.
         assert_eq!(
             plan_set(&[], &a_wanted(&["x"]), None),
-            vec![SetAction::Create { data: "x".into() }]
+            vec![SetAction::Create {
+                data: "x".into(),
+                desired: 0
+            }]
         );
     }
 
@@ -207,7 +239,8 @@ mod tests {
             vec![
                 SetAction::Unchanged {
                     record_id: "r2".into(),
-                    data: "5.6.7.8".into()
+                    data: "5.6.7.8".into(),
+                    desired: 0
                 },
                 SetAction::Delete {
                     record_id: "r1".into()
@@ -227,11 +260,13 @@ mod tests {
             vec![
                 SetAction::Unchanged {
                     record_id: "r2".into(),
-                    data: "5.6.7.8".into()
+                    data: "5.6.7.8".into(),
+                    desired: 0
                 },
                 SetAction::Unchanged {
                     record_id: "r1".into(),
-                    data: "1.2.3.4".into()
+                    data: "1.2.3.4".into(),
+                    desired: 1
                 },
             ]
         );
@@ -247,11 +282,13 @@ mod tests {
             vec![
                 SetAction::Unchanged {
                     record_id: "r2".into(),
-                    data: "5.6.7.8".into()
+                    data: "5.6.7.8".into(),
+                    desired: 0
                 },
                 SetAction::Replace {
                     record_id: "r1".into(),
-                    data: "9.9.9.9".into()
+                    data: "9.9.9.9".into(),
+                    desired: 1
                 },
             ]
         );
@@ -266,11 +303,13 @@ mod tests {
             vec![
                 SetAction::Unchanged {
                     record_id: "r1".into(),
-                    data: "1.2.3.4".into()
+                    data: "1.2.3.4".into(),
+                    desired: 0
                 },
                 SetAction::Unchanged {
                     record_id: "r2".into(),
-                    data: "1.2.3.4".into()
+                    data: "1.2.3.4".into(),
+                    desired: 1
                 },
             ]
         );
@@ -291,7 +330,8 @@ mod tests {
             vec![
                 SetAction::Unchanged {
                     record_id: "r2".into(),
-                    data: CERT.into()
+                    data: CERT.into(),
+                    desired: 0
                 },
                 SetAction::Delete {
                     record_id: "r1".into()
@@ -318,11 +358,13 @@ mod tests {
             vec![
                 SetAction::Unchanged {
                     record_id: "r2".into(),
-                    data: "letsencrypt.org".into()
+                    data: "letsencrypt.org".into(),
+                    desired: 0
                 },
                 SetAction::Replace {
                     record_id: "r1".into(),
-                    data: "digicert.com".into()
+                    data: "digicert.com".into(),
+                    desired: 1
                 },
             ]
         );
@@ -339,7 +381,8 @@ mod tests {
             plan_set(&existing, &a_wanted(&["1.2.3.4"]), None),
             vec![SetAction::Unchanged {
                 record_id: "r1".into(),
-                data: "1.2.3.4".into()
+                data: "1.2.3.4".into(),
+                desired: 0
             }]
         );
     }
@@ -354,7 +397,8 @@ mod tests {
             plan_set(&existing, &desired, Some(900)),
             vec![SetAction::Replace {
                 record_id: "r1".into(),
-                data: "1.2.3.4".into()
+                data: "1.2.3.4".into(),
+                desired: 0
             }]
         );
         // The same explicit ttl as stored is no change.
@@ -362,7 +406,8 @@ mod tests {
             plan_set(&existing, &desired, Some(3600)),
             vec![SetAction::Unchanged {
                 record_id: "r1".into(),
-                data: "1.2.3.4".into()
+                data: "1.2.3.4".into(),
+                desired: 0
             }]
         );
     }
@@ -377,7 +422,8 @@ mod tests {
             plan_set(&existing, &desired, None),
             vec![SetAction::Unchanged {
                 record_id: "r1".into(),
-                data: "Example.COM".into()
+                data: "Example.COM".into(),
+                desired: 0
             }]
         );
     }
@@ -411,7 +457,75 @@ mod tests {
             vec![
                 SetAction::Unchanged {
                     record_id: "r2".into(),
-                    data: "b.example.com".into()
+                    data: "b.example.com".into(),
+                    desired: 0
+                },
+                SetAction::Delete {
+                    record_id: "r1".into()
+                },
+            ]
+        );
+    }
+
+    fn mx_opts(priority: i64) -> RecordOptions {
+        RecordOptions {
+            priority: Some(priority),
+            ..opts()
+        }
+    }
+
+    #[test]
+    fn plan_set_converges_an_mx_set_with_mixed_priorities_and_drops_a_stale_record() {
+        // Google Workspace's 1/5/10 over a zone holding the right hosts at the
+        // wrong priorities plus an old record that should go.
+        let existing = [
+            stored("r1", "MX", "aspmx.l.google.com.", &mx_opts(1)),
+            stored("r2", "MX", "alt1.aspmx.l.google.com.", &mx_opts(10)),
+            stored("r3", "MX", "mail.old.example.", &mx_opts(20)),
+        ];
+        let desired = [
+            wanted("MX", "aspmx.l.google.com", &mx_opts(1)),
+            wanted("MX", "alt1.aspmx.l.google.com", &mx_opts(5)),
+            wanted("MX", "alt2.aspmx.l.google.com", &mx_opts(10)),
+        ];
+        assert_eq!(
+            plan_set(&existing, &desired, None),
+            vec![
+                SetAction::Unchanged {
+                    record_id: "r1".into(),
+                    data: "aspmx.l.google.com".into(),
+                    desired: 0
+                },
+                SetAction::Replace {
+                    record_id: "r2".into(),
+                    data: "alt1.aspmx.l.google.com".into(),
+                    desired: 1
+                },
+                SetAction::Replace {
+                    record_id: "r3".into(),
+                    data: "alt2.aspmx.l.google.com".into(),
+                    desired: 2
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn plan_set_tells_apart_records_that_differ_only_in_priority() {
+        // Same host at priority 1 and 5; asking for just the priority-5 one keeps
+        // that record and removes the other.
+        let existing = [
+            stored("r1", "MX", "mx.example.com.", &mx_opts(1)),
+            stored("r2", "MX", "mx.example.com.", &mx_opts(5)),
+        ];
+        let desired = [wanted("MX", "mx.example.com", &mx_opts(5))];
+        assert_eq!(
+            plan_set(&existing, &desired, None),
+            vec![
+                SetAction::Unchanged {
+                    record_id: "r2".into(),
+                    data: "mx.example.com".into(),
+                    desired: 0
                 },
                 SetAction::Delete {
                     record_id: "r1".into()

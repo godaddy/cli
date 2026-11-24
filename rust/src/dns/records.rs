@@ -5,7 +5,7 @@
 use cli_engine::{
     Alignment, CliCoreError, CommandResult, NextAction, NextActionParam, TableColumn,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::domain::api_error;
 use crate::idn::DomainForm;
@@ -16,20 +16,21 @@ use domains_client::types;
 /// DNS record types the CLI can create/replace/delete via v3 (`add`/`set`/`delete`).
 /// NS and SOA are registry-managed / read-only, so they're excluded. v3's
 /// `DNSRecordType` is otherwise an open string; this list is the CLI's guardrail
-/// against typos and includes `CAA` and GoDaddy's `ALIAS` extension.
+/// against typos. The spec also names GoDaddy's `ALIAS` extension, but the API
+/// refuses to create one (in test and prod), so it is not listed.
 pub(super) const WRITABLE_TYPES: &[&str] = &[
-    "A", "AAAA", "ALIAS", "CAA", "CNAME", "HTTPS", "MX", "SRV", "SVCB", "TLSA", "TXT",
+    "A", "AAAA", "CAA", "CNAME", "HTTPS", "MX", "SRV", "SVCB", "TLSA", "TXT",
 ];
 /// Record types accepted by the `list` filter — the writable set plus the
 /// read-only NS/SOA, which are listable even though they can't be modified.
 pub(super) const LISTABLE_TYPES: &[&str] = &[
-    "A", "AAAA", "ALIAS", "CAA", "CNAME", "HTTPS", "MX", "NS", "SOA", "SRV", "SVCB", "TLSA", "TXT",
+    "A", "AAAA", "CAA", "CNAME", "HTTPS", "MX", "NS", "SOA", "SRV", "SVCB", "TLSA", "TXT",
 ];
 /// Default TTL (seconds) for `dns add`/`set` when `--ttl` is omitted (v3 requires a ttl).
 pub(super) const DEFAULT_TTL: i64 = 3600;
 /// The TTL range (seconds) the API accepts: 10 minutes to 24 hours.
-const MIN_TTL: i64 = 600;
-const MAX_TTL: i64 = 86_400;
+pub(super) const MIN_TTL: i64 = 600;
+pub(super) const MAX_TTL: i64 = 86_400;
 /// The output fields of a DNS write that hold the zone and the record name.
 pub(super) const ZONE_AND_NAME: &[&str] = &["domain", "name"];
 
@@ -107,7 +108,7 @@ pub(super) fn parse_underscore_label(raw: &str) -> Result<String, String> {
 /// Optional record fields shared by `add` and `set`, including the CAA-only
 /// `flag`/`tag`, the TLSA-only `usage`/`selector`/`matching_type`, and the
 /// HTTPS/SVCB-only `parameters` (SvcParams).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(super) struct RecordOptions {
     pub(super) ttl: Option<i64>,
     pub(super) priority: Option<i64>,
@@ -124,21 +125,56 @@ pub(super) struct RecordOptions {
 }
 
 impl RecordOptions {
-    pub(super) fn from_write_args(args: &RecordWriteArgs) -> Self {
-        RecordOptions {
-            ttl: args.ttl,
-            priority: args.priority,
-            port: args.port,
-            weight: args.weight,
-            protocol: args.protocol.clone(),
-            service: args.service.clone(),
-            flag: args.flag,
-            tag: args.tag.clone(),
-            usage: args.usage,
-            selector: args.selector,
-            matching_type: args.matching_type,
-            parameters: args.parameters.clone(),
-        }
+    /// One `RecordOptions` per `--data` value, in the same order. Every flag but
+    /// `--ttl` (a record set has one TTL) may be given once, to apply to every
+    /// record, or once per `--data` value, to pair with them by position — so an
+    /// MX set with priorities 1, 5 and 10 is three `--priority` next to three
+    /// `--data`. Any other count is an error, since there is no telling which
+    /// record the odd one out belongs to. Pure so it runs before any network call.
+    pub(super) fn per_record(args: &RecordWriteArgs) -> Result<Vec<Self>, String> {
+        let records = args.data.len();
+        let priority = spread("priority", &args.priority, records)?;
+        let port = spread("port", &args.port, records)?;
+        let weight = spread("weight", &args.weight, records)?;
+        let protocol = spread("protocol", &args.protocol, records)?;
+        let service = spread("service", &args.service, records)?;
+        let flag = spread("flag", &args.flag, records)?;
+        let tag = spread("tag", &args.tag, records)?;
+        let usage = spread("usage", &args.usage, records)?;
+        let selector = spread("selector", &args.selector, records)?;
+        let matching_type = spread("matching-type", &args.matching_type, records)?;
+        let parameters = spread("parameters", &args.parameters, records)?;
+        Ok((0..records)
+            .map(|i| RecordOptions {
+                ttl: args.ttl,
+                priority: priority[i],
+                port: port[i],
+                weight: weight[i],
+                protocol: protocol[i].clone(),
+                service: service[i].clone(),
+                flag: flag[i],
+                tag: tag[i].clone(),
+                usage: usage[i],
+                selector: selector[i],
+                matching_type: matching_type[i],
+                parameters: parameters[i].clone(),
+            })
+            .collect())
+    }
+}
+
+/// Spread a repeatable flag's `values` over `records` records: none given leaves
+/// every record without it, one applies to all of them, and one per record pairs
+/// with them in order. Anything else is an error that says how to fix it.
+fn spread<T: Clone>(flag: &str, values: &[T], records: usize) -> Result<Vec<Option<T>>, String> {
+    match values.len() {
+        0 => Ok(vec![None; records]),
+        1 => Ok(vec![Some(values[0].clone()); records]),
+        n if n == records => Ok(values.iter().cloned().map(Some).collect()),
+        n => Err(format!(
+            "--{flag} was given {n} times for {records} --data values; give it once to use it \
+             for every record, or once per --data value to pair them in order"
+        )),
     }
 }
 
@@ -174,7 +210,7 @@ pub(super) struct RecordWriteArgs {
     // output — so without it `--type tlsa` (accepted, and canonicalized to `TLSA`)
     // never trips the `--usage`/`--selector`/`--matching-type` requirement, and
     // `--type caa` never trips `--tag`.
-    /// Record type (A, AAAA, ALIAS, CAA, CNAME, HTTPS, MX, SRV, SVCB, TLSA, TXT).
+    /// Record type (A, AAAA, CAA, CNAME, HTTPS, MX, SRV, SVCB, TLSA, TXT).
     #[arg(long = "type", value_name = "TYPE", value_parser = parse_write_type_arg, ignore_case = true)]
     pub(super) record_type: String,
 
@@ -197,7 +233,7 @@ pub(super) struct RecordWriteArgs {
     pub(super) ttl: Option<i64>,
 
     /// Record priority (MX, SRV, HTTPS, and SVCB only; required for those). For
-    /// HTTPS/SVCB, 0 means AliasMode.
+    /// HTTPS/SVCB, 0 means AliasMode. Repeat to pair with `--data` in order.
     #[arg(
         long,
         value_name = "N",
@@ -209,77 +245,86 @@ pub(super) struct RecordWriteArgs {
             ("record_type", "SVCB"),
         ])
     )]
-    pub(super) priority: Option<i64>,
+    pub(super) priority: Vec<i64>,
 
-    /// Service port (SRV and TLSA only; required for those).
+    /// Service port (SRV and TLSA only; required for those). Repeat to pair with
+    /// `--data` in order.
     #[arg(
         long,
         value_name = "PORT",
         value_parser = clap::value_parser!(i64).range(1..=65535),
         required_if_eq_any([("record_type", "SRV"), ("record_type", "TLSA")])
     )]
-    pub(super) port: Option<i64>,
+    pub(super) port: Vec<i64>,
 
-    /// Record weight (SRV only; required for SRV).
+    /// Record weight (SRV only; required for SRV). Repeat to pair with `--data`
+    /// in order.
     #[arg(
         long,
         value_name = "N",
         value_parser = clap::value_parser!(i64).range(0..=65535),
         required_if_eq("record_type", "SRV")
     )]
-    pub(super) weight: Option<i64>,
+    pub(super) weight: Vec<i64>,
 
     /// Service protocol, e.g. tcp or udp (SRV and TLSA only; required for those).
-    /// A leading underscore is added if you leave it off.
+    /// A leading underscore is added if you leave it off. Repeat to pair with
+    /// `--data` in order.
     #[arg(
         long,
         value_name = "PROTO",
         value_parser = parse_underscore_label,
         required_if_eq_any([("record_type", "SRV"), ("record_type", "TLSA")])
     )]
-    pub(super) protocol: Option<String>,
+    pub(super) protocol: Vec<String>,
 
     /// Service name, e.g. sip or xmpp (SRV only; required for SRV). A leading
-    /// underscore is added if you leave it off.
+    /// underscore is added if you leave it off. Repeat to pair with `--data` in
+    /// order.
     #[arg(
         long,
         value_name = "SERVICE",
         value_parser = parse_underscore_label,
         required_if_eq("record_type", "SRV")
     )]
-    pub(super) service: Option<String>,
+    pub(super) service: Vec<String>,
 
     /// CAA flag byte, 0-255 (CAA only; 0 non-critical, 128 critical). Defaults to 0.
+    /// Repeat to pair with `--data` in order.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(i64).range(0..=255))]
-    pub(super) flag: Option<i64>,
+    pub(super) flag: Vec<i64>,
 
     // A CAA record needs a tag; enforce it at parse time (before auth) — which
     // holds for `--type caa` as well as `--type CAA` only because `record_type`
     // sets `ignore_case`. The reverse guard — flag/tag only valid for CAA —
     // lives in the handler (`validate_caa_fields`), which clap can't express.
     /// CAA property tag, e.g. issue/issuewild/iodef (CAA only; required for CAA).
+    /// Repeat to pair with `--data` in order.
     #[arg(long, value_name = "TAG", required_if_eq("record_type", "CAA"))]
-    pub(super) tag: Option<String>,
+    pub(super) tag: Vec<String>,
 
     /// TLSA certificate usage, 0-3 (RFC 6698 §2.1.1; TLSA only; required for
     /// TLSA). 0 PKIX-TA, 1 PKIX-EE, 2 DANE-TA, 3 DANE-EE.
+    /// Repeat to pair with `--data` in order.
     #[arg(long = "usage", value_name = "N", value_parser = clap::value_parser!(i64).range(0..=3), required_if_eq("record_type", "TLSA"))]
-    pub(super) usage: Option<i64>,
+    pub(super) usage: Vec<i64>,
 
     /// TLSA selector, 0-1 (RFC 6698 §2.1.2; TLSA only; required for TLSA). 0
-    /// full certificate, 1 SubjectPublicKeyInfo.
+    /// full certificate, 1 SubjectPublicKeyInfo. Repeat to pair with `--data` in
+    /// order.
     #[arg(long = "selector", value_name = "N", value_parser = clap::value_parser!(i64).range(0..=1), required_if_eq("record_type", "TLSA"))]
-    pub(super) selector: Option<i64>,
+    pub(super) selector: Vec<i64>,
 
     /// TLSA matching type, 0-2 (RFC 6698 §2.1.3; TLSA only; required for
     /// TLSA). 0 exact match, 1 SHA-256, 2 SHA-512.
+    /// Repeat to pair with `--data` in order.
     #[arg(long = "matching-type", value_name = "N", value_parser = clap::value_parser!(i64).range(0..=2), required_if_eq("record_type", "TLSA"))]
-    pub(super) matching_type: Option<i64>,
+    pub(super) matching_type: Vec<i64>,
 
     /// SvcParams for HTTPS/SVCB records (RFC 9460), e.g. "alpn=h2,h3
-    /// port=8443" (HTTPS/SVCB only).
+    /// port=8443" (HTTPS/SVCB only). Repeat to pair with `--data` in order.
     #[arg(long, value_name = "PARAMS")]
-    pub(super) parameters: Option<String>,
+    pub(super) parameters: Vec<String>,
 }
 
 /// Validate the CAA-specific fields against the record type. A CAA record needs a
@@ -299,6 +344,53 @@ pub(super) fn validate_caa_fields(record_type: &str, opts: &RecordOptions) -> Re
         return Err(format!(
             "--flag/--tag are only valid for CAA records, not {record_type}"
         ));
+    }
+    Ok(())
+}
+
+/// Reject `--priority`, `--port`, `--weight`, `--service` and `--protocol` on a
+/// record type they don't apply to. clap only enforces the other direction (a
+/// type that needs one of them), so without this a flag the type ignores is
+/// accepted and silently dropped from the record. Pure so it is unit-testable and
+/// runs before any network call.
+pub(super) fn validate_applicable_fields(
+    record_type: &str,
+    opts: &RecordOptions,
+) -> Result<(), String> {
+    let applies = |types: &[&str]| types.contains(&record_type);
+    let checks: [(&str, bool, &str, bool); 5] = [
+        (
+            "--priority",
+            opts.priority.is_some(),
+            "MX, SRV, HTTPS, and SVCB",
+            applies(&["MX", "SRV", "HTTPS", "SVCB"]),
+        ),
+        (
+            "--port",
+            opts.port.is_some(),
+            "SRV and TLSA",
+            applies(&["SRV", "TLSA"]),
+        ),
+        (
+            "--protocol",
+            opts.protocol.is_some(),
+            "SRV and TLSA",
+            applies(&["SRV", "TLSA"]),
+        ),
+        ("--weight", opts.weight.is_some(), "SRV", applies(&["SRV"])),
+        (
+            "--service",
+            opts.service.is_some(),
+            "SRV",
+            applies(&["SRV"]),
+        ),
+    ];
+    for (flag, given, valid_for, applicable) in checks {
+        if given && !applicable {
+            return Err(format!(
+                "{flag} is only valid for {valid_for} records, not {record_type}"
+            ));
+        }
     }
     Ok(())
 }
@@ -410,14 +502,19 @@ pub(super) fn v3_record(
     }
 }
 
-/// Build the v3 `DnsRecord`s for `add` — one per `--data` value (parallel to it).
+/// Build the v3 `DnsRecord`s for `add` and `set` — one per `--data` value, each
+/// with its own options (`opts` is parallel to `data`; see
+/// [`RecordOptions::per_record`]).
 pub(super) fn v3_records(
     name: &str,
     ty: &str,
     data: &[String],
-    opts: &RecordOptions,
+    opts: &[RecordOptions],
 ) -> Vec<types::DnsRecord> {
-    data.iter().map(|d| v3_record(name, ty, d, opts)).collect()
+    data.iter()
+        .zip(opts)
+        .map(|(d, o)| v3_record(name, ty, d, o))
+        .collect()
 }
 
 /// The user-facing "value" of a fetched v3 `DnsRecord`: `data` for every type
@@ -484,6 +581,12 @@ pub(super) const DETAIL_FIELDS: &[&str] = &[
 /// has a value for it, so a table of A and TXT records is unchanged while SRV,
 /// MX and CAA records bring the fields that distinguish them.
 pub(super) fn detail_columns() -> Vec<TableColumn> {
+    detail_columns_at("", "")
+}
+
+/// [`detail_columns`] for fields held in a nested object: `path` is prepended to
+/// each field name (`old.`) and `label` to each header (`Old `).
+fn detail_columns_at(path: &str, label: &str) -> Vec<TableColumn> {
     let numeric = ["priority", "weight", "port", "flag"];
     DETAIL_FIELDS
         .iter()
@@ -498,7 +601,8 @@ pub(super) fn detail_columns() -> Vec<TableColumn> {
                 "tag" => "Tag",
                 _ => "Parameters",
             };
-            let column = TableColumn::new(*field, header).hide_when_empty(true);
+            let column = TableColumn::new(format!("{path}{field}"), format!("{label}{header}"))
+                .hide_when_empty(true);
             if numeric.contains(field) {
                 column.align(Alignment::Right)
             } else {
@@ -518,6 +622,78 @@ pub(super) fn detail_values(rec: &types::DnsRecord) -> serde_json::Map<String, V
         .iter()
         .filter_map(|field| all.get(*field).map(|v| ((*field).to_owned(), v.clone())))
         .collect()
+}
+
+/// How a record is named in a plan entry and in per-record results
+pub(super) fn record_label_value(rec: &types::DnsRecord) -> Option<String> {
+    if rec.type_.as_str() == "TLSA" {
+        Some(merged_tlsa_data(rec)).filter(|text| !text.is_empty())
+    } else {
+        record_value(rec).map(str::to_owned)
+    }
+}
+
+/// A record as it appears in a plan entry's `old` or `new`
+pub(super) fn record_snapshot(rec: &types::DnsRecord) -> Value {
+    let mut row = detail_values(rec);
+    row.insert("type".to_owned(), json!(rec.type_.as_str()));
+    row.insert("data".to_owned(), json!(record_label_value(rec)));
+    row.insert("ttl".to_owned(), json!(rec.ttl));
+    Value::Object(row)
+}
+
+/// One entry of the `records` that `dns add`, `dns set` and `dns delete` report,
+/// whether the write is only previewed (`--dry-run`) or really done: what happens
+/// to one record (`create`, `replace`, `unchanged` or `delete`), the record's id
+/// (`null` for a create that has not been made yet), and the record before
+/// (`old`) and after (`new`), `null` where there is none.
+pub(super) fn change_entry(
+    action: &str,
+    record_id: Option<&str>,
+    old: Option<&types::DnsRecord>,
+    new: Option<&types::DnsRecord>,
+) -> Value {
+    json!({
+        "action": action,
+        "recordId": record_id,
+        "old": old.map(record_snapshot),
+        "new": new.map(record_snapshot),
+    })
+}
+
+/// Table columns for the `records` of a write (see [`change_entry`]): the action, the
+/// old and new value, the type-specific fields that tell records apart (only when
+/// some entry has them, like [`detail_columns`]), then TTLs and the record id.
+/// Column order is priority order — on a narrow terminal the last columns go first
+/// — so what identifies a record comes before what merely describes it.
+pub(super) fn change_columns() -> Vec<TableColumn> {
+    let mut columns = vec![
+        TableColumn::new("action", "Action").essential(true),
+        TableColumn::new("old.data", "Old").hide_when_empty(true),
+        TableColumn::new("new.data", "New").hide_when_empty(true),
+    ];
+    // What tells one record from another under the same name (an SRV's service and
+    // port, a CAA's tag) is never dropped to make room: a delete of several
+    // otherwise-identical rows is unreadable without it.
+    columns.extend(detail_columns_at("old.", "Old ").into_iter().map(|column| {
+        let identifies = matches!(
+            column.field.as_str(),
+            "old.service" | "old.port" | "old.tag"
+        );
+        column.essential(identifies)
+    }));
+    columns.extend(detail_columns_at("new.", "New "));
+    columns.extend([
+        TableColumn::new("old.ttl", "Old TTL")
+            .align(Alignment::Right)
+            .hide_when_empty(true),
+        TableColumn::new("new.ttl", "New TTL")
+            .align(Alignment::Right)
+            .hide_when_empty(true),
+        TableColumn::new("recordId", "Record ID"),
+        TableColumn::new("error", "Error").hide_when_empty(true),
+    ]);
+    columns
 }
 
 /// Whether two v3 records have the same content — every field except `ttl`
@@ -561,7 +737,7 @@ pub(super) fn comparable(record: &types::DnsRecord, compare_ttl: bool) -> Value 
         }
         if let Some(Value::String(data)) = fields.get_mut("data") {
             match record_type {
-                "ALIAS" | "CNAME" | "MX" | "SRV" | "HTTPS" | "SVCB" => {
+                "CNAME" | "MX" | "SRV" | "HTTPS" | "SVCB" => {
                     *data = data.trim_end_matches('.').to_lowercase();
                 }
                 "CAA" => *data = data.to_lowercase(),
@@ -574,6 +750,36 @@ pub(super) fn comparable(record: &types::DnsRecord, compare_ttl: bool) -> Value 
         }
     }
     value
+}
+
+/// The record as the API will hold it once written, for a preview to show what a
+/// real run will return: names lower-cased, hostname-valued data lower-cased with
+/// a trailing dot, CAA data and TLSA hex lower-cased (the rules [`comparable`]
+/// compares by). Keeps the TTL and any recordId. A record that does not survive
+/// the round trip is returned as given.
+pub(super) fn as_stored(record: &types::DnsRecord) -> types::DnsRecord {
+    let mut value = comparable(record, true);
+    if let Some(fields) = value.as_object_mut() {
+        // `comparable` trims the dot off hostnames to compare them; the API keeps it.
+        // The root target `.` is all dot, so trimming leaves it empty; that is
+        // still a value to restore, unlike a record that had none.
+        let had_data = record.data.as_deref().is_some_and(|data| !data.is_empty());
+        if let Some(Value::String(data)) = fields.get_mut("data")
+            && had_data
+            && matches!(
+                record.type_.as_str(),
+                "CNAME" | "MX" | "SRV" | "HTTPS" | "SVCB"
+            )
+        {
+            data.push('.');
+        }
+    }
+    serde_json::from_value::<types::DnsRecord>(value)
+        .map(|stored| types::DnsRecord {
+            record_id: record.record_id.clone(),
+            ..stored
+        })
+        .unwrap_or_else(|_| record.clone())
 }
 
 /// Types the API stores under a composed name (`_service._proto.name` for SRV,
@@ -648,14 +854,12 @@ pub(super) async fn fetch_records(
     Ok(all)
 }
 
-/// Whether `wanted` names `record`: either the short name the record is listed
-/// under, or the composed name the API itself understands (`_service._proto.name`
-/// for SRV, `_port._proto.name` for TLSA), so a selector written either way finds
-/// it. Case does not matter.
-fn listed_name_matches(record: &types::DnsRecord, wanted: &str) -> bool {
-    if record.name.eq_ignore_ascii_case(wanted) {
-        return true;
-    }
+/// The name the API files a record under. For SRV (`_service._proto.name`) and
+/// TLSA (`_port._proto.name`) that is the composed owner, while a list response
+/// shows only the short `name` plus separate fields; every other type is filed
+/// under its own name. At the zone apex (`@`) the composed owner is the prefix
+/// alone. `None` for an SRV or TLSA record missing a field the prefix needs.
+pub(super) fn composed_owner(record: &types::DnsRecord) -> Option<String> {
     let prefix = match record.type_.as_str() {
         "SRV" => record
             .service
@@ -666,14 +870,21 @@ fn listed_name_matches(record: &types::DnsRecord, wanted: &str) -> bool {
             .port
             .zip(record.protocol.as_deref())
             .map(|(port, protocol)| format!("_{port}.{protocol}")),
-        _ => None,
-    };
-    // At the zone apex (`@`) the composed name is the prefix alone.
-    let composed = prefix.map(|prefix| match record.name.as_str() {
+        _ => return Some(record.name.clone()),
+    }?;
+    Some(match record.name.as_str() {
         "@" => prefix,
         name => format!("{prefix}.{name}"),
-    });
-    composed.is_some_and(|composed| composed.eq_ignore_ascii_case(wanted))
+    })
+}
+
+/// Whether `wanted` names `record`: either the short name the record is listed
+/// under, or the composed name the API itself understands (see
+/// [`composed_owner`]), so a selector written either way finds it. Case does not
+/// matter.
+fn listed_name_matches(record: &types::DnsRecord, wanted: &str) -> bool {
+    record.name.eq_ignore_ascii_case(wanted)
+        || composed_owner(record).is_some_and(|owner| owner.eq_ignore_ascii_case(wanted))
 }
 
 /// Next action pointing back at `dns list` to verify a write, pre-filled with
@@ -708,3 +919,11 @@ pub(super) fn verified_result(
 #[cfg(test)]
 #[path = "records_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "records_per_record_tests.rs"]
+mod per_record_tests;
+
+#[cfg(test)]
+#[path = "records_field_tests.rs"]
+mod field_tests;

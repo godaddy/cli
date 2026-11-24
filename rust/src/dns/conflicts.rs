@@ -3,7 +3,9 @@
 //! write fails with a `DUPLICATE_RECORD` validation issue, this looks up the
 //! records actually at that name and explains precisely what's blocking it.
 
-use crate::domain::{api_error, format_api_error};
+use crate::domain::api_failure;
+
+use super::failure::{DnsFailure, FailureKind};
 
 use domains_client::types;
 
@@ -158,55 +160,35 @@ pub(super) struct WriteErrorContext<'a> {
     pub(super) debug: bool,
 }
 
-/// Turn a failed `add` write into a user-facing error message. If the response
-/// is a name-exclusivity conflict (`DUPLICATE_RECORD`), look up the records at
-/// this name and explain precisely what's blocking it; otherwise fall back to
-/// the generic `domain::common` formatting (still improved by its v3
-/// `details[]` support). `add` never auto-replaces, so the remediation is
-/// always the manual pointer (`can_auto_replace: false`).
+/// Turn a failed `add` write into a user-facing failure. If the response is a
+/// name-exclusivity conflict (`DUPLICATE_RECORD`), look up the records at this
+/// name and explain precisely what's blocking it; otherwise fall back to the
+/// generic `domain::common` formatting (still improved by its v3 `details[]`
+/// support). `add` never auto-replaces, so the remediation is always the manual
+/// pointer (`can_auto_replace: false`).
 pub(super) async fn describe_write_error(
     client: &domains_client::Client,
     ctx: &WriteErrorContext<'_>,
     err: domains_client::Error<()>,
-) -> String {
-    let domains_client::Error::UnexpectedResponse(resp) = err else {
-        return api_error(ctx.action, ctx.debug, err).await.to_string();
-    };
-    let status = resp.status();
-    let request_id = resp
-        .headers()
-        .get("x-request-id")
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_owned);
-    let body = resp.text().await.unwrap_or_default();
-    if !duplicate_record_issue(&body) {
-        return format_api_error(
-            ctx.action,
-            status.as_u16(),
-            &status.to_string(),
-            &body,
-            request_id.as_deref(),
-            ctx.debug,
-        );
+) -> DnsFailure {
+    let failure = api_failure(ctx.action, ctx.debug, err).await;
+    if !duplicate_record_issue(&failure.body) {
+        return DnsFailure::from_api(failure);
     }
     match conflicting_records_at(client, ctx.domain, ctx.name, ctx.debug).await {
-        Ok(at_name) => describe_duplicate_record(
-            ctx.desired_type,
-            ctx.desired_data,
-            ctx.domain,
-            ctx.name,
-            ctx.opts,
-            &at_name,
-            false,
+        Ok(at_name) => DnsFailure::new(
+            FailureKind::RecordExists,
+            describe_duplicate_record(
+                ctx.desired_type,
+                ctx.desired_data,
+                ctx.domain,
+                ctx.name,
+                ctx.opts,
+                &at_name,
+                false,
+            ),
         ),
-        Err(_) => format_api_error(
-            ctx.action,
-            status.as_u16(),
-            &status.to_string(),
-            &body,
-            request_id.as_deref(),
-            ctx.debug,
-        ),
+        Err(_) => DnsFailure::from_api(failure),
     }
 }
 

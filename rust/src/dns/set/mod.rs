@@ -1,31 +1,37 @@
 //! `dns set` — replace every record for a type+name pair (destructive).
 
 use cli_engine::{Alignment, CommandResult, CommandSpec, RuntimeCommandSpec, TableColumn, Tier};
-use serde_json::Value;
 
-use crate::domain::{api_error, make_client};
+use crate::domain::make_client;
 use crate::output_schema::output_schema;
 use crate::scopes::DOMAINS_DNS_UPDATE;
 
-use super::list::build_list_output;
 use super::records::{
-    RecordOptions, RecordWriteArgs, detail_columns, fetch_records, v3_records, validate_caa_fields,
-    validate_record_name, validate_svcb_fields, validate_tlsa_fields,
+    RecordOptions, RecordWriteArgs, ZONE_AND_NAME, change_columns, fetch_records, v3_records,
+    validate_applicable_fields, validate_caa_fields, validate_record_name, validate_svcb_fields,
+    validate_tlsa_fields, verified_result,
 };
-use super::records::{ZONE_AND_NAME, verified_result};
 
+mod apply;
 mod outcome;
 mod plan;
 mod verify;
 mod write;
 
-use outcome::{SetOutcome, dry_run_set_preview, record_label, summarize_set_outcomes};
-use plan::{SetAction, plan_set};
+use apply::{PlanTarget, apply_plan};
+use outcome::{dry_run_set_preview, summarize_set_outcomes};
+use plan::plan_set;
+
+// What `dns import` reuses: it makes its own plans, one per type and name, and
+// applies and previews them the way `set` does.
+pub(in crate::dns) use apply::{PlanTarget as ApplyTarget, apply_plan as apply_set_plan};
+pub(in crate::dns) use outcome::{SetOutcome, preview_entries};
+pub(in crate::dns) use plan::{SetAction, plan_set as plan_set_actions};
 use verify::verify_final_state;
-use write::{WriteRequest, apply_replace, write_with_conflict_handling};
 
 // `dns set` reconciles over the API's per-record ops; it reports how many records it
-// replaced, left unchanged, created, and deleted to reach the desired set.
+// replaced, left unchanged, created, and deleted to reach the desired set, and the
+// `records` showing what happened to each (the same shape `--dry-run` previews).
 output_schema!(DnsSetResult {
     "domain": "string";
     "type": "string";
@@ -35,14 +41,12 @@ output_schema!(DnsSetResult {
     "created": "number";
     "deleted": "number";
     "action": "string";
-    "records": "[]object", optional;
-    "plan": "[]object", optional;
+    "records": "[]object";
 });
 
 /// The fields shown when the caller doesn't pass `--fields`; anything not
 /// listed here is dropped from the output.
-const DEFAULT_FIELDS: &str =
-    "domain,type,name,replaced,unchanged,created,deleted,action,records,plan";
+const DEFAULT_FIELDS: &str = "domain,type,name,replaced,unchanged,created,deleted,action,records";
 
 #[derive(Debug, Clone, clap::Args)]
 struct SetArgs {
@@ -55,9 +59,8 @@ struct SetArgs {
     replace_conflicting_types: bool,
 }
 
-/// `records` (what the real set left in place) and `plan` (what `--dry-run`
-/// would do) each appear on only one of the two outputs, and render as indented
-/// child tables instead of a raw JSON dump.
+/// `records` — what happened to each record, or with `--dry-run` what would — renders
+/// as an indented child table instead of a raw JSON dump.
 fn view_columns() -> Vec<TableColumn> {
     vec![
         TableColumn::new("domain", "Domain"),
@@ -70,24 +73,7 @@ fn view_columns() -> Vec<TableColumn> {
         TableColumn::new("action", "Action"),
         TableColumn::new("records", "Records")
             .hide_when_empty(true)
-            .nested({
-                let mut columns = vec![
-                    TableColumn::new("type", "Type").essential(true),
-                    TableColumn::new("name", "Name"),
-                    TableColumn::new("data", "Data").essential(true),
-                    TableColumn::new("ttl", "TTL").align(Alignment::Right),
-                ];
-                columns.extend(detail_columns());
-                columns.push(TableColumn::new("recordId", "Record ID"));
-                columns
-            }),
-        TableColumn::new("plan", "Plan")
-            .hide_when_empty(true)
-            .nested(vec![
-                TableColumn::new("action", "Action").essential(true),
-                TableColumn::new("recordId", "Record ID"),
-                TableColumn::new("data", "Data").essential(true),
-            ]),
+            .nested(change_columns()),
     ]
 }
 
@@ -118,7 +104,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
         .with_view(view_columns())
         .with_scopes(&[DOMAINS_DNS_UPDATE]),
         |ctx, args: SetArgs| async move {
-            let opts = RecordOptions::from_write_args(&args.write);
+            let opts = RecordOptions::per_record(&args.write)
+                .map_err(crate::error::GddyError::validation)?;
+            let ttl = args.write.ttl;
             let domain = args.write.domain;
             let record_type = args.write.record_type;
             let name = args.write.name;
@@ -126,12 +114,22 @@ pub(super) fn command() -> RuntimeCommandSpec {
             let replace_conflicting = args.replace_conflicting_types;
             validate_record_name(&record_type, &name)
                 .map_err(crate::error::GddyError::validation)?;
-            validate_caa_fields(&record_type, &opts)
-                .map_err(crate::error::GddyError::validation)?;
-            validate_tlsa_fields(&record_type, &opts)
-                .map_err(crate::error::GddyError::validation)?;
-            validate_svcb_fields(&record_type, &opts)
-                .map_err(crate::error::GddyError::validation)?;
+            for record_opts in &opts {
+                validate_applicable_fields(&record_type, record_opts)
+                    .map_err(crate::error::GddyError::validation)?;
+            }
+            for record_opts in &opts {
+                validate_caa_fields(&record_type, record_opts)
+                    .map_err(crate::error::GddyError::validation)?;
+            }
+            for record_opts in &opts {
+                validate_tlsa_fields(&record_type, record_opts)
+                    .map_err(crate::error::GddyError::validation)?;
+            }
+            for record_opts in &opts {
+                validate_svcb_fields(&record_type, record_opts)
+                    .map_err(crate::error::GddyError::validation)?;
+            }
             let data = args.write.data;
 
             let debug = !ctx.middleware.debug.is_empty();
@@ -167,97 +165,39 @@ pub(super) fn command() -> RuntimeCommandSpec {
                     .into_cli_error());
             }
             let desired = v3_records(&name, &record_type, &data, &opts);
-            let plan = plan_set(&existing, &desired, opts.ttl);
+            let plan = plan_set(&existing, &desired, ttl);
             if ctx.dry_run() {
-                let mut preview = dry_run_set_preview(&domain, &record_type, &name, &plan);
+                let mut preview =
+                    dry_run_set_preview(&domain, &record_type, &name, &plan, &existing, &opts);
                 domain_format.convert_fields(&mut preview, ZONE_AND_NAME);
                 return Ok(CommandResult::new(preview).with_dry_run());
             }
 
-            let mut outcomes = Vec::new();
-            for action in plan {
-                match action {
-                    SetAction::Replace {
-                        record_id,
-                        data: value,
-                    } => {
-                        let req = WriteRequest {
-                            domain: domain.as_str(),
-                            name: name.as_str(),
-                            record_type: record_type.as_str(),
-                            value: &value,
-                            opts: &opts,
-                            replace_conflicting,
-                            replacing: None,
-                            debug,
-                        };
-                        let old_ttl = existing
-                            .iter()
-                            .find(|r| r.record_id.as_deref() == Some(record_id.as_str()))
-                            .map(|r| r.ttl);
-                        outcomes.extend(apply_replace(&client, &req, &record_id, old_ttl).await);
-                    }
-                    SetAction::Unchanged {
-                        data: value,
-                        record_id: _,
-                    } => outcomes.push(SetOutcome::new("unchanged", value, None)),
-                    SetAction::Create { data: value } => {
-                        let req = WriteRequest {
-                            domain: domain.as_str(),
-                            name: name.as_str(),
-                            record_type: record_type.as_str(),
-                            value: &value,
-                            opts: &opts,
-                            replace_conflicting,
-                            replacing: None,
-                            debug,
-                        };
-                        outcomes.extend(write_with_conflict_handling(&client, &req).await);
-                    }
-                    SetAction::Delete { record_id } => {
-                        let res = client
-                            .delete_dns_record()
-                            .zone(domain.as_str())
-                            .record_id(record_id.as_str())
-                            .send()
-                            .await;
-                        let err = match res {
-                            Ok(_) => None,
-                            Err(e) => {
-                                Some(api_error("deleting DNS record", debug, e).await.to_string())
-                            }
-                        };
-                        let detail = record_label(&existing, &record_type, &record_id);
-                        outcomes.push(SetOutcome::new("deleted", detail, err));
-                    }
-                }
-            }
+            let target = PlanTarget {
+                domain: domain.as_str(),
+                name: name.as_str(),
+                record_type: record_type.as_str(),
+                existing: &existing,
+                opts: &opts,
+                replace_conflicting,
+                debug,
+            };
+            let outcomes = apply_plan(&client, &target, plan).await;
 
-            let mut summary = summarize_set_outcomes(&domain, &record_type, &name, &outcomes)
+            let summary = summarize_set_outcomes(&domain, &record_type, &name, &outcomes)
                 .map_err(super::mutate_failed)?;
             // The plan came from one earlier read, so confirm the type+name now
-            // holds exactly what was asked for before reporting success, and
-            // report the records as that read found them.
-            let now = verify_final_state(
+            // holds exactly what was asked for before reporting success.
+            verify_final_state(
                 &client,
                 domain.as_str(),
                 &record_type,
                 &name,
                 &desired,
-                opts.ttl.is_some(),
+                ttl.is_some(),
                 debug,
             )
             .await?;
-            let mut records = build_list_output(&now).map_err(|e| {
-                crate::error::GddyError::unexpected(format!(
-                    "failed to serialize the resulting DNS records: {e}"
-                ))
-                .into_cli_error()
-            })?;
-            for record in &mut records {
-                domain_format.convert_fields(record, &["name"]);
-            }
-            summary["records"] = Value::Array(records);
             Ok(verified_result(
                 domain_format,
                 summary,

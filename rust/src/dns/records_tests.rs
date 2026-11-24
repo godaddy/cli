@@ -2,7 +2,7 @@ use super::*;
 use httpmock::prelude::*;
 use serde_json::{Value, json};
 
-fn client_for(server: &MockServer) -> domains_client::Client {
+pub(super) fn client_for(server: &MockServer) -> domains_client::Client {
     domains_client::client_with_builder(
         reqwest::Client::builder(),
         &server.base_url(),
@@ -266,9 +266,9 @@ async fn fetch_records_keeps_server_side_filtering_everywhere_else() {
 }
 
 #[derive(Debug, clap::Parser)]
-struct WriteCli {
+pub(super) struct WriteCli {
     #[command(flatten)]
-    args: RecordWriteArgs,
+    pub(super) args: RecordWriteArgs,
 }
 
 fn parse_ttl(ttl: &str) -> Result<Option<i64>, clap::Error> {
@@ -338,7 +338,7 @@ fn verified_result_shows_the_requested_form_of_zone_and_name() {
     assert_eq!(ascii.data["name"], "xn--bcher-kva");
 }
 
-fn opts() -> RecordOptions {
+pub(super) fn opts() -> RecordOptions {
     RecordOptions {
         ttl: None,
         priority: None,
@@ -356,10 +356,9 @@ fn opts() -> RecordOptions {
 }
 
 #[test]
-fn parse_write_type_arg_accepts_writable_incl_caa_alias_rejects_ns_soa() {
+fn parse_write_type_arg_accepts_writable_incl_caa_rejects_ns_soa_and_alias() {
     assert_eq!(parse_write_type_arg("aaaa").expect("valid"), "AAAA");
     assert_eq!(parse_write_type_arg("caa").expect("valid"), "CAA");
-    assert_eq!(parse_write_type_arg("Alias").expect("valid"), "ALIAS");
     assert_eq!(parse_write_type_arg("https").expect("valid"), "HTTPS");
     assert_eq!(parse_write_type_arg("svcb").expect("valid"), "SVCB");
     assert_eq!(parse_write_type_arg("tlsa").expect("valid"), "TLSA");
@@ -370,6 +369,10 @@ fn parse_write_type_arg_accepts_writable_incl_caa_alias_rejects_ns_soa() {
     }
     let err = parse_write_type_arg("bogus").expect_err("should reject");
     assert!(err.contains("invalid record type"), "got: {err}");
+    // The API refuses to create one (test and prod), so it is refused here, before a login.
+    let err = parse_write_type_arg("Alias").expect_err("the API has no ALIAS");
+    assert!(err.contains("invalid record type"), "got: {err}");
+    assert!(!err.contains("ALIAS,"), "not offered as an option: {err}");
 }
 
 #[test]
@@ -386,7 +389,7 @@ fn v3_records_builds_one_per_data_value_with_default_ttl() {
         "www",
         "A",
         &["1.2.3.4".to_string(), "5.6.7.8".to_string()],
-        &opts(),
+        &[opts(), opts()],
     );
     assert_eq!(recs.len(), 2);
     assert_eq!(recs[0].name, "www");
@@ -636,12 +639,12 @@ fn service_and_protocol_are_normalized_when_the_arguments_are_parsed() {
     ] {
         let ok = parse(service, protocol).expect("valid");
         assert_eq!(
-            ok.args.service.as_deref(),
+            ok.args.service.first().map(String::as_str),
             Some("_sip"),
             "{service} {protocol}"
         );
         assert_eq!(
-            ok.args.protocol.as_deref(),
+            ok.args.protocol.first().map(String::as_str),
             Some("_tcp"),
             "{service} {protocol}"
         );
@@ -862,8 +865,6 @@ fn same_content_follows_how_the_api_stores_each_field() {
     };
     // Hostnames: case and a trailing dot are not differences.
     assert!(same("CNAME", "Example.COM", "example.com."));
-    assert!(same("ALIAS", "Example.COM", "example.com."));
-    assert!(same("ALIAS", "Example.COM", "example.com."));
     assert!(same("MX", "Mail.Example.com", "mail.example.com."));
     // CAA data and TLSA hex are case-insensitive.
     assert!(same("CAA", "Letsencrypt.org", "letsencrypt.org"));
@@ -941,4 +942,28 @@ fn detail_values_carry_only_the_fields_a_record_has() {
     assert_eq!(values["port"], 5222);
     assert_eq!(values["priority"], 10);
     assert!(!values.contains_key("tag") && !values.contains_key("data"));
+}
+
+/// The API keeps an HTTPS/SVCB root target as `.`; trimming dots to compare must
+/// not turn it into an empty value in a preview.
+#[test]
+fn as_stored_keeps_the_root_target_of_an_https_record() {
+    let https_opts = RecordOptions {
+        priority: Some(0),
+        ..opts()
+    };
+    let record = v3_record("@", "HTTPS", ".", &https_opts);
+    assert_eq!(as_stored(&record).data.as_deref(), Some("."));
+
+    let host = v3_record("@", "CNAME", "Target.Example.COM", &opts());
+    assert_eq!(
+        as_stored(&host).data.as_deref(),
+        Some("target.example.com.")
+    );
+
+    let empty = types::DnsRecord {
+        data: None,
+        ..v3_record("@", "CNAME", "x", &opts())
+    };
+    assert_eq!(as_stored(&empty).data, None);
 }
