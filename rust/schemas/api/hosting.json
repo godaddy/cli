@@ -1,5 +1,16 @@
 {
   "$defs": {
+    "AppHostingProduct": {
+      "$id": "https://godaddy.com/schemas/hosting/enums/app-hosting-product.v1",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The product that hosts a `NODEJS` application. `WEB_HOSTING` runs on a Web Hosting plan. `AIRO` is owned by Airo App Builder and publishes against an Airo plan. Clients must tolerate values not listed here.\n",
+      "examples": [
+        "WEB_HOSTING",
+        "AIRO"
+      ],
+      "title": "AppHostingProduct",
+      "type": "string"
+    },
     "AppOperation": {
       "$id": "https://godaddy.com/schemas/hosting/models/app-operation.v1",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -17,7 +28,7 @@
         },
         "error": {
           "$ref": "#/$defs/error",
-          "description": "Describes why the operation failed: why the application could not be created, or why its publish state could not be changed. Omitted unless `status` is `FAILED`.\n",
+          "description": "Describes why the operation failed: why the application could not be created, or why its publish state could not be changed. Omitted unless `status` is `FAILED`. For `MHWP`, `error.details[].issue` is `CAPACITY_UNAVAILABLE` or `APP_CREATION_FAILED` for a creation, and `PUBLISH_LIMIT_EXCEEDED` or `PUBLISH_STATE_CHANGE_FAILED` for a publish-state change.\n",
           "readOnly": true
         },
         "links": {
@@ -171,6 +182,11 @@
         },
         "createdAt": {
           "$ref": "#/$defs/date-time",
+          "readOnly": true
+        },
+        "hostingProduct": {
+          "$ref": "#/$defs/AppHostingProduct",
+          "description": "Omitted for `MHWP` applications.",
           "readOnly": true
         },
         "id": {
@@ -575,20 +591,20 @@
       "description": "Runtime state of a single environment (`PREVIEW` or `PUBLISH`) within an application.\n",
       "properties": {
         "lifecycleState": {
-          "description": "Lifecycle state of this environment. Product-specific; other values may appear.\n",
+          "description": "Lifecycle state of this environment. Lowercase for all products, unlike `status`. Product-specific; other values may appear.\n",
           "examples": [
-            "PROVISIONED",
-            "PROVISIONING",
-            "SUSPENDED"
+            "running",
+            "paused",
+            "reloading"
           ],
           "type": "string"
         },
         "status": {
           "description": "Runtime status of this environment. Product-specific; other values may appear.\n",
           "examples": [
-            "RUNNING",
-            "RESTARTING",
-            "STOPPED"
+            "ACTIVE",
+            "FAILED",
+            "SUSPENDED"
           ],
           "type": "string"
         },
@@ -1489,7 +1505,7 @@
     }
   },
   "baseUrl": "https://api.godaddy.com/v1/hosting",
-  "description": "Manage hosted applications across GoDaddy hosting products.\n\n## Supported product types\n\n`appType` selects the product. Each value maps to a GoDaddy hosting product:\n- `NODEJS` — Node.js hosted applications. - `MHWP` — Managed Hosting for WordPress applications.\nNot every operation applies to every product. An operation a product does not offer returns `501` with `details[].issue` `NOT_APPLICABLE`. Each operation's description states which products it serves.\n\n## Async operations\n\nAny operation that takes time returns `202 Accepted` with a resource body and a `links[rel=self]` URL. The same URL is also returned in the `Location` response header. Poll that URL until the status field reaches a terminal state.\n\n## Correlation\n\nEvery response carries an `X-Request-Id` header. Include this value when reporting issues so the request can be traced end to end. Clients should send a W3C `traceparent` header on every request so the trace can be correlated across services.\n\n## Rate limiting\n\nA `429 Too Many Requests` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available.\n\n## Forward compatibility\n\nSeveral of the enumerations in this specification are expected to gain members as new products, environments and states come online. Where an enumeration's description says so, clients must not fail on a member they do not recognise — treat it as an unhandled value and continue.\n",
+  "description": "Manage hosted applications across GoDaddy hosting products.\n\n## Supported product types\n\n`appType` selects the product. Each value maps to a GoDaddy hosting product:\n- `NODEJS` — Node.js hosted applications. - `MHWP` — Managed Hosting for WordPress applications.\nNot every operation applies to every product. An operation a product does not offer, or one not yet offered for a particular kind of application, returns `501` with `details[].issue` `NOT_APPLICABLE`. A `403` means the caller may not perform an operation that is offered. Each operation's description states which products and applications it serves.\n\n## Async operations\n\nAny operation that takes time returns `202 Accepted` with a resource body and a `links[rel=self]` URL. The same URL is also returned in the `Location` response header. Poll that URL until the status field reaches a terminal state.\n\n## Correlation\n\nEvery response carries an `X-Request-Id` header. Include this value when reporting issues so the request can be traced end to end. Clients should send a W3C `traceparent` header on every request so the trace can be correlated across services.\n\n## Rate limiting\n\nA `429 Too Many Requests` response may come in one of two shapes: an empty body with `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; or a JSON `Error` body with `Retry-After` and `RateLimit-*` headers. Clients should honour whichever headers are present and should not assume a JSON body is available.\n\n## Forward compatibility\n\nSeveral of the enumerations in this specification are expected to gain members as new products, environments and states come online. Where an enumeration's description says so, clients must not fail on a member they do not recognise — treat it as an unhandled value and continue.\n",
   "endpoints": [
     {
       "description": "Returns the current state of an application operation: a creation started by `POST /apps`, or a publish-state change started by `PUT /apps/{appId}/publish-state`. Use this as the poll target until `status` reaches `COMPLETED` or `FAILED`. On a `COMPLETED` creation, `app` carries the created application with `status: ACTIVE`. A publish-state operation carries no `app`; read `GET /apps/{appId}/publish-state` for the result.\n",
@@ -1525,13 +1541,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1549,7 +1565,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1627,13 +1643,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1645,7 +1661,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1657,7 +1673,7 @@
       "summary": "List applications"
     },
     {
-      "description": "Creates a new hosted application. Because no `appId` exists until provisioning has assigned one, this endpoint returns `202 Accepted` with an `AppOperation` resource carrying an `operationId`. Poll `GET /app-operations/{operationId}` until `status` is `COMPLETED` or `FAILED`. On `COMPLETED` the operation result includes the created `Application` with `status: ACTIVE`; use its `id` for any further calls.\n\nCurrently only `NODEJS` and `MHWP` applications can be created through this endpoint. The request body is product-specific; the fields below apply to Node.js and MHWP. Support for additional product types will be documented when those paths are available.\n",
+      "description": "Creates a new hosted application. Because no `appId` exists until provisioning has assigned one, this endpoint returns `202 Accepted` with an `AppOperation` resource carrying an `operationId`. Poll `GET /app-operations/{operationId}` until `status` is `COMPLETED` or `FAILED`. On `COMPLETED` the operation result includes the created `Application` with `status: ACTIVE`; use its `id` for any further calls.\n\nCurrently only `NODEJS` and `MHWP` applications can be created through this endpoint. The request body is product-specific; the fields below apply to Node.js and MHWP. Support for additional product types will be documented when those paths are available.\n\nA `NODEJS` create takes an optional `hostingProduct` query parameter. `WEB_HOSTING` asks for an application on a Web Hosting plan. `AIRO` asks for an Airo App Builder application, which publishes against an Airo plan. A plan is bought outside this API. When `hostingProduct` is omitted, the service chooses. Customers with an existing Web Hosting plan keep getting `WEB_HOSTING`. Everyone else gets `AIRO` where it is offered. Set `hostingProduct` explicitly to get a particular product. A request for either value that cannot be served returns `422` with a `details[].issue`, and nothing is created. `AIRO_NOT_AVAILABLE` is the code for `AIRO`. `WEB_HOSTING` is not guaranteed to stay available to customers without a Web Hosting plan, so clients should handle the `422` for it.\n\nFor `MHWP` applications, a refused create names its reason in `details[].issue`. A `403` carries `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account, or `SUBSCRIPTION_INACTIVE` when the Airo App Builder subscription is not active. A `409` carries `MULTIPLE_SYSTEMS_AMBIGUOUS` when the account's Airo App Builder subscription has more than one hosting system, so the target is ambiguous; `CREATE_IN_PROGRESS` when another create is in progress, so retry shortly; or `IDEMPOTENCY_IN_PROGRESS` while a request with the same `Idempotency-Key` is still in flight. A `422` carries `SUBSCRIPTION_REQUIRED` when the account has no Airo App Builder subscription; `SYSTEM_INCONSISTENT` when the account is not ready to add an app; `APP_LIMIT_EXCEEDED` when the account already has the maximum number of applications allowed for this product; or `IDEMPOTENCY_KEY_MISMATCH` when an `Idempotency-Key` is reused with a different body. A creation that fails after it is accepted ends the operation `FAILED` with `error.details[].issue` `CAPACITY_UNAVAILABLE` when no capacity is available to create the app, so retry later, or `APP_CREATION_FAILED` for any other failure.\n",
       "method": "POST",
       "operationId": "createApp",
       "parameters": [
@@ -1681,7 +1697,16 @@
           }
         },
         {
-          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
+          "description": "The product that hosts the new application. `appType=NODEJS` only, and `appType=MHWP` rejects it with `400`. A value the customer can't use is refused with `422` and a `details[].issue`, and nothing is created. Not the same as the `hostingProduct` filter on `GET /subscriptions`, which takes `WEB_HOSTING` and `MANAGED_WORDPRESS`.\n",
+          "in": "query",
+          "name": "hostingProduct",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/AppHostingProduct"
+          }
+        },
+        {
+          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict` with `details[].issue` `IDEMPOTENCY_IN_PROGRESS`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
           "in": "header",
           "name": "Idempotency-Key",
           "required": false,
@@ -1713,13 +1738,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1743,7 +1768,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1789,13 +1814,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1813,7 +1838,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1825,7 +1850,7 @@
       "summary": "Get an application"
     },
     {
-      "description": "Partial update via [JSON Patch (RFC 6902)](https://datatracker.ietf.org/doc/html/rfc6902). The request body is an array of operations applied in order and atomically. At least one operation must be present.\n\nOnly the `replace` operation is supported, and only against the `/name` and `/rootPath` paths. Any other op or path returns `400 Bad Request`.\n\n- `/name` — human-readable display name. String, 1–200 characters. - `/rootPath` — subdirectory within the repository to treat as\n  the application root. Write-only; not returned on the\n  `Application` resource.\n\n\nCurrently only supported for `NODEJS` and `MHWP` applications. Additional product-specific paths will be documented when those paths are available.\n",
+      "description": "Partial update via [JSON Patch (RFC 6902)](https://datatracker.ietf.org/doc/html/rfc6902). The request body is an array of operations applied in order and atomically. At least one operation must be present.\n\nOnly the `replace` operation is supported, and only against the `/name` and `/rootPath` paths. Any other op or path returns `400 Bad Request`.\n\n- `/name` — human-readable display name. String, 1–200 characters. - `/rootPath` — subdirectory within the repository to treat as\n  the application root. Write-only; not returned on the\n  `Application` resource.\n\n\nCurrently only supported for `NODEJS` and `MHWP` applications. Additional product-specific paths will be documented when those paths are available.\nFor `MHWP` applications only `/name` can be changed. A `replace` of `/rootPath` answers `422` with `details[].issue` `ROOT_PATH_NOT_APPLICABLE`, because a WordPress site serves from a fixed document root. An `MHWP` application whose `status` is `DELETING` cannot be renamed and answers `422` with `details[].issue` `APP_DELETING`. While another write holds the application's lock, a rename answers `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5`; retry after that delay.\n",
       "method": "PATCH",
       "operationId": "updateApp",
       "parameters": [
@@ -1872,13 +1897,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1902,7 +1927,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1914,7 +1939,7 @@
       "summary": "Update an application"
     },
     {
-      "description": "Permanently deletes the application, its deployments, imported source, secrets, and attached domains. This action cannot be undone. Returns `204 No Content` on success.\n",
+      "description": "Permanently deletes the application, its deployments, imported source, secrets, and attached domains. This action cannot be undone. Returns `204 No Content` on success.\n\nFor `MHWP` applications, deletion is asynchronous. The `204` response starts the teardown, and `GET /apps/{appId}` returns the application with `status` `DELETING` while it runs. Once removal is complete, `GET /apps/{appId}` returns `404`. A repeat `DELETE` during the teardown also returns `204` and starts nothing new. While another write holds the application's lock, the request answers `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5`; retry after that delay.\nDeleting a Node.js application built in Airo through the API is being rolled out. Until it is offered for the caller, the request answers `501` with `details[].issue` `NOT_APPLICABLE` and the application is not deleted.\n",
       "method": "DELETE",
       "operationId": "deleteApp",
       "parameters": [
@@ -1945,13 +1970,13 @@
           "description": "Application deleted."
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -1968,8 +1993,14 @@
             "$ref": "#/$defs/Error"
           }
         },
+        "501": {
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
+          "schema": {
+            "$ref": "#/$defs/Error"
+          }
+        },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2042,13 +2073,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2066,13 +2097,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2084,7 +2115,7 @@
       "summary": "List deployments"
     },
     {
-      "description": "Builds the latest imported source and deploys it to the publish environment. Returns `202 Accepted`. Poll `GET /apps/{appId}/deployments/{deploymentId}` until `status` is `COMPLETED` or `FAILED`.\n\nThis endpoint is only applicable to Node.js applications (`appType: NODEJS`): a deployment builds the imported source and publishes it through the Node.js application agent, which other hosting products do not have. Other product types return `501`.\n\nGoing live is subject to the subscription's plan: when the plan's live-site limit is reached, the request answers `422` with `details[].issue` `PUBLISH_LIMIT_EXCEEDED`, the same code `PUT /apps/{appId}/publish-state` uses for `MHWP`.\n",
+      "description": "Builds the latest imported source and deploys it to the publish environment. Returns `202 Accepted`. Poll `GET /apps/{appId}/deployments/{deploymentId}` until `status` is `COMPLETED` or `FAILED`.\n\nThis endpoint is only applicable to Node.js applications (`appType: NODEJS`): a deployment builds the imported source and publishes it through the Node.js application agent, which other hosting products do not have. Other product types return `501`.\n\nFor a Node.js application not built in Airo, when the account's live-site limit is reached, the request answers `422` with `details[].issue` `PUBLISH_LIMIT_EXCEEDED`, the same code `PUT /apps/{appId}/publish-state` uses for `MHWP`. Other `422` issue codes may apply.\nFor a Node.js application built in Airo, going live is governed by the application's Airo App Builder plan. When that plan does not allow the application to go live, for example a free plan or a plan whose live-site limit is reached, the request answers `422` with `details[].issue` `PLAN_UPGRADE_REQUIRED`. The fix is to upgrade the plan: the error carries a `links` entry with `rel: upgrade` (`links[rel=upgrade]`) whose `href` is the Airo App Builder plan page for the application. Treat `href` as opaque; do not build or parse it.\nWhen a Node.js application built in Airo is suspended, the request answers `422` with `details[].issue` `APP_SUSPENDED` and nothing is published.\nPublishing a Node.js application built in Airo through the API is being rolled out. Until it is offered for the caller, the request answers `501` with `details[].issue` `NOT_APPLICABLE` and nothing is published.\nWhen the application's plan cannot be checked, the request answers `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and a `Retry-After` header, and nothing is published. Retry after that delay.\n",
       "method": "POST",
       "operationId": "createDeployment",
       "parameters": [
@@ -2109,7 +2140,7 @@
           }
         },
         {
-          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
+          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict` with `details[].issue` `IDEMPOTENCY_IN_PROGRESS`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
           "in": "header",
           "name": "Idempotency-Key",
           "required": false,
@@ -2134,13 +2165,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2152,7 +2183,7 @@
           }
         },
         "422": {
-          "description": "The request was well-formed but could not be processed due to a business rule violation.",
+          "description": "The deployment request was well-formed but could not be processed due to a business rule violation. `details[].issue` is `PLAN_UPGRADE_REQUIRED` for a Node.js application built in Airo whose Airo App Builder plan does not allow it to go live, `APP_SUSPENDED` for a Node.js application built in Airo that is suspended, or `PUBLISH_LIMIT_EXCEEDED` for a Node.js application not built in Airo when the account's live-site limit is reached. Other issue codes may apply.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2164,13 +2195,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2225,13 +2256,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2249,13 +2280,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2301,13 +2332,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2325,13 +2356,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2343,7 +2374,7 @@
       "summary": "List attached domains"
     },
     {
-      "description": "Attaches a custom domain to the application and initiates DNS verification. Returns `202 Accepted`. Poll `GET /apps/{appId}/domains/{domainId}` until `verificationStatus` is `ACTIVE` or `FAILED`.\n",
+      "description": "Attaches a custom domain to the application and initiates DNS verification. Returns `202 Accepted`. Poll `GET /apps/{appId}/domains/{domainId}` until `verificationStatus` is `ACTIVE` or `FAILED`.\n\nA Node.js application built in Airo has to be published before a domain can be attached. Otherwise the call returns `422` with `details[].issue` `APP_NOT_PUBLISHED`. Other `422` responses use different issue codes, so branch on `details[].issue`.\n",
       "method": "POST",
       "operationId": "attachDomain",
       "parameters": [
@@ -2368,7 +2399,7 @@
           }
         },
         {
-          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
+          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict` with `details[].issue` `IDEMPOTENCY_IN_PROGRESS`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
           "in": "header",
           "name": "Idempotency-Key",
           "required": false,
@@ -2400,13 +2431,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2436,13 +2467,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2497,13 +2528,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2521,13 +2552,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2579,13 +2610,13 @@
           "description": "Domain detached."
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2603,13 +2634,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2646,7 +2677,7 @@
           }
         },
         {
-          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
+          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict` with `details[].issue` `IDEMPOTENCY_IN_PROGRESS`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
           "in": "header",
           "name": "Idempotency-Key",
           "required": false,
@@ -2678,13 +2709,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2714,13 +2745,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2775,13 +2806,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2799,13 +2830,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2936,13 +2967,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -2960,13 +2991,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3012,13 +3043,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3036,13 +3067,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3054,7 +3085,7 @@
       "summary": "Get an application's publish state"
     },
     {
-      "description": "Sets the application's publish state. `{ \"published\": true }` takes the site live at `urls.publish`; `{ \"published\": false }` takes it back behind its Coming Soon page. Returns `202 Accepted` with an `AppOperation` that carries no `app`; the `Location` header and `links[rel=self]` give the poll URL. Poll `GET /app-operations/{operationId}` until `status` is `COMPLETED` or `FAILED`, then read `GET /apps/{appId}/publish-state`. A request for the state the application is already in is accepted with `202` and runs no change; the returned `AppOperation` is already `COMPLETED`.\n\nThe body is a `PublishState` carrying only `published`: exactly `{ \"published\": <boolean> }`. A body that lacks `published`, whose `published` is not a boolean, or that has any other field, the read-only `firstPublishedAt`, `updatedAt` and `links` included, is a `400`.\n\nGoing live is subject to the subscription's plan: a plan that allows no live sites, or one whose live-site limit is reached, answers `422` with `details[].issue` `PUBLISH_LIMIT_EXCEEDED`. The limit is checked again as the change runs, so a concurrent publish that takes the last slot ends the operation `FAILED` with `error.details[].issue` `PUBLISH_LIMIT_EXCEEDED`; any other failure ends it `FAILED` with `PUBLISH_STATE_CHANGE_FAILED`. A subscription that is not active cannot take a site live and answers `403` with `details[].issue` `SUBSCRIPTION_INACTIVE`. Taking a site offline is never limited.\n\nThe request is idempotent by nature, so `Idempotency-Key` is not used. While a change for this application is still running, a `PUT` for the same state returns `202` with that running operation; a `PUT` for the opposite state is refused with `409` and `details[].issue` `PUBLISH_STATE_CHANGE_IN_PROGRESS`. Poll the running operation, then retry. The same `409` is returned for a moment while another publish-state request on the same subscription is being accepted; retry shortly.\n\nOffered for the same products as `GET /apps/{appId}/publish-state`; `NODEJS-` ids answer `501` `NOT_APPLICABLE`.\n",
+      "description": "Sets the application's publish state. `{ \"published\": true }` takes the site live at `urls.publish`; `{ \"published\": false }` takes it back behind its Coming Soon page. Returns `202 Accepted` with an `AppOperation` that carries no `app`; the `Location` header and `links[rel=self]` give the poll URL. Poll `GET /app-operations/{operationId}` until `status` is `COMPLETED` or `FAILED`, then read `GET /apps/{appId}/publish-state`. A request for the state the application is already in is accepted with `202` and runs no change; the returned `AppOperation` is already `COMPLETED`.\n\nThe body is a `PublishState` carrying only `published`: exactly `{ \"published\": <boolean> }`. A body that lacks `published`, whose `published` is not a boolean, or that has any other field, the read-only `firstPublishedAt`, `updatedAt` and `links` included, is a `400`.\n\nGoing live is subject to the subscription's plan: a plan that allows no live sites, or one whose live-site limit is reached, answers `422` with `details[].issue` `PUBLISH_LIMIT_EXCEEDED`. The limit is checked again as the change runs, so a concurrent publish that takes the last slot ends the operation `FAILED` with `error.details[].issue` `PUBLISH_LIMIT_EXCEEDED`; any other failure ends it `FAILED` with `PUBLISH_STATE_CHANGE_FAILED`. A subscription that is not active cannot take a site live and answers `403` with `details[].issue` `SUBSCRIPTION_INACTIVE`. Taking a site offline is never limited. An application whose `status` is `DELETING` answers `422` with `details[].issue` `APP_DELETING`, whichever state is requested. While another write holds the application's lock, the request answers `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5`; retry after that delay.\n\nThe request is idempotent by nature, so `Idempotency-Key` is not used. While a change for this application is still running, a `PUT` for the same state returns `202` with that running operation; a `PUT` for the opposite state is refused with `409` and `details[].issue` `PUBLISH_STATE_CHANGE_IN_PROGRESS`. Poll the running operation, then retry. The same `409` is returned for a moment while another publish-state request on the same subscription is being accepted; retry shortly.\n\nOffered for the same products as `GET /apps/{appId}/publish-state`; `NODEJS-` ids answer `501` `NOT_APPLICABLE`.\n",
       "method": "PUT",
       "operationId": "setPublishState",
       "parameters": [
@@ -3101,13 +3132,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3137,13 +3168,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3180,7 +3211,7 @@
           }
         },
         {
-          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
+          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict` with `details[].issue` `IDEMPOTENCY_IN_PROGRESS`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
           "in": "header",
           "name": "Idempotency-Key",
           "required": false,
@@ -3212,13 +3243,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3242,13 +3273,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3297,13 +3328,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3321,7 +3352,7 @@
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3376,13 +3407,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3400,13 +3431,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3443,7 +3474,7 @@
           }
         },
         {
-          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
+          "description": "Client-generated UUID that makes a request safe to retry. Supplying the same key on a retry with an identical request body returns the original response without triggering a second operation. Retrying with the same key while the first request is still in flight returns `409 Conflict` with `details[].issue` `IDEMPOTENCY_IN_PROGRESS`. Reusing a key with a different request body returns `422 Unprocessable Entity` with `details[].issue` `IDEMPOTENCY_KEY_MISMATCH`. Keys are retained for 24 hours after the operation completes, after which the key may be reused.\n",
           "in": "header",
           "name": "Idempotency-Key",
           "required": false,
@@ -3484,13 +3515,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3520,13 +3551,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3572,13 +3603,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3596,13 +3627,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3614,7 +3645,7 @@
       "summary": "Get application runtime status"
     },
     {
-      "description": "Returns the subscription currently attached to this application. Returns `404` if no subscription has ever been attached.\n",
+      "description": "Returns the subscription currently attached to this application. Returns `404` if no subscription has ever been attached.\n`MHWP-` ids return `501` with `details[].issue` `NOT_APPLICABLE`. Node.js applications built in Airo are billed by their Airo App Builder plan, not by a Web Hosting subscription, so their `NODEJS-` ids also return `501` with `details[].issue` `NOT_APPLICABLE`.\n",
       "method": "GET",
       "operationId": "getSubscriptionAttachment",
       "parameters": [
@@ -3648,13 +3679,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3672,13 +3703,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3690,7 +3721,7 @@
       "summary": "Get the subscription attached to an application"
     },
     {
-      "description": "Attaches a hosting subscription to the application. The subscription must have at least one free slot. If not, a `409` is returned with `details[].issue` `NO_CAPACITY`.\n",
+      "description": "Attaches a hosting subscription to the application. The subscription must have at least one free slot. If not, a `409` is returned with `details[].issue` `NO_CAPACITY`.\n`MHWP-` ids return `501` with `details[].issue` `NOT_APPLICABLE`. Node.js applications built in Airo are billed by their Airo App Builder plan, not by a Web Hosting subscription, so their `NODEJS-` ids also return `501` with `details[].issue` `NOT_APPLICABLE`.\n",
       "method": "PUT",
       "operationId": "attachSubscription",
       "parameters": [
@@ -3737,13 +3768,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3773,13 +3804,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3830,13 +3861,13 @@
           }
         },
         "401": {
-          "description": "Authentication credentials are missing or invalid.",
+          "description": "Authentication credentials are missing or invalid. The response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle this status.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "403": {
-          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active.\n",
+          "description": "The caller is authenticated, but the request is not permitted: the access token does not carry the scope this operation requires, the operation is disabled for this account, or the account is not entitled to it. An entitlement `403` names the reason in `details[].issue`: for example `PUT /apps/{appId}/publish-state` answers `SUBSCRIPTION_INACTIVE` when the subscription that owns the application is not active, and `POST /apps?appType=MHWP` answers `WORDPRESS_NOT_ENABLED` when WordPress is not enabled for this account. When the access token does not carry the required scope, the response body may be empty and may not include `details[].issue`, so clients should not rely on the body to handle that case.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3848,13 +3879,13 @@
           }
         },
         "501": {
-          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`.\n",
+          "description": "The request is contract-valid, but the operation, or a value the request names, is not applicable to this deployment or to this application. `details[].issue` is always `NOT_APPLICABLE`. For example, deployments and restarts are offered for `NODEJS` applications only, and a hosting product this deployment does not serve is answered here rather than with a `400`. Node.js applications built in Airo answer `501` for `GET` and `PUT /apps/{appId}/subscription`, for `DELETE /apps/{appId}` until deleting them through the API is offered for the caller, and for `POST /apps/{appId}/deployments` until publishing them through the API is offered for the caller.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
         },
         "503": {
-          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state`, `details[].issue` is `UPSTREAM_UNAVAILABLE`.\n",
+          "description": "The service is temporarily unable to handle the request. Retry after a short delay. May include a `Retry-After` header hinting at when to retry. When a dependency the request needs could not be read, such as the plan limit behind `PUT /apps/{appId}/publish-state` or the plan check behind `POST /apps/{appId}/deployments`, `details[].issue` is `UPSTREAM_UNAVAILABLE`. For `MHWP` applications, `PATCH /apps/{appId}`, `DELETE /apps/{appId}` and `PUT /apps/{appId}/publish-state` also answer `503` with `details[].issue` `UPSTREAM_UNAVAILABLE` and `Retry-After: 5` while another write holds the application's lock.\n",
           "schema": {
             "$ref": "#/$defs/Error"
           }
@@ -3868,5 +3899,5 @@
   ],
   "name": "hosting",
   "title": "Hosted Application Lifecycle Management API",
-  "version": "1.2.0"
+  "version": "1.2.4"
 }

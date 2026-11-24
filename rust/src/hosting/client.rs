@@ -1,7 +1,8 @@
 use hosting_client::types::{
-    AppType, AttachDomainRequest, AttachSubscriptionRequest, CreateAppRequest, Environment,
-    HostingProduct, ImportGitHubSourceRequest, PublishState, RestartRequest,
+    AppHostingProduct, AppType, AttachDomainRequest, AttachSubscriptionRequest, CreateAppRequest,
+    Environment, HostingProduct, ImportGitHubSourceRequest, PublishState, RestartRequest,
 };
+use reqwest::header::HeaderMap;
 use reqwest::{Client, Method};
 use serde_json::{Value, json};
 
@@ -12,7 +13,12 @@ const BASE_PATH: &str = "/v1/hosting";
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
     #[error("HTTP error {status}: {body}")]
-    Http { status: u16, body: String },
+    Http {
+        status: u16,
+        body: String,
+        /// The response's `Retry-After`, when it gives a number of seconds.
+        retry_after: Option<std::time::Duration>,
+    },
     #[error("network error: {0}")]
     Network(String),
     #[error("request error: {0}")]
@@ -31,7 +37,7 @@ pub enum ClientError {
 impl From<ClientError> for crate::error::GddyError {
     fn from(value: ClientError) -> Self {
         match value {
-            ClientError::Http { status, body } => Self::from_http(status, body, "hosting"),
+            ClientError::Http { status, body, .. } => Self::from_http(status, body, "hosting"),
             ClientError::Network(error) | ClientError::Request(error) => {
                 Self::network(error).with_system("hosting")
             }
@@ -164,6 +170,7 @@ impl HostingClient {
             return Err(ClientError::Http {
                 status,
                 body: String::from_utf8_lossy(&bytes).into_owned(),
+                retry_after: retry_after(&headers),
             });
         }
 
@@ -234,6 +241,7 @@ impl HostingClient {
             return Err(ClientError::Http {
                 status,
                 body: String::from_utf8_lossy(&bytes).into_owned(),
+                retry_after: retry_after(&headers),
             });
         }
         if bytes.is_empty() {
@@ -268,24 +276,26 @@ impl HostingClient {
         response(client.get_app().app_id(app_id).send().await).await
     }
 
+    /// Starts the creation of an app. `hosting_product` names what hosts a
+    /// Node.js app; `None` leaves the choice to the service.
     pub async fn create_app(
         &self,
         app_type: &str,
+        hosting_product: Option<&str>,
         body: Value,
         idempotency_key: &str,
     ) -> Result<Value, ClientError> {
         let client = self.api()?;
         let body: CreateAppRequest = deserialize(body)?;
-        response(
-            client
-                .create_app()
-                .app_type(AppType::from(app_type.to_owned()))
-                .idempotency_key(idempotency_key)
-                .body(body)
-                .send()
-                .await,
-        )
-        .await
+        let mut request = client
+            .create_app()
+            .app_type(AppType::from(app_type.to_owned()))
+            .idempotency_key(idempotency_key)
+            .body(body);
+        if let Some(product) = hosting_product {
+            request = request.hosting_product(AppHostingProduct::from(product.to_owned()));
+        }
+        response(request.send().await).await
     }
 
     pub async fn update_app(&self, app_id: &str, patch: Value) -> Result<Value, ClientError> {
@@ -493,6 +503,7 @@ impl HostingClient {
             return Err(ClientError::Http {
                 status,
                 body: String::from_utf8_lossy(&bytes).into_owned(),
+                retry_after: retry_after(&headers),
             });
         }
 
@@ -681,6 +692,19 @@ impl HostingClient {
     }
 }
 
+/// The delay a `Retry-After` header asks for. Only the number-of-seconds form
+/// is read; a date, or a header that is missing or empty, gives `None`.
+fn retry_after(headers: &HeaderMap) -> Option<std::time::Duration> {
+    headers
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .map(std::time::Duration::from_secs)
+}
+
 fn page_size(limit: u32) -> Option<std::num::NonZeroU64> {
     std::num::NonZeroU64::new(u64::from(limit))
 }
@@ -715,8 +739,13 @@ async fn response<T: serde::Serialize>(
         }
         Err(progenitor_client::Error::UnexpectedResponse(response)) => {
             let status = response.status().as_u16();
+            let retry_after = retry_after(response.headers());
             let body = response.text().await.unwrap_or_default();
-            Err(ClientError::Http { status, body })
+            Err(ClientError::Http {
+                status,
+                body,
+                retry_after,
+            })
         }
         Err(progenitor_client::Error::CommunicationError(error)) => {
             Err(ClientError::Network(error.to_string()))

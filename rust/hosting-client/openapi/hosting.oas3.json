@@ -49,6 +49,14 @@
           "$ref": "#/components/schemas/AppType"
         }
       },
+      "createHostingProduct": {
+        "in": "query",
+        "name": "hostingProduct",
+        "required": false,
+        "schema": {
+          "$ref": "#/components/schemas/AppHostingProduct"
+        }
+      },
       "hostingProduct": {
         "in": "query",
         "name": "hostingProduct",
@@ -117,6 +125,23 @@
         }
       },
       "Conflict": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "Response",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "DeploymentUnprocessableEntity": {
         "content": {
           "application/json": {
             "schema": {
@@ -279,6 +304,12 @@
       }
     },
     "schemas": {
+      "AppHostingProduct": {
+        "$id": "https://godaddy.com/schemas/hosting/enums/app-hosting-product.v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "AppHostingProduct",
+        "type": "string"
+      },
       "AppOperation": {
         "$id": "https://godaddy.com/schemas/hosting/models/app-operation.v1",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -391,6 +422,10 @@
           },
           "createdAt": {
             "$ref": "#/components/schemas/date-time",
+            "readOnly": true
+          },
+          "hostingProduct": {
+            "$ref": "#/components/schemas/AppHostingProduct",
             "readOnly": true
           },
           "id": {
@@ -1335,7 +1370,7 @@
       "url": "https://www.godaddy.com/legal/agreements/software-license-agreement"
     },
     "title": "Hosted Application Lifecycle Management API",
-    "version": "1.2.0"
+    "version": "1.2.4"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -1471,6 +1506,14 @@
             "required": true,
             "schema": {
               "$ref": "#/components/schemas/AppType"
+            }
+          },
+          {
+            "in": "query",
+            "name": "hostingProduct",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/AppHostingProduct"
             }
           },
           {
