@@ -11,7 +11,7 @@ use commerce_client::{Client, types::V1Store};
 use serde_json::{Value, json};
 
 use super::{
-    context::{self, StoreEntry},
+    context::{self, StoreEntry, StoreIdInput},
     resolve_store_id,
 };
 use crate::{
@@ -115,6 +115,18 @@ fn store_summary(store_id: &str, store: &V1Store) -> Value {
     })
 }
 
+/// The store `get` shows: the id it was given, else the selected store. The id is
+/// a positional argument, so errors about it say so.
+fn get_target(env: &str, store_id: Option<&str>) -> Result<String> {
+    resolve_store_id(env, store_id, StoreIdInput::Argument)
+}
+
+/// The store `use` selects, validated and canonicalized before anything is
+/// fetched or saved. The id is a positional argument, so errors about it say so.
+fn use_target(env: &str, store_id: &str) -> Result<String> {
+    resolve_store_id(env, Some(store_id), StoreIdInput::Argument)
+}
+
 /// Reads the store and shows it.
 async fn show(client: &Client, store_id: &str, env: &str) -> Result<CommandResult> {
     let store = fetch_store(client, store_id, env).await?;
@@ -122,8 +134,9 @@ async fn show(client: &Client, store_id: &str, env: &str) -> Result<CommandResul
 }
 
 /// Reads the store, and only if that succeeds saves it as the selection for
-/// `env`. Under `--dry-run` the read still happens, so a preview fails where the
-/// real run would, but nothing is saved.
+/// `env`. Under `--dry-run` everything the real run needs is still checked, the
+/// read of the store and that the selection file can be saved to, so a preview
+/// fails where the real run would, but nothing is saved.
 async fn select(
     client: &Client,
     store_id: &str,
@@ -131,7 +144,9 @@ async fn select(
     dry_run: bool,
 ) -> Result<CommandResult> {
     let store = fetch_store(client, store_id, env).await?;
-    if !dry_run {
+    if dry_run {
+        context::check_can_save()?;
+    } else {
         context::save_store(
             env,
             StoreEntry {
@@ -174,7 +189,7 @@ fn get_command() -> RuntimeCommandSpec {
             .with_view(store_columns())
             .with_scopes(&[COMMERCE_STORE_READ]),
         |ctx, args: GetArgs| async move {
-            let store_id = resolve_store_id(&ctx, args.store_id.as_deref())?;
+            let store_id = get_target(&ctx.middleware.env, args.store_id.as_deref())?;
             let client = make_client(&ctx, &[COMMERCE_STORE_READ]).await?;
             show(&client, &store_id, &ctx.middleware.env).await
         },
@@ -203,7 +218,7 @@ fn use_command() -> RuntimeCommandSpec {
         |ctx, args: UseArgs| async move {
             let env = ctx.middleware.env.clone();
             // Validates and canonicalizes the id before anything is fetched or saved.
-            let store_id = resolve_store_id(&ctx, Some(&args.store_id))?;
+            let store_id = use_target(&env, &args.store_id)?;
             let client = make_client(&ctx, &[COMMERCE_STORE_READ]).await?;
             select(&client, &store_id, &env, ctx.dry_run()).await
         },
@@ -223,7 +238,7 @@ fn current_command() -> RuntimeCommandSpec {
             .no_auth(true),
         |ctx, _args: NoArgs| async move {
             let env = ctx.middleware.env.clone();
-            let selected = context::lookup(&env, None)?;
+            let selected = context::lookup(&env, None, StoreIdInput::Flag)?;
             Ok(CommandResult::new(match selected {
                 Some(store) => json!({
                     "selected": true,
@@ -253,19 +268,30 @@ fn clear_command() -> RuntimeCommandSpec {
             .no_auth(true),
         |ctx, _args: NoArgs| async move {
             let env = ctx.middleware.env.clone();
-            let saved = context::saved_store(&env)?;
             let dry_run = ctx.dry_run();
-            let action = match (&saved, dry_run) {
-                (None, _) => "nothing to clear",
-                (Some(_), true) => "would clear",
-                (Some(_), false) => {
-                    context::clear_store(&env)?;
+            // A preview only looks. A real run reports the entry the locked clear
+            // removed, not an earlier read, which another process may have
+            // changed in between.
+            let (removed, action) = if dry_run {
+                let saved = context::saved_store(&env)?;
+                let action = if saved.is_some() {
+                    "would clear"
+                } else {
+                    "nothing to clear"
+                };
+                (saved, action)
+            } else {
+                let removed = context::clear_store(&env)?;
+                let action = if removed.is_some() {
                     "cleared"
-                }
+                } else {
+                    "nothing to clear"
+                };
+                (removed, action)
             };
             let result = CommandResult::new(json!({
                 "environment": env,
-                "storeId": saved.map(|entry| entry.store_id),
+                "storeId": removed.map(|entry| entry.store_id),
                 "action": action,
             }));
             Ok(if dry_run {

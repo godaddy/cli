@@ -156,6 +156,26 @@ fn unreadable(path: &Path, error: &dyn std::fmt::Display) -> CliCoreError {
     .into_cli_error()
 }
 
+/// How a command takes an explicit store id, so an error about one can name it
+/// the way the user typed it: `get` and `use` take a positional argument, while a
+/// command with a `--store-id` option takes a flag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StoreIdInput {
+    /// The `--store-id` flag.
+    Flag,
+    /// A positional `<STORE_ID>` argument.
+    Argument,
+}
+
+impl StoreIdInput {
+    fn origin(self) -> &'static str {
+        match self {
+            Self::Flag => "--store-id",
+            Self::Argument => "<STORE_ID>",
+        }
+    }
+}
+
 /// Where a resolved store id came from, so a command can say why a store is in
 /// effect (for example an environment variable overriding what was saved).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -224,10 +244,15 @@ fn parse_store_id(value: &str, origin: &str, env: &str) -> Result<String> {
 ///
 /// A validation error if the value from the first source that supplies one is
 /// not a store id, and a config error if the saved selection cannot be read.
-pub(crate) fn lookup(env: &str, explicit: Option<&str>) -> Result<Option<ResolvedStore>> {
+pub(crate) fn lookup(
+    env: &str,
+    explicit: Option<&str>,
+    input: StoreIdInput,
+) -> Result<Option<ResolvedStore>> {
     resolve_with(
         env,
         explicit,
+        input,
         |name| std::env::var_os(name),
         || match registry_path() {
             Some(path) => StoreRegistry::load(&path),
@@ -244,12 +269,13 @@ pub(crate) fn lookup(env: &str, explicit: Option<&str>) -> Result<Option<Resolve
 fn resolve_with(
     env: &str,
     explicit: Option<&str>,
+    input: StoreIdInput,
     get_env: impl Fn(&str) -> Option<std::ffi::OsString>,
     registry: impl FnOnce() -> Result<StoreRegistry>,
 ) -> Result<Option<ResolvedStore>> {
     if let Some(value) = explicit {
         return Ok(Some(ResolvedStore {
-            store_id: parse_store_id(value, "--store-id", env)?,
+            store_id: parse_store_id(value, input.origin(), env)?,
             source: StoreIdSource::Flag,
             entry: None,
         }));
@@ -302,14 +328,25 @@ pub(crate) fn save_store(env: &str, entry: StoreEntry) -> Result<()> {
     save_store_at(&required_registry_path()?, env, entry)
 }
 
-/// Forgets the saved selection for `env`, returning whether there was one. It
-/// does not touch `GDDY_STORE_ID` or `GDDY_STORE_ID_<ENV>`: those belong to the
-/// caller's environment, not to this file.
-pub(crate) fn clear_store(env: &str) -> Result<bool> {
+/// Forgets the saved selection for `env`, returning the entry it removed, or
+/// `None` if there was none. The entry comes from the same locked read that
+/// removes it, so it is the store that was actually forgotten even if another
+/// process was changing the file at the same moment. It does not touch
+/// `GDDY_STORE_ID` or `GDDY_STORE_ID_<ENV>`: those belong to the caller's
+/// environment, not to this file.
+pub(crate) fn clear_store(env: &str) -> Result<Option<StoreEntry>> {
     match registry_path() {
         Some(path) => clear_store_at(&path, env),
-        None => Ok(false),
+        None => Ok(None),
     }
+}
+
+/// Fails now if [`save_store`] would fail for a reason other than the store
+/// itself: no config directory to save in, or an existing selection file that
+/// cannot be read. Writes nothing and takes no lock, so a `--dry-run` can
+/// report what the real run would hit.
+pub(crate) fn check_can_save() -> Result<()> {
+    StoreRegistry::load(&required_registry_path()?).map(drop)
 }
 
 fn required_registry_path() -> Result<std::path::PathBuf> {
@@ -329,7 +366,7 @@ fn save_store_at(path: &Path, env: &str, mut entry: StoreEntry) -> Result<()> {
     registry.save(path)
 }
 
-fn clear_store_at(path: &Path, env: &str) -> Result<bool> {
+fn clear_store_at(path: &Path, env: &str) -> Result<Option<StoreEntry>> {
     // Nothing saved means nothing to clear; do not create a config directory and
     // a lock file just to find that out. Only a file that is really missing counts
     // as nothing saved: `Path::exists` also says "no" when the lookup itself fails
@@ -337,16 +374,16 @@ fn clear_store_at(path: &Path, env: &str) -> Result<bool> {
     // selection in place.
     match path.try_exists() {
         Ok(true) => {}
-        Ok(false) => return Ok(false),
+        Ok(false) => return Ok(None),
         Err(error) => return Err(unreadable(path, &error)),
     }
     let _lock = RegistryLock::acquire(path)?;
     let mut registry = StoreRegistry::load(path)?;
-    let existed = registry.stores.remove(env).is_some();
-    if existed {
+    let removed = registry.stores.remove(env);
+    if removed.is_some() {
         registry.save(path)?;
     }
-    Ok(existed)
+    Ok(removed)
 }
 
 #[cfg(test)]

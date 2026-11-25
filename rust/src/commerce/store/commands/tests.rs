@@ -431,3 +431,129 @@ async fn the_commerce_group_is_hidden_at_ga_and_visible_from_beta() {
         assert!(shown.rendered.contains(command), "{}", shown.rendered);
     }
 }
+
+/// A preview must fail where the real run would. A damaged selection file stops
+/// `use`, so `use --dry-run` has to report it too, not claim it would select.
+#[tokio::test]
+async fn use_dry_run_reports_a_damaged_selection_file() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let path = context::registry_path().expect("a config directory");
+    std::fs::create_dir_all(path.parent().expect("has a parent")).expect("create dir");
+    std::fs::write(&path, "stores = [not toml").expect("seed a damaged file");
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+
+    let preview = select(&client_for(&server), STORE_ID, "ote", true)
+        .await
+        .expect_err("a preview must fail on a file the real run cannot read");
+    let real = select(&client_for(&server), STORE_ID, "ote", false)
+        .await
+        .expect_err("the real run fails on it too");
+
+    let message = |error: &cli_engine::CliCoreError| {
+        cli_engine::build_error_envelope(error, "commerce")
+            .error
+            .map(|e| e.message)
+            .unwrap_or_default()
+    };
+    assert_eq!(message(&preview), message(&real));
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("still there"),
+        "stores = [not toml",
+        "a preview must not touch the file"
+    );
+}
+
+fn text_of(error: &cli_engine::CliCoreError) -> String {
+    let envelope = cli_engine::build_error_envelope(error, "commerce");
+    format!(
+        "{} {}",
+        envelope.error.map(|e| e.message).unwrap_or_default(),
+        envelope.fix.unwrap_or_default()
+    )
+}
+
+/// With nothing selected, `get` takes the id as an argument, so the error must
+/// not tell the user to pass a `--store-id` flag it does not have.
+#[tokio::test]
+async fn get_without_a_store_does_not_suggest_a_flag_it_lacks() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+
+    let error = get_target("ote", None).expect_err("nothing is selected");
+
+    let text = text_of(&error);
+    assert!(!text.contains("--store-id"), "{text}");
+    assert!(text.contains("store use"), "{text}");
+}
+
+/// An id typed as an argument is named as an argument when it is not valid, for
+/// both commands that take one.
+#[tokio::test]
+async fn an_invalid_positional_id_is_not_called_a_flag() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+
+    for error in [
+        get_target("ote", Some("nope")).expect_err("not a store id"),
+        use_target("ote", "nope").expect_err("not a store id"),
+    ] {
+        let text = text_of(&error);
+        assert!(!text.contains("--store-id"), "{text}");
+        assert!(text.contains("<STORE_ID>"), "{text}");
+    }
+}
+
+#[tokio::test]
+async fn a_valid_positional_id_is_canonicalized() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let upper = STORE_ID.to_uppercase();
+
+    assert_eq!(get_target("ote", Some(&upper)).expect("valid"), STORE_ID);
+    assert_eq!(use_target("ote", &upper).expect("valid"), STORE_ID);
+}
+
+/// The same race through the command: `clear` waits for the registry lock while
+/// another process saves a different store. It must report the store it removed.
+/// Needs a second worker thread, since the waiting `clear` blocks one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn clear_reports_the_store_it_removed_when_the_selection_changes_underneath_it() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let other_store = "a1e14cc2-29bd-4e99-a1ad-c426cb0266c1";
+    let entry = |store_id: &str| StoreEntry {
+        store_id: store_id.to_owned(),
+        business_id: None,
+        display_name: None,
+    };
+    context::save_store("ote", entry(STORE_ID)).expect("seed A");
+    let path = context::registry_path().expect("a config directory");
+    let lock_file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(path.with_file_name("commerce.toml.lock"))
+        .expect("open the lock file");
+    lock_file.lock().expect("hold the registry lock");
+
+    let clearing = tokio::spawn(async {
+        run(&[
+            "gddy", "commerce", "store", "clear", "--env", "ote", "--output", "json",
+        ])
+        .await
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    std::fs::write(
+        &path,
+        format!("[stores.ote]\nstore_id = \"{other_store}\"\n"),
+    )
+    .expect("another process saves a different store");
+    lock_file.unlock().expect("release the lock");
+
+    let (exit, json) = clearing.await.expect("the command finishes");
+    assert_eq!(exit, 0, "{json}");
+    assert_eq!(json["data"]["action"], "cleared");
+    assert_eq!(json["data"]["storeId"], other_store, "{json}");
+}
