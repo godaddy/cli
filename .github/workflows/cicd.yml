@@ -8,17 +8,34 @@ on:
   # `main` so a branch with an open pull request doesn't run twice.
   pull_request:
 
+# A new push to a pull request replaces the run still in flight for it, instead
+# of queueing behind it. Runs on `main` each get a group of their own: a shared
+# group would still let GitHub drop an older *pending* run when two merges
+# land back to back, even without `cancel-in-progress`, and every merge should
+# get a complete result.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # Incremental compilation only helps repeated local builds; in CI it bloats
+  # the cache. (rust-cache also sets this, but be explicit.)
+  CARGO_INCREMENTAL: "0"
+  # Line tables keep backtraces readable while leaving out the variable-level
+  # debug info that makes `target/` and the cache several times larger. The
+  # test profile inherits from dev.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
+# The jobs run in parallel, so the run takes as long as the slowest one. The
+# `cicd` job at the bottom is the single status the `require-passing-checks`
+# ruleset requires; keep its name stable.
 jobs:
-  cicd:
+  static:
+    name: Format and static checks
     runs-on: ubuntu-latest
-    concurrency: ${{ github.workflow }}-${{ github.ref }}
-    permissions:
-      contents: read
-      checks: write
-      issues: write
-    defaults:
-      run:
-        working-directory: rust
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -26,48 +43,106 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
-          components: clippy, rustfmt
-
-      - name: Cache cargo
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            rust/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
-
-      - name: Check
-        run: cargo check --workspace
+          components: rustfmt
 
       - name: Format
+        working-directory: rust
         run: cargo fmt --check
 
-      - name: Lint
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Test
-        run: cargo test --workspace
-
-      - name: Smoke test
-        run: ./scripts/smoke-test.sh
-
       - name: Check module size limits
-        working-directory: .
         run: ./rust/scripts/check-module-size.sh
 
-      - name: Audit dependencies for known vulnerabilities
-        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
-        with:
-          working-directory: rust
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Check API catalog for unresolved external $refs
-        working-directory: .
         run: |
           set -o pipefail
           if grep -r '"[$]ref"[[:space:]]*:[[:space:]]*"[^#]' rust/schemas/api/*.json; then
             echo "ERROR: unresolved external \$ref(s) in committed API catalog schemas (shown above)"
             exit 1
           fi
+
+  # `clippy --all-targets` type-checks everything `cargo check --workspace`
+  # does, so there's no separate check step.
+  clippy:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+          # Only `main` writes the cache. Pull requests read it, which keeps
+          # per-PR entries from eating the repository's cache budget.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Lint
+        working-directory: rust
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # The smoke test shares this job's build, so it doesn't compile the
+  # dependencies a second time.
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Test
+        working-directory: rust
+        run: cargo test --workspace
+
+      - name: Smoke test
+        working-directory: rust
+        run: ./scripts/smoke-test.sh
+
+  # Reads Cargo.lock only, so it needs no Rust build, cache or toolchain.
+  audit:
+    name: Audit dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # A prebuilt binary, instead of compiling cargo-audit from source on
+      # every run (about two minutes).
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-audit
+
+      - name: Audit dependencies for known vulnerabilities
+        working-directory: rust
+        run: cargo audit
+
+  cicd:
+    name: cicd
+    if: ${{ always() }}
+    needs: [static, clippy, test, audit]
+    runs-on: ubuntu-latest
+    steps:
+      # `always()` makes this job run even when a dependency failed, so it
+      # has to check their results itself. A skipped or cancelled job is not a
+      # pass.
+      - name: Require every job to succeed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e 'all(.[]; .result == "success")' > /dev/null
