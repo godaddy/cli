@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use super::*;
-use crate::error::codes;
+use crate::{error::codes, http::ensure_generated_client_transport_observer_registered};
 use cli_engine::build_error_envelope;
 use generated_client_support::{TransportObserver, WITHHELD_BODY, set_transport_observer};
 use httpmock::{HttpMockRequest, prelude::*};
@@ -581,6 +581,12 @@ impl TransportObserver for Recorder {
 #[tokio::test]
 async fn requests_reach_the_transport_observer_without_their_bodies() {
     let own_store = "0c3b1a52-77de-4c0e-8f6b-1d2a9e4f5b60";
+    // The shared observer is installed by a `Once` the first time any client in
+    // the process is built (`ensure_..._registered`), and it overwrites whatever
+    // observer is set at that moment. Fire it now, so it cannot fire between the
+    // recorder being set and the request being sent, which would replace the
+    // recorder and leave this test with nothing to look at.
+    ensure_generated_client_transport_observer_registered();
     let recorder = Arc::new(Recorder::default());
     set_transport_observer(Some(recorder.clone()));
     let server = MockServer::start_async().await;
