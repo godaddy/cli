@@ -44,16 +44,16 @@ pub(crate) async fn fetch_store(client: &Client, store_id: &str, env: &str) -> R
     {
         Ok(response) => require_store_record(response.into_inner()),
         Err(Error::UnexpectedResponse(response)) => {
-            let status = response.status().as_u16();
-            let body = response.text().await.unwrap_or_default();
-            Err(http_error(status, &body, store_id, env))
+            Err(http_error(response.status().as_u16(), store_id, env))
         }
         Err(Error::CommunicationError(error)) => Err(GddyError::network(error.to_string())
             .with_system(SYSTEM)
             .into_cli_error()),
-        Err(Error::InvalidResponsePayload(_, error)) => Err(GddyError::unexpected(format!(
-            "the Commerce API returned a store this CLI could not read: {error}"
-        ))
+        // The decode error is not shown: serde names the offending value, and a
+        // store record carries government IDs, addresses and payment details.
+        Err(Error::InvalidResponsePayload(..)) => Err(GddyError::unexpected(
+            "the Commerce API returned a store this CLI could not read",
+        )
         .with_system(SYSTEM)
         .into_cli_error()),
         Err(error) => Err(
@@ -86,7 +86,11 @@ fn require_store_record(store: V1Store) -> Result<V1Store> {
 /// Maps a failed store read to a coded error. A 404 and a 403 name the store and
 /// say what to try, since "HTTP error 404" alone does not tell a merchant whether
 /// the id, the environment or their account is the problem.
-fn http_error(status: u16, body: &str, store_id: &str, env: &str) -> CliCoreError {
+///
+/// The response body is never put in the error. Store responses can carry
+/// government IDs, addresses and payment details, and an error is printed, logged
+/// and pasted into bug reports, so it names only the status.
+fn http_error(status: u16, store_id: &str, env: &str) -> CliCoreError {
     match status {
         404 => GddyError::from_status(
             404,
@@ -110,7 +114,7 @@ fn http_error(status: u16, body: &str, store_id: &str, env: &str) -> CliCoreErro
              one with `gddy pat add`, create a token that can read stores or remove \
              it with `gddy pat remove`.",
         ),
-        _ => GddyError::from_http(status, body, SYSTEM),
+        _ => GddyError::from_http(status, "", SYSTEM),
     }
     .into_cli_error()
 }

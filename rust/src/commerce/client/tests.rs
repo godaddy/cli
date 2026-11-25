@@ -226,3 +226,72 @@ async fn a_sparse_store_record_is_still_accepted() {
         assert!(result.is_ok(), "{body} is a store: {result:?}");
     }
 }
+
+/// Store records carry government IDs, addresses and payment details, and an
+/// error is printed, logged and pasted into bug reports. No part of a response
+/// body may reach the error, whether the response is an error status or a 200
+/// whose body does not decode (serde names the offending value).
+#[tokio::test]
+async fn errors_never_contain_response_data() {
+    let secret = "SECRET-GOV-ID-123-45-6789";
+    for (label, status, body) in [
+        (
+            "500 with a record",
+            500,
+            json!({ "governmentIds": [{ "governmentId": secret }] }).to_string(),
+        ),
+        ("502 with text", 502, format!("upstream said: {secret}")),
+        ("422 with text", 422, format!("bad value {secret}")),
+        ("401 with text", 401, format!("token for {secret} rejected")),
+        ("403 with text", 403, format!("{secret} may not read")),
+        ("404 with text", 404, format!("no store for {secret}")),
+        (
+            "200 with a wrong-typed field",
+            200,
+            json!({ "id": STORE_ID, "latitude": secret }).to_string(),
+        ),
+        (
+            "200 that is not JSON",
+            200,
+            format!("<html>{secret}</html>"),
+        ),
+    ] {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET);
+                then.status(status).body(body.clone());
+            })
+            .await;
+
+        let error = fetch_store(&client_for(&server), STORE_ID, "ote")
+            .await
+            .expect_err("every one of these is an error");
+
+        let rendered = format!("{:?}", envelope(&error));
+        assert!(!rendered.contains(secret), "{label} leaked: {rendered}");
+    }
+}
+
+/// Dropping the body must not drop the status: a server error still says which.
+#[tokio::test]
+async fn an_error_status_is_still_named_without_its_body() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET);
+            then.status(503).body("unavailable");
+        })
+        .await;
+
+    let error = fetch_store(&client_for(&server), STORE_ID, "ote")
+        .await
+        .expect_err("a 503 is an error");
+
+    let message = envelope(&error)
+        .error
+        .map(|e| e.message)
+        .unwrap_or_default();
+    assert!(message.contains("503"), "{message}");
+    assert!(!message.contains("unavailable"), "{message}");
+}
