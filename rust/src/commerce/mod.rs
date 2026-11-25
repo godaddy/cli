@@ -4,6 +4,7 @@
 //! The group is in beta until the commerce team signs off that the commands are
 //! ready, so it stays hidden at the default release stage.
 
+mod catalog;
 mod client;
 pub(crate) mod store;
 
