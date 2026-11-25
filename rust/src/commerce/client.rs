@@ -42,7 +42,7 @@ pub(crate) async fn fetch_store(client: &Client, store_id: &str, env: &str) -> R
         .send()
         .await
     {
-        Ok(response) => Ok(response.into_inner()),
+        Ok(response) => require_store_record(response.into_inner()),
         Err(Error::UnexpectedResponse(response)) => {
             let status = response.status().as_u16();
             let body = response.text().await.unwrap_or_default();
@@ -61,6 +61,25 @@ pub(crate) async fn fetch_store(client: &Client, store_id: &str, env: &str) -> R
                 .with_system(SYSTEM)
                 .into_cli_error(),
         ),
+    }
+}
+
+/// Rejects a successful response that carries no store. The generated store type
+/// has no required fields, so an empty object, or an error-shaped one that sets
+/// none of its fields, decodes without complaint. Showing that as a store would
+/// invent a summary from the id that was asked for, and `use` would save an id
+/// the API never confirmed. A record with any identifying field is a store, even
+/// a sparse one.
+fn require_store_record(store: V1Store) -> Result<V1Store> {
+    if store.id.is_some() || store.business_id.is_some() || store.display_name.is_some() {
+        Ok(store)
+    } else {
+        Err(GddyError::unexpected(
+            "the Commerce API answered without a store: the response had no id, business \
+             id or name",
+        )
+        .with_system(SYSTEM)
+        .into_cli_error())
     }
 }
 
@@ -84,9 +103,12 @@ fn http_error(status: u16, body: &str, store_id: &str, env: &str) -> CliCoreErro
             SYSTEM,
         )
         .with_fix(
-            "Sign in with an account that has access to the store, or check \
-            which accounts the store is shared with. To confirm the permissions \
-            this login holds, run: gddy auth scope",
+            "Sign in with an account that has access to the store. After a browser \
+             login, `gddy auth status --fields scopes` shows the permissions it \
+             holds. A personal access token takes precedence over a browser login \
+             and carries its own fixed permissions, so if you set GDDY_PAT or added \
+             one with `gddy pat add`, create a token that can read stores or remove \
+             it with `gddy pat remove`.",
         ),
         _ => GddyError::from_http(status, body, SYSTEM),
     }

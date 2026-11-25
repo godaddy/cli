@@ -557,3 +557,120 @@ async fn clear_reports_the_store_it_removed_when_the_selection_changes_underneat
     assert_eq!(json["data"]["action"], "cleared");
     assert_eq!(json["data"]["storeId"], other_store, "{json}");
 }
+
+/// A preview must fail where the real run would. With a saved store and a
+/// directory where the lock file belongs, the real `clear` cannot open the lock,
+/// so `clear --dry-run` must report that too, not say it "would clear".
+#[tokio::test]
+async fn clear_dry_run_reports_a_lock_it_could_not_open() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    context::save_store(
+        "ote",
+        StoreEntry {
+            store_id: STORE_ID.to_owned(),
+            business_id: None,
+            display_name: None,
+        },
+    )
+    .expect("seed");
+    let path = context::registry_path().expect("a config directory");
+    let lock_path = path.with_file_name("commerce.toml.lock");
+    std::fs::remove_file(&lock_path).expect("remove the lock file the save made");
+    std::fs::create_dir(&lock_path).expect("a directory where the lock file belongs");
+
+    let args = |extra: &'static [&'static str]| {
+        let mut full = vec!["gddy", "commerce", "store", "clear", "--env", "ote"];
+        full.extend(extra);
+        full.extend(["--output", "json"]);
+        full
+    };
+    let (preview_exit, preview) = run(&args(&["--dry-run"])).await;
+    let (real_exit, real) = run(&args(&[])).await;
+
+    assert_ne!(preview_exit, 0, "{preview}");
+    assert_ne!(real_exit, 0, "{real}");
+    assert!(
+        preview.to_string().contains("commerce.toml.lock"),
+        "{preview}"
+    );
+    assert!(
+        context::saved_store("ote").expect("reads").is_some(),
+        "neither run removed the selection"
+    );
+}
+
+/// With nothing saved the real `clear` never touches the lock, so the preview
+/// must not fail on one either.
+#[tokio::test]
+async fn clear_dry_run_with_nothing_saved_ignores_the_lock() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let path = context::registry_path().expect("a config directory");
+    std::fs::create_dir_all(path.parent().expect("has a parent")).expect("create dir");
+    std::fs::create_dir(path.with_file_name("commerce.toml.lock")).expect("lock dir");
+
+    let (exit, json) = run(&[
+        "gddy",
+        "commerce",
+        "store",
+        "clear",
+        "--env",
+        "ote",
+        "--dry-run",
+        "--output",
+        "json",
+    ])
+    .await;
+
+    assert_eq!(exit, 0, "{json}");
+    assert_eq!(json["data"]["action"], "nothing to clear");
+}
+
+/// A selection file that is read-only is still replaced by the real save (it is
+/// swapped in by rename), so the preview must not refuse it.
+#[cfg(unix)]
+#[tokio::test]
+async fn use_dry_run_accepts_a_read_only_selection_file() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    context::save_store(
+        "prod",
+        StoreEntry {
+            store_id: "11111111-1111-4111-8111-111111111111".to_owned(),
+            business_id: None,
+            display_name: None,
+        },
+    )
+    .expect("seed");
+    let path = context::registry_path().expect("a config directory");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400)).expect("read-only");
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+
+    // The preview goes first: the real save swaps in a new, writable file, which
+    // would hide a preview that wrongly refused the read-only one.
+    let preview = select(&client_for(&server), STORE_ID, "ote", true).await;
+    let real = select(&client_for(&server), STORE_ID, "ote", false).await;
+
+    assert!(real.is_ok(), "the real save replaces the file: {real:?}");
+    assert!(preview.is_ok(), "so the preview agrees: {preview:?}");
+}
+
+/// The save-side check: a directory in place of the selection file stops a save.
+#[tokio::test]
+async fn use_dry_run_reports_a_directory_where_the_selection_file_belongs() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let path = context::registry_path().expect("a config directory");
+    std::fs::create_dir_all(&path).expect("a directory where the file belongs");
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+
+    let preview = select(&client_for(&server), STORE_ID, "ote", true).await;
+    let real = select(&client_for(&server), STORE_ID, "ote", false).await;
+
+    assert!(preview.is_err(), "{preview:?}");
+    assert!(real.is_err(), "{real:?}");
+}

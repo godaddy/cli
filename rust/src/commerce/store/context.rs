@@ -346,7 +346,39 @@ pub(crate) fn clear_store(env: &str) -> Result<Option<StoreEntry>> {
 /// cannot be read. Writes nothing and takes no lock, so a `--dry-run` can
 /// report what the real run would hit.
 pub(crate) fn check_can_save() -> Result<()> {
-    StoreRegistry::load(&required_registry_path()?).map(drop)
+    let path = required_registry_path()?;
+    StoreRegistry::load(&path)?;
+    check_lock_and_write_prerequisites(&path)
+}
+
+/// Fails if the lock file cannot be opened for writing, which is how the real run
+/// opens it: a directory in its place, or a file the user cannot write, stops a
+/// save or a clear. The selection file's own permissions do not matter, since it
+/// is replaced, not written in place, and a directory in its place is already
+/// reported when the registry is read. Nothing is created, truncated or locked,
+/// so a missing file is fine (the real run creates it) and a preview leaves
+/// nothing behind.
+fn check_lock_and_write_prerequisites(registry: &Path) -> Result<()> {
+    let lock_path = registry.with_file_name(format!("{STORE_FILE_NAME}.lock"));
+    match std::fs::OpenOptions::new().write(true).open(&lock_path) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(CliCoreError::message(format!(
+                "failed to open {}: {error}",
+                lock_path.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Fails now if [`clear_store`] would fail for a reason other than the selection
+/// itself, as [`check_can_save`] does for a save. Writes nothing and takes no
+/// lock, so a `--dry-run` can report what the real run would hit.
+pub(crate) fn check_can_clear() -> Result<()> {
+    let path = required_registry_path()?;
+    check_lock_and_write_prerequisites(&path)
 }
 
 fn required_registry_path() -> Result<std::path::PathBuf> {

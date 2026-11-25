@@ -134,7 +134,9 @@ async fn a_403_says_the_account_may_not_read_the_store() {
         envelope
             .fix
             .as_deref()
-            .is_some_and(|fix| fix.contains("gddy auth scope")),
+            .is_some_and(|fix| fix.contains("gddy auth status --fields scopes")
+                && fix.contains("GDDY_PAT")
+                && !fix.contains("gddy auth scope")),
         "{envelope:?}"
     );
 }
@@ -175,4 +177,52 @@ async fn a_store_response_that_cannot_be_read_is_reported_not_swallowed() {
         .expect_err("an unreadable body is an error");
 
     assert_eq!(code(&error), codes::UNEXPECTED_ERROR);
+}
+
+/// The store schema has no required fields, so an empty or error-shaped 200 body
+/// decodes without complaint. It is not a store, and must not be shown as one or
+/// saved as the selection.
+#[tokio::test]
+async fn a_200_that_is_not_a_store_is_rejected() {
+    for body in [
+        json!({}),
+        json!({ "code": "INTERNAL", "message": "something went wrong" }),
+        json!({ "errors": [{ "message": "nope" }] }),
+    ] {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET);
+                then.status(200).json_body(body.clone());
+            })
+            .await;
+
+        let error = fetch_store(&client_for(&server), STORE_ID, "ote")
+            .await
+            .expect_err("a body with no store in it is an error");
+
+        assert_eq!(code(&error), codes::UNEXPECTED_ERROR, "{body}");
+    }
+}
+
+/// A sparse record is still a store: only a body with none of the identifying
+/// fields is rejected.
+#[tokio::test]
+async fn a_sparse_store_record_is_still_accepted() {
+    for body in [
+        json!({ "id": STORE_ID }),
+        json!({ "displayName": "Corner Shop" }),
+        json!({ "businessId": "biz-1" }),
+    ] {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET);
+                then.status(200).json_body(body.clone());
+            })
+            .await;
+
+        let result = fetch_store(&client_for(&server), STORE_ID, "ote").await;
+        assert!(result.is_ok(), "{body} is a store: {result:?}");
+    }
 }
