@@ -41,6 +41,13 @@ const UNAUTHORIZED: &str = "UNAUTHORIZED";
 /// A query the subgraph's schema does not accept, which is a bug in this client.
 const QUERY_REJECTED: &str = "GRAPHQL_VALIDATION_FAILED";
 
+/// What to try for a failure that no change to the command's input can repair:
+/// a query gddy itself sends, or an answer it cannot read. The default hint for
+/// an unexpected error says to retry with corrected input, which would send the
+/// user looking for a mistake they did not make.
+const NOT_FIXABLE_BY_INPUT: &str = "Retry. If it keeps failing, update gddy with `gddy update apply` and \
+     report it, naming the message above.";
+
 /// A client for one store's catalog subgraph.
 pub(super) struct CatalogClient {
     http: HttpClient,
@@ -106,6 +113,7 @@ impl CatalogClient {
     async fn send<Q: GraphQLQuery>(&self, variables: Q::Variables) -> Result<Q::ResponseData> {
         let mut payload = serde_json::to_value(Q::build_query(variables)).map_err(|_| {
             GddyError::unexpected("the catalog request could not be built")
+                .with_fix(NOT_FIXABLE_BY_INPUT)
                 .with_system(SYSTEM)
                 .into_cli_error()
         })?;
@@ -126,6 +134,7 @@ impl CatalogClient {
             .build()
             .map_err(|error| {
                 GddyError::unexpected(format!("the catalog request could not be built: {error}"))
+                    .with_fix(NOT_FIXABLE_BY_INPUT)
                     .with_system(SYSTEM)
                     .into_cli_error()
             })?;
@@ -152,6 +161,7 @@ impl CatalogClient {
                     error.line(),
                     error.column()
                 ))
+                .with_fix(NOT_FIXABLE_BY_INPUT)
                 .with_system(SYSTEM)
                 .into_cli_error()
             })?;
@@ -160,6 +170,7 @@ impl CatalogClient {
         }
         parsed.data.ok_or_else(|| {
             GddyError::unexpected("the Commerce API answered with neither data nor an error")
+                .with_fix(NOT_FIXABLE_BY_INPUT)
                 .with_system(SYSTEM)
                 .into_cli_error()
         })
@@ -231,6 +242,7 @@ fn graphql_error(errors: &[GraphqlError], store_id: &str, env: &str) -> CliCoreE
         return GddyError::unexpected(
             "the Commerce API rejected a query this version of gddy sends; this is a bug in gddy",
         )
+        .with_fix(NOT_FIXABLE_BY_INPUT)
         .with_system(SYSTEM)
         .into_cli_error();
     }

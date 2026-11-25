@@ -781,3 +781,47 @@ async fn a_success_status_whose_body_cannot_be_read_is_a_network_error() {
 
     assert_eq!(code_of(&error), codes::NETWORK_ERROR);
 }
+
+/// The hint for a failure no input can repair. `GddyError::unexpected`'s default
+/// tells the user to retry with corrected input, which is wrong when the failure
+/// is a query gddy itself sends or an answer it cannot read.
+fn fix_of(error: &CliCoreError) -> String {
+    build_error_envelope(error, "commerce")
+        .fix
+        .unwrap_or_default()
+}
+
+#[tokio::test]
+async fn a_failure_no_input_can_repair_does_not_say_to_correct_the_input() {
+    let cases = [
+        (
+            "a query the schema rejects",
+            json!({ "errors": [{
+                "message": "m", "extensions": { "code": "GRAPHQL_VALIDATION_FAILED" }
+            }] })
+            .to_string(),
+        ),
+        ("an answer that cannot be read", "<html>".to_owned()),
+        ("neither data nor errors", json!({}).to_string()),
+    ];
+    for (label, body) in cases {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST);
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let error = client_for(&server, STORE_ID)
+            .list_products(10, None, None)
+            .await
+            .expect_err("each of these is a failure");
+
+        let fix = fix_of(&error);
+        assert_eq!(code_of(&error), codes::UNEXPECTED_ERROR, "{label}");
+        assert!(!fix.contains("corrected input"), "{label}: {fix}");
+        assert!(!fix.contains("gddy tree"), "{label}: {fix}");
+        assert!(fix.contains("gddy update apply"), "{label}: {fix}");
+    }
+}
