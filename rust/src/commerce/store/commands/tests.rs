@@ -406,6 +406,24 @@ fn commands_that_change_state_are_marked_mutating_and_the_rest_read() {
     assert_eq!(tier(clear_command()), Some(Tier::Mutate));
 }
 
+/// `Tier::Mutate` is what makes the engine treat a command as mutating, so `use`
+/// and `clear` need no separate `.mutates(true)`. What is observable is the
+/// engine's own view of them: both are mutating for the dry-run safeguard, and
+/// both handle `--dry-run` themselves, while the read-only commands are neither.
+#[test]
+fn the_engine_treats_use_and_clear_as_mutating_and_dry_run_aware() {
+    for (command, mutating) in [
+        (get_command(), false),
+        (current_command(), false),
+        (use_command(), true),
+        (clear_command(), true),
+    ] {
+        let meta = command.spec.metadata();
+        assert_eq!(meta.dry_run_prompt, mutating, "{}", command.spec.name);
+        assert_eq!(meta.handles_dry_run, mutating, "{}", command.spec.name);
+    }
+}
+
 /// The commerce group is in beta, so it must not appear at the default release
 /// stage, and must once beta features are revealed.
 #[tokio::test]
@@ -673,4 +691,235 @@ async fn use_dry_run_reports_a_directory_where_the_selection_file_belongs() {
 
     assert!(preview.is_err(), "{preview:?}");
     assert!(real.is_err(), "{real:?}");
+}
+
+/// The real `clear` takes the lock whenever the selection file exists, even if
+/// it holds only another environment's store, so the preview must check the lock
+/// then too. (With no file at all neither touches the lock; see
+/// `clear_dry_run_with_nothing_saved_ignores_the_lock`.)
+#[tokio::test]
+async fn clear_dry_run_checks_the_lock_when_only_another_environment_is_saved() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    context::save_store(
+        "prod",
+        StoreEntry {
+            store_id: "11111111-1111-4111-8111-111111111111".to_owned(),
+            business_id: None,
+            display_name: None,
+        },
+    )
+    .expect("seed another environment");
+    let path = context::registry_path().expect("a config directory");
+    let lock_path = path.with_file_name("commerce.toml.lock");
+    std::fs::remove_file(&lock_path).expect("remove the lock file the save made");
+    std::fs::create_dir(&lock_path).expect("a directory where the lock file belongs");
+
+    let preview = run(&[
+        "gddy",
+        "commerce",
+        "store",
+        "clear",
+        "--env",
+        "ote",
+        "--dry-run",
+        "--output",
+        "json",
+    ])
+    .await;
+    let real = run(&[
+        "gddy", "commerce", "store", "clear", "--env", "ote", "--output", "json",
+    ])
+    .await;
+
+    assert_ne!(real.0, 0, "the real clear opens the lock: {}", real.1);
+    assert_ne!(preview.0, 0, "so the preview agrees: {}", preview.1);
+}
+
+/// Restores a directory's permissions when dropped, so a test that makes one
+/// unwritable cannot leave a temporary directory that cannot be cleaned up.
+#[cfg(unix)]
+struct RestoreMode(std::path::PathBuf);
+
+#[cfg(unix)]
+impl Drop for RestoreMode {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o700)).ok();
+    }
+}
+
+/// Makes `dir` unwritable. Returns `None` when that has no effect, as for a
+/// process that ignores directory permissions (root), so the test can skip.
+#[cfg(unix)]
+fn make_unwritable(dir: &std::path::Path) -> Option<RestoreMode> {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o500)).expect("chmod");
+    let guard = RestoreMode(dir.to_owned());
+    let probe = dir.join(".permission-probe");
+    match std::fs::File::create(&probe) {
+        Ok(_) => {
+            std::fs::remove_file(&probe).ok();
+            None
+        }
+        Err(_) => Some(guard),
+    }
+}
+
+/// The real save and clear write a temporary file next to the selection file and
+/// rename it over the old one, so an unwritable directory stops them even when
+/// the selection and lock files themselves look fine. The preview must say so.
+#[cfg(unix)]
+#[tokio::test]
+async fn previews_report_a_directory_that_cannot_be_written() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    for env in ["ote", "prod"] {
+        context::save_store(
+            env,
+            StoreEntry {
+                store_id: "11111111-1111-4111-8111-111111111111".to_owned(),
+                business_id: None,
+                display_name: None,
+            },
+        )
+        .expect("seed a selection and its lock file");
+    }
+    let dir = context::registry_path()
+        .expect("a config directory")
+        .parent()
+        .expect("has a parent")
+        .to_owned();
+    let Some(_restore) = make_unwritable(&dir) else {
+        return;
+    };
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+
+    let use_preview = select(&client_for(&server), STORE_ID, "ote", true).await;
+    let use_real = select(&client_for(&server), STORE_ID, "ote", false).await;
+    let clear_preview = run(&[
+        "gddy",
+        "commerce",
+        "store",
+        "clear",
+        "--env",
+        "ote",
+        "--dry-run",
+        "--output",
+        "json",
+    ])
+    .await;
+    let clear_real = run(&[
+        "gddy", "commerce", "store", "clear", "--env", "ote", "--output", "json",
+    ])
+    .await;
+
+    assert!(
+        use_real.is_err(),
+        "the real save cannot write: {use_real:?}"
+    );
+    assert!(
+        use_preview.is_err(),
+        "so the preview agrees: {use_preview:?}"
+    );
+    assert_ne!(clear_real.0, 0, "{}", clear_real.1);
+    assert_ne!(clear_preview.0, 0, "{}", clear_preview.1);
+    let leftovers: Vec<_> = std::fs::read_dir(&dir)
+        .expect("readable")
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".probe"))
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "a probe was left behind: {leftovers:?}"
+    );
+}
+
+/// A clear that finds nothing for this environment rewrites nothing, so an
+/// unwritable directory does not stop it, and its preview must not claim it does.
+#[cfg(unix)]
+#[tokio::test]
+async fn clear_dry_run_with_nothing_to_remove_ignores_an_unwritable_directory() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    context::save_store(
+        "prod",
+        StoreEntry {
+            store_id: "11111111-1111-4111-8111-111111111111".to_owned(),
+            business_id: None,
+            display_name: None,
+        },
+    )
+    .expect("seed another environment");
+    let dir = context::registry_path()
+        .expect("a config directory")
+        .parent()
+        .expect("has a parent")
+        .to_owned();
+    let Some(_restore) = make_unwritable(&dir) else {
+        return;
+    };
+    let args = |extra: &'static [&'static str]| {
+        let mut full = vec!["gddy", "commerce", "store", "clear", "--env", "ote"];
+        full.extend(extra);
+        full.extend(["--output", "json"]);
+        full
+    };
+
+    let real = run(&args(&[])).await;
+    let preview = run(&args(&["--dry-run"])).await;
+
+    assert_eq!(real.0, 0, "{}", real.1);
+    assert_eq!(preview.0, 0, "the preview agrees: {}", preview.1);
+}
+
+/// A config directory that does not exist yet is created by the real save, so the
+/// preview checks the nearest ancestor that does exist, and passes when that is
+/// writable.
+#[tokio::test]
+async fn use_dry_run_accepts_a_config_directory_that_does_not_exist_yet() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+    let path = context::registry_path().expect("a config directory");
+    assert!(!path.parent().expect("has a parent").exists());
+
+    let preview = select(&client_for(&server), STORE_ID, "ote", true).await;
+
+    assert!(preview.is_ok(), "{preview:?}");
+    assert!(
+        !path.parent().expect("has a parent").exists(),
+        "a preview creates nothing that stays"
+    );
+}
+
+/// The real save creates a missing config directory, which needs its nearest
+/// existing ancestor to be writable. The preview must check that ancestor, not
+/// treat a missing directory as fine.
+#[cfg(unix)]
+#[tokio::test]
+async fn use_dry_run_reports_an_unwritable_ancestor_of_a_missing_config_directory() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let path = context::registry_path().expect("a config directory");
+    let config_dir = path.parent().expect("has a parent");
+    assert!(!config_dir.exists());
+    let ancestor = config_dir.parent().expect("has an ancestor");
+    let Some(_restore) = make_unwritable(ancestor) else {
+        return;
+    };
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+
+    let preview = select(&client_for(&server), STORE_ID, "ote", true).await;
+    let real = select(&client_for(&server), STORE_ID, "ote", false).await;
+
+    assert!(
+        real.is_err(),
+        "the real save cannot create the directory: {real:?}"
+    );
+    assert!(preview.is_err(), "so the preview agrees: {preview:?}");
 }

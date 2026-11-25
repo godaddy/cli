@@ -274,11 +274,7 @@ fn clear_command() -> RuntimeCommandSpec {
             // changed in between.
             let (removed, action) = if dry_run {
                 let saved = context::saved_store(&env)?;
-                if saved.is_some() {
-                    // Only a real clear of a saved store locks and rewrites the
-                    // file, so only then can those prerequisites fail it.
-                    context::check_can_clear()?;
-                }
+                context::check_can_clear(saved.is_some())?;
                 let action = if saved.is_some() {
                     "would clear"
                 } else {
