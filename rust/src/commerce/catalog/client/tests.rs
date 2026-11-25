@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use super::*;
 use crate::error::codes;
 use cli_engine::build_error_envelope;
-use generated_client_support::{TransportObserver, set_transport_observer};
+use generated_client_support::{TransportObserver, WITHHELD_BODY, set_transport_observer};
 use httpmock::{HttpMockRequest, prelude::*};
 use reqwest::{Client as ReqwestClient, Request, StatusCode, header::HeaderMap};
 use serde_json::{from_slice, json};
@@ -238,13 +238,14 @@ async fn a_store_with_no_products_connection_is_none_not_an_error() {
 }
 
 /// A GraphQL error is a failure even on HTTP 200, and even beside partial data.
+/// What the API wrote in its message is not shown: it can quote merchant values.
 #[tokio::test]
-async fn a_graphql_error_on_http_200_is_a_failure() {
+async fn a_graphql_error_on_http_200_is_a_failure_that_does_not_quote_the_api() {
     for body in [
-        json!({ "errors": [{ "message": "not authorized" }] }),
+        json!({ "errors": [{ "message": "bad value SECRET-LABEL" }] }),
         json!({
             "data": { "skuGroups": null },
-            "errors": [{ "message": "not authorized" }]
+            "errors": [{ "message": "bad value SECRET-LABEL", "extensions": { "code": "SOME_CODE" } }]
         }),
     ] {
         let server = MockServer::start_async().await;
@@ -260,13 +261,104 @@ async fn a_graphql_error_on_http_200_is_a_failure() {
             .await
             .expect_err("an errors array is a failure");
 
-        assert!(text_of(&error).contains("not authorized"), "{body}");
-        assert_eq!(code_of(&error), codes::NETWORK_ERROR);
+        assert_eq!(code_of(&error), codes::NETWORK_ERROR, "{body}");
+        let text = format!("{:?}", build_error_envelope(&error, "commerce"));
+        assert!(!text.contains("SECRET-LABEL"), "{body}: {text}");
     }
 }
 
-/// The subgraph's refusal of a malformed request names the fields, in a message
-/// that is mostly serialized validator output. The error describes the fields.
+/// An error's `code` is shown when it is a plain identifier, so a failure can be
+/// reported and searched for, and never when it is anything longer or odder.
+#[tokio::test]
+async fn a_plain_error_code_is_shown_and_anything_else_is_not() {
+    for (extension_code, shown) in [
+        ("RATE_LIMITED", true),
+        ("not-a-plain code with spaces SECRET-LABEL", false),
+        (
+            "A-VERY-LONG-CODE-THAT-GOES-ON-AND-ON-AND-ON-AND-ON-AND-ON-AND-ON-AND-ON-AND-ON",
+            false,
+        ),
+    ] {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST);
+                then.status(200).json_body(json!({ "errors": [{
+                    "message": "m", "extensions": { "code": extension_code }
+                }] }));
+            })
+            .await;
+
+        let error = client_for(&server, STORE_ID)
+            .list_products(10, None, None)
+            .await
+            .expect_err("an errors array is a failure");
+
+        let text = text_of(&error);
+        assert_eq!(
+            text.contains(extension_code),
+            shown,
+            "{extension_code}: {text}"
+        );
+        assert!(!text.contains("SECRET-LABEL"), "{text}");
+    }
+}
+
+/// `UNAUTHORIZED` is the subgraph refusing the caller for this store, which is
+/// the same situation as an HTTP 403, so it gets the same advice.
+#[tokio::test]
+async fn an_unauthorized_error_is_reported_like_a_403() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST);
+            then.status(200).json_body(json!({ "errors": [{
+                "message": "Failed to authorize.",
+                "extensions": { "code": "UNAUTHORIZED" },
+                "path": ["skuGroups"]
+            }] }));
+        })
+        .await;
+
+    let error = client_for(&server, STORE_ID)
+        .list_products(10, None, None)
+        .await
+        .expect_err("an unauthorized call is a failure");
+
+    let text = text_of(&error);
+    assert!(text.contains(STORE_ID), "{text}");
+    assert!(text.contains("gddy pat remove --env ote"), "{text}");
+    assert_eq!(code_of(&error), codes::NETWORK_ERROR);
+}
+
+/// A query the subgraph's schema rejects is a bug in this client, and says so.
+#[tokio::test]
+async fn a_query_the_schema_rejects_is_reported_as_a_bug_in_gddy() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST);
+            then.status(200).json_body(json!({ "errors": [{
+                "message": "Cannot query field \"x\" on type \"SECRET-LABEL\".",
+                "extensions": { "code": "GRAPHQL_VALIDATION_FAILED" }
+            }] }));
+        })
+        .await;
+
+    let error = client_for(&server, STORE_ID)
+        .list_products(10, None, None)
+        .await
+        .expect_err("a rejected query is a failure");
+
+    let text = text_of(&error);
+    assert!(text.contains("bug in gddy"), "{text}");
+    assert!(!text.contains("SECRET-LABEL"), "{text}");
+    assert_eq!(code_of(&error), codes::UNEXPECTED_ERROR);
+}
+
+/// The subgraph's refusal of a malformed request names the fields it refused.
+/// Its message is mostly serialized validator output that can quote the values
+/// that were sent, so only the field names and codes are shown.
 #[tokio::test]
 async fn a_validation_error_names_the_fields_the_api_refused() {
     let server = MockServer::start_async().await;
@@ -274,10 +366,13 @@ async fn a_validation_error_names_the_fields_the_api_refused() {
         .mock_async(|when, then| {
             when.method(POST);
             then.status(200).json_body(json!({ "errors": [{
-                "message": "[{ \"code\": \"invalid_union\", \"unionErrors\": [] }]",
+                "message": "[{ \"code\": \"invalid_union\", \"received\": \"SECRET-LABEL\" }]",
                 "extensions": {
                     "code": "VALIDATION_ERROR",
-                    "fields": [{ "code": "invalid_union", "path": ["status"] }]
+                    "fields": [
+                        { "code": "invalid_union", "path": ["status"] },
+                        { "code": "invalid_type", "path": ["filter", 0, "eq"] }
+                    ]
                 }
             }] }));
         })
@@ -290,8 +385,45 @@ async fn a_validation_error_names_the_fields_the_api_refused() {
 
     let text = text_of(&error);
     assert!(text.contains("status (invalid_union)"), "{text}");
-    assert!(!text.contains("unionErrors"), "{text}");
+    assert!(text.contains("filter.0.eq (invalid_type)"), "{text}");
+    assert!(!text.contains("SECRET-LABEL"), "{text}");
     assert_eq!(code_of(&error), codes::VALIDATION_ERROR);
+}
+
+/// When the field metadata is missing, or is not made of plain identifiers, the
+/// message is still never used as a fallback.
+#[tokio::test]
+async fn a_validation_error_without_usable_fields_does_not_fall_back_to_the_message() {
+    for extensions in [
+        json!({ "code": "VALIDATION_ERROR" }),
+        json!({ "code": "VALIDATION_ERROR", "fields": [] }),
+        json!({ "code": "VALIDATION_ERROR", "fields": "SECRET-LABEL" }),
+        json!({ "code": "VALIDATION_ERROR", "fields": [
+            { "code": "bad SECRET-LABEL code", "path": ["status"] },
+            { "code": "invalid_type", "path": ["SECRET LABEL with spaces"] },
+            { "code": "invalid_type", "path": [{ "SECRET-LABEL": 1 }] }
+        ] }),
+    ] {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(POST);
+                then.status(200).json_body(json!({ "errors": [{
+                    "message": "bad value SECRET-LABEL",
+                    "extensions": extensions.clone()
+                }] }));
+            })
+            .await;
+
+        let error = client_for(&server, STORE_ID)
+            .list_products(10, None, None)
+            .await
+            .expect_err("a refused request is a failure");
+
+        let text = format!("{:?}", build_error_envelope(&error, "commerce"));
+        assert!(!text.contains("SECRET-LABEL"), "{extensions}: {text}");
+        assert_eq!(code_of(&error), codes::VALIDATION_ERROR, "{extensions}");
+    }
 }
 
 #[tokio::test]
@@ -414,7 +546,7 @@ async fn error_text_never_contains_data_from_the_response() {
 
 #[derive(Default)]
 struct Recorder {
-    requests: Mutex<Vec<String>>,
+    requests: Mutex<Vec<(String, Vec<u8>)>>,
     responses: Mutex<Vec<Vec<u8>>>,
 }
 
@@ -423,7 +555,14 @@ impl TransportObserver for Recorder {
         self.requests
             .lock()
             .expect("lock is never held across a panic")
-            .push(request.url().path().to_owned());
+            .push((
+                request.url().path().to_owned(),
+                request
+                    .body()
+                    .and_then(reqwest::Body::as_bytes)
+                    .map(<[u8]>::to_vec)
+                    .unwrap_or_default(),
+            ));
     }
 
     fn on_response(&self, _status: StatusCode, _headers: &HeaderMap, body: &[u8]) {
@@ -435,37 +574,77 @@ impl TransportObserver for Recorder {
 }
 
 /// Requests go through the shared transport observer, so `--debug transport`
-/// sees them. The observer is process-wide and other tests also send requests,
-/// so this one looks only at its own store id.
+/// sees them, but only their metadata: catalog names, descriptions and error
+/// content must not reach a trace. The client still decodes the page. The
+/// observer is process-wide and other tests also send requests, so this one
+/// looks only at its own store id.
 #[tokio::test]
-async fn requests_reach_the_transport_observer() {
+async fn requests_reach_the_transport_observer_without_their_bodies() {
     let own_store = "0c3b1a52-77de-4c0e-8f6b-1d2a9e4f5b60";
     let recorder = Arc::new(Recorder::default());
     set_transport_observer(Some(recorder.clone()));
     let server = MockServer::start_async().await;
-    serve(&server, |when| when).await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST);
+            then.status(200).json_body(json!({ "data": { "skuGroups": {
+                "totalCount": 1,
+                "pageInfo": { "hasNextPage": false, "endCursor": null },
+                "edges": [{ "node": {
+                    "id": "p-1", "name": "tee", "label": "SECRET-LABEL", "status": "ACTIVE",
+                    "type": "PHYSICAL", "description": "SECRET-DESCRIPTION", "skuCount": 1,
+                    "createdAt": "2026-01-01T00:00:00Z", "updatedAt": "2026-01-02T00:00:00Z",
+                    "priceRange": null, "compareAtPriceRange": null
+                } }]
+            } } }));
+        })
+        .await;
 
-    client_for(&server, own_store)
+    let page = client_for(&server, own_store)
         .list_products(10, None, None)
         .await
-        .expect("the request succeeds");
+        .expect("the request succeeds")
+        .expect("a products connection");
     set_transport_observer(None);
 
+    assert_eq!(
+        page.edges.expect("edges").len(),
+        1,
+        "the page still decodes"
+    );
     let requests = recorder
         .requests
         .lock()
         .expect("lock is never held across a panic");
+    let own: Vec<_> = requests
+        .iter()
+        .filter(|(path, _)| path.contains(own_store))
+        .collect();
+    assert!(!own.is_empty(), "{requests:?}");
+    for (_, body) in own {
+        let body = String::from_utf8_lossy(body);
+        assert!(
+            !body.contains("ProductList"),
+            "the query reached the observer: {body}"
+        );
+        assert!(
+            !body.contains("first"),
+            "the variables reached the observer: {body}"
+        );
+    }
+    let responses = recorder
+        .responses
+        .lock()
+        .expect("lock is never held across a panic");
     assert!(
-        requests.iter().any(|path| path.contains(own_store)),
-        "{requests:?}"
+        responses.iter().any(|body| body == WITHHELD_BODY),
+        "the observer should see a placeholder for the response body"
     );
-    assert!(
-        !recorder
-            .responses
-            .lock()
-            .expect("lock is never held across a panic")
-            .is_empty()
-    );
+    for body in responses.iter() {
+        let body = String::from_utf8_lossy(body);
+        assert!(!body.contains("SECRET-LABEL"), "{body}");
+        assert!(!body.contains("SECRET-DESCRIPTION"), "{body}");
+    }
 }
 
 #[test]
@@ -501,4 +680,35 @@ async fn the_store_id_is_encoded_in_the_path() {
         .expect("the request succeeds");
 
     mock.assert_async().await;
+}
+
+/// A field is reported by its path, and a path part is an identifier or a list
+/// index. One that is anything else is not shown, and a field whose path cannot
+/// be shown is left out whole rather than shown with a gap. The code beside it is
+/// a plain identifier, so only the path check can keep this value out.
+#[tokio::test]
+async fn a_field_path_that_is_not_made_of_identifiers_is_left_out() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST);
+            then.status(200).json_body(json!({ "errors": [{
+                "message": "m",
+                "extensions": { "code": "VALIDATION_ERROR", "fields": [
+                    { "code": "invalid_type", "path": ["SECRET LABEL with spaces"] },
+                    { "code": "invalid_type", "path": ["name", "SECRET=1"] },
+                    { "code": "invalid_type", "path": ["status"] }
+                ] }
+            }] }));
+        })
+        .await;
+
+    let error = client_for(&server, STORE_ID)
+        .list_products(10, None, None)
+        .await
+        .expect_err("a refused request is a failure");
+
+    let text = text_of(&error);
+    assert!(text.contains("status (invalid_type)"), "{text}");
+    assert!(!text.contains("SECRET"), "{text}");
 }

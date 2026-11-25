@@ -4,11 +4,17 @@
 //! It adds what the subgraph needs on top of `graphql_client`: the store-scoped
 //! path, the `x-store-id` header, unset variables left out of the request, and
 //! failures mapped to coded `commerce` errors. Requests go through the shared
-//! HTTP client builder and the transport observer, like the other clients.
+//! HTTP client builder and the transport observer, like the other clients, but
+//! the observer is shown only methods, URLs, headers and statuses: the catalog
+//! holds merchant data, so request and response bodies stay out of
+//! `--debug transport` traces.
+
+use std::collections::BTreeSet;
 
 use cli_engine::{CliCoreError, CommandContext, Result};
 use generated_client_support::{
-    build_authenticated_http_client, execute_and_observe, notify_request, validate_base_url,
+    build_authenticated_http_client, execute_and_observe_metadata_only,
+    notify_request_metadata_only, validate_base_url,
 };
 use graphql_client::{Error as GraphqlError, GraphQLQuery, Response};
 use reqwest::{Client as HttpClient, ClientBuilder};
@@ -24,8 +30,16 @@ use crate::{
 /// Name the catalog is reported under in error envelopes.
 const SYSTEM: &str = "commerce";
 
-/// What the subgraph calls a request it refuses for being malformed.
+/// The `extensions.code` values this client acts on. Everything else an error
+/// carries is the API's own free text, which can quote merchant values, so it is
+/// never shown: messages are written here, keyed by code.
+///
+/// A request the subgraph refuses for being malformed.
 const VALIDATION_ERROR: &str = "VALIDATION_ERROR";
+/// A caller the subgraph will not serve for this store.
+const UNAUTHORIZED: &str = "UNAUTHORIZED";
+/// A query the subgraph's schema does not accept, which is a bug in this client.
+const QUERY_REJECTED: &str = "GRAPHQL_VALIDATION_FAILED";
 
 /// A client for one store's catalog subgraph.
 pub(super) struct CatalogClient {
@@ -87,8 +101,8 @@ impl CatalogClient {
     ///
     /// A non-empty `errors` array is a failure even on HTTP 200 and even beside
     /// partial `data`: a caller wants a complete result or the reason it is
-    /// missing. No part of a response body reaches an error, only what the API
-    /// says about the request.
+    /// missing. No part of a response body reaches an error, and neither does the
+    /// text of an `errors` entry: see [`graphql_error`].
     async fn send<Q: GraphQLQuery>(&self, variables: Q::Variables) -> Result<Q::ResponseData> {
         let mut payload = serde_json::to_value(Q::build_query(variables)).map_err(|_| {
             GddyError::unexpected("the catalog request could not be built")
@@ -115,8 +129,8 @@ impl CatalogClient {
                     .with_system(SYSTEM)
                     .into_cli_error()
             })?;
-        notify_request(&request);
-        let response = execute_and_observe(&self.http, request)
+        notify_request_metadata_only(&request);
+        let response = execute_and_observe_metadata_only(&self.http, request)
             .await
             .map_err(network_error)?;
 
@@ -139,7 +153,7 @@ impl CatalogClient {
                 .into_cli_error()
             })?;
         if let Some(errors) = parsed.errors.filter(|errors| !errors.is_empty()) {
-            return Err(graphql_error(&errors));
+            return Err(graphql_error(&errors, &self.store_id, &self.env));
         }
         parsed.data.ok_or_else(|| {
             GddyError::unexpected("the Commerce API answered with neither data nor an error")
@@ -194,56 +208,92 @@ fn omit_unset(variables: &mut Value) {
     }
 }
 
-/// A coded error for what the API reported in a response's `errors` array. A
-/// request the API refused as malformed is a validation error, described by the
-/// fields it named; anything else keeps the API's own wording.
-fn graphql_error(errors: &[GraphqlError]) -> CliCoreError {
-    let described: Vec<String> = errors.iter().map(describe).collect();
-    let message = described.join("; ");
-    if errors.iter().any(is_validation_error) {
-        GddyError::validation(message)
-            .with_system(SYSTEM)
-            .into_cli_error()
-    } else {
-        GddyError::from_graphql(message, SYSTEM).into_cli_error()
+/// A coded error for what the API reported in a response's `errors` array.
+///
+/// Only the `extensions.code` of each error decides the result. An error's own
+/// `message` is the API's free text and can quote the merchant values that were
+/// submitted, including in a 200 response, so it is never shown, and neither is
+/// anything else in the error that is not a plain identifier.
+fn graphql_error(errors: &[GraphqlError], store_id: &str, env: &str) -> CliCoreError {
+    let has = |code: &str| errors.iter().any(|error| error_code(error) == Some(code));
+    if has(UNAUTHORIZED) {
+        return http_error(403, store_id, env);
     }
-}
-
-fn is_validation_error(error: &GraphqlError) -> bool {
-    error_code(error) == Some(VALIDATION_ERROR)
+    if has(VALIDATION_ERROR) {
+        return GddyError::validation(describe_refusal(errors))
+            .with_system(SYSTEM)
+            .into_cli_error();
+    }
+    if has(QUERY_REJECTED) {
+        return GddyError::unexpected(
+            "the Commerce API rejected a query this version of gddy sends; this is a bug in gddy",
+        )
+        .with_system(SYSTEM)
+        .into_cli_error();
+    }
+    let codes: BTreeSet<&str> = errors
+        .iter()
+        .filter_map(error_code)
+        .filter(|code| is_plain(code))
+        .collect();
+    let message = if codes.is_empty() {
+        "the Commerce API reported an error".to_owned()
+    } else {
+        let codes: Vec<&str> = codes.into_iter().collect();
+        format!("the Commerce API reported an error ({})", codes.join(", "))
+    };
+    GddyError::from_graphql(message, SYSTEM)
+        .with_fix("Try again. If it keeps failing, report it with the message above.")
+        .into_cli_error()
 }
 
 fn error_code(error: &GraphqlError) -> Option<&str> {
     error.extensions.as_ref()?.get("code")?.as_str()
 }
 
-/// One error as a line of text. The API's validation errors carry a long
-/// machine-oriented message, so those are described by the fields and reasons
-/// the API lists beside it.
-fn describe(error: &GraphqlError) -> String {
-    let fields = (is_validation_error(error))
-        .then(|| error.extensions.as_ref()?.get("fields")?.as_array())
+/// What a refused request says, built from the fields the API lists beside its
+/// message. Each field's code and path must be plain identifiers; one that is
+/// not is left out rather than shown.
+fn describe_refusal(errors: &[GraphqlError]) -> String {
+    let fields: BTreeSet<String> = errors
+        .iter()
+        .filter(|error| error_code(error) == Some(VALIDATION_ERROR))
+        .filter_map(|error| error.extensions.as_ref()?.get("fields")?.as_array())
         .flatten()
-        .map(|fields| fields.iter().filter_map(describe_field).collect::<Vec<_>>())
-        .filter(|fields| !fields.is_empty());
-    match fields {
-        Some(fields) => format!("the request was not valid: {}", fields.join(", ")),
-        None => error.message.clone(),
+        .filter_map(describe_field)
+        .collect();
+    if fields.is_empty() {
+        "the request was not valid".to_owned()
+    } else {
+        let fields: Vec<String> = fields.into_iter().collect();
+        format!("the request was not valid: {}", fields.join(", "))
     }
 }
 
 fn describe_field(field: &Value) -> Option<String> {
-    let code = field.get("code")?.as_str()?;
-    let path: Vec<String> = field
+    let code = field.get("code")?.as_str().filter(|code| is_plain(code))?;
+    let path = field
         .get("path")?
         .as_array()?
         .iter()
-        .map(|part| {
-            part.as_str()
-                .map_or_else(|| part.to_string(), str::to_owned)
+        .map(|part| match part {
+            Value::String(name) => is_plain(name).then(|| name.clone()),
+            Value::Number(index) => index.as_u64().map(|index| index.to_string()),
+            _ => None,
         })
-        .collect();
+        .collect::<Option<Vec<String>>>()?;
     Some(format!("{} ({code})", path.join(".")))
+}
+
+/// Whether `text` is a short identifier (letters, digits, `_`, `-`, `.`), the
+/// only kind of API-supplied text that is shown: a code or a field name, never a
+/// sentence that could contain a value.
+fn is_plain(text: &str) -> bool {
+    !text.is_empty()
+        && text.len() <= 64
+        && text
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
 }
 
 fn config_error(error: impl std::fmt::Display) -> CliCoreError {
