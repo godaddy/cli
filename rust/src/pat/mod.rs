@@ -110,7 +110,7 @@ pub fn registry_path() -> Option<std::path::PathBuf> {
     dirs::config_dir().map(|d| d.join("gddy").join(PAT_FILE_NAME))
 }
 
-fn env_var_for(env: &str) -> String {
+pub(crate) fn env_var_for(env: &str) -> String {
     format!("{}_{}", PAT_ENV_VAR, environments::env_prefix(env))
 }
 

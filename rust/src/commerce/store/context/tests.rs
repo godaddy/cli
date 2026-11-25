@@ -40,6 +40,7 @@ fn resolve(
     resolve_with(
         env,
         explicit,
+        StoreIdInput::Flag,
         move |name| {
             vars.iter()
                 .find(|(var, _)| var == name)
@@ -273,13 +274,20 @@ fn the_saved_selection_is_not_read_when_a_flag_or_variable_supplies_a_store() {
         Ok(StoreRegistry::default())
     };
 
-    let from_flag =
-        resolve_with("ote", Some(STORE_A), no_env, counting_registry).expect("resolves");
+    let from_flag = resolve_with(
+        "ote",
+        Some(STORE_A),
+        StoreIdInput::Flag,
+        no_env,
+        counting_registry,
+    )
+    .expect("resolves");
     assert_eq!(from_flag.expect("selected").store_id, STORE_A);
 
     let from_env = resolve_with(
         "ote",
         None,
+        StoreIdInput::Flag,
         |name| (name == STORE_ID_ENV_VAR).then(|| std::ffi::OsString::from(STORE_B)),
         counting_registry,
     )
@@ -293,14 +301,15 @@ fn the_saved_selection_is_not_read_when_a_flag_or_variable_supplies_a_store() {
     );
 
     // The counter is live: it does count a read when nothing else supplies a store.
-    let none = resolve_with("ote", None, no_env, counting_registry).expect("resolves");
+    let none =
+        resolve_with("ote", None, StoreIdInput::Flag, no_env, counting_registry).expect("resolves");
     assert!(none.is_none());
     assert_eq!(reads.get(), 1);
 }
 
 #[test]
 fn a_registry_error_is_returned_when_it_is_needed() {
-    let error = resolve_with("ote", None, no_env, || {
+    let error = resolve_with("ote", None, StoreIdInput::Flag, no_env, || {
         Err(CliCoreError::message("registry unreadable"))
     })
     .expect_err("the registry error propagates");
@@ -350,10 +359,12 @@ fn two_environments_resolve_to_their_own_stores_through_the_file() {
     save_store_at(&path, "prod", entry(STORE_B)).expect("save prod");
 
     let for_env = |env: &str| {
-        resolve_with(env, None, no_env, || StoreRegistry::load(&path))
-            .expect("resolves")
-            .expect("selected")
-            .store_id
+        resolve_with(env, None, StoreIdInput::Flag, no_env, || {
+            StoreRegistry::load(&path)
+        })
+        .expect("resolves")
+        .expect("selected")
+        .store_id
     };
     assert_eq!(for_env("ote"), STORE_A);
     assert_eq!(for_env("prod"), STORE_B);
@@ -366,7 +377,10 @@ fn clearing_removes_only_the_named_environment() {
     save_store_at(&path, "ote", entry(STORE_A)).expect("save ote");
     save_store_at(&path, "prod", entry(STORE_B)).expect("save prod");
 
-    assert!(clear_store_at(&path, "ote").expect("clear"));
+    assert_eq!(
+        clear_store_at(&path, "ote").expect("clear"),
+        Some(entry(STORE_A))
+    );
 
     let loaded = StoreRegistry::load(&path).expect("load");
     assert!(!loaded.stores.contains_key("ote"));
@@ -377,11 +391,17 @@ fn clearing_removes_only_the_named_environment() {
 fn clearing_something_that_is_not_there_reports_false_and_writes_nothing() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join(STORE_FILE_NAME);
-    assert!(!clear_store_at(&path, "ote").expect("clear on a missing file"));
+    assert_eq!(
+        clear_store_at(&path, "ote").expect("clear on a missing file"),
+        None
+    );
     assert!(!path.exists(), "clearing must not create the file");
 
     save_store_at(&path, "prod", entry(STORE_B)).expect("save prod");
-    assert!(!clear_store_at(&path, "ote").expect("clear a missing entry"));
+    assert_eq!(
+        clear_store_at(&path, "ote").expect("clear a missing entry"),
+        None
+    );
 }
 
 #[test]
@@ -582,7 +602,7 @@ fn the_registry_lock_excludes_a_second_holder_until_released() {
 fn clearing_with_no_file_creates_neither_the_file_nor_a_lock() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("gddy").join(STORE_FILE_NAME);
-    assert!(!clear_store_at(&path, "ote").expect("clear"));
+    assert_eq!(clear_store_at(&path, "ote").expect("clear"), None);
     assert!(
         !dir.path().join("gddy").exists(),
         "no directory should be created"
@@ -705,6 +725,7 @@ fn a_non_unicode_override_is_rejected_not_skipped() {
     let error = resolve_with(
         "ote",
         None,
+        StoreIdInput::Flag,
         |name| (name == per_env).then(|| not_unicode.clone()),
         || Ok(registry_with("ote", STORE_C)),
     )
@@ -719,6 +740,7 @@ fn a_non_unicode_override_is_rejected_not_skipped() {
     let bare = resolve_with(
         "ote",
         None,
+        StoreIdInput::Flag,
         |name| (name == STORE_ID_ENV_VAR).then(|| not_unicode.clone()),
         || Ok(registry_with("ote", STORE_C)),
     )
@@ -744,6 +766,7 @@ fn a_non_unicode_per_environment_override_does_not_fall_back_to_a_valid_bare_one
     let result = resolve_with(
         "ote",
         None,
+        StoreIdInput::Flag,
         |name| {
             if name == per_env {
                 Some(std::ffi::OsString::from_vec(vec![0xff]))
@@ -788,4 +811,87 @@ fn the_saved_file_is_owner_only() {
         .permissions()
         .mode();
     assert_eq!(mode & 0o777, 0o600);
+}
+
+/// `clear` reports the entry its own locked read removed. If another process
+/// replaced the selection after an earlier look, the earlier entry is not the
+/// store that was forgotten.
+#[test]
+fn clearing_returns_the_entry_it_removed_not_an_earlier_one() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join(STORE_FILE_NAME);
+    save_store_at(&path, "ote", entry(STORE_A)).expect("save A");
+    let earlier = StoreRegistry::load(&path)
+        .expect("load")
+        .stores
+        .remove("ote");
+    save_store_at(&path, "ote", entry(STORE_B)).expect("another process saves B");
+
+    let removed = clear_store_at(&path, "ote").expect("clear");
+
+    assert_eq!(removed, Some(entry(STORE_B)));
+    assert_ne!(removed, earlier, "the earlier read is stale");
+}
+
+/// The dry-run check fails for a file that cannot be read, writes nothing, and
+/// passes for a missing one.
+#[test]
+fn the_save_check_reads_without_writing() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join(STORE_FILE_NAME);
+    assert!(StoreRegistry::load(&path).map(drop).is_ok());
+    assert!(!path.exists(), "a check must not create the file");
+
+    std::fs::write(&path, "stores = [not toml").expect("seed");
+    assert!(StoreRegistry::load(&path).is_err());
+}
+
+#[test]
+fn an_invalid_id_is_named_the_way_the_user_supplied_it() {
+    let _lock = ENV_LOCK.blocking_lock();
+    for (input, expected, absent) in [
+        (StoreIdInput::Flag, "--store-id", "<STORE_ID>"),
+        (StoreIdInput::Argument, "<STORE_ID>", "--store-id"),
+    ] {
+        let error = resolve_with("ote", Some("nope"), input, no_env, || {
+            Ok(StoreRegistry::default())
+        })
+        .expect_err("not a store id");
+        let text = message(&error);
+        assert!(text.contains(expected), "{text}");
+        assert!(!text.contains(absent), "{text}");
+    }
+}
+
+/// The race itself: `clear` is waiting on the lock while another process swaps
+/// the saved store. What it reports must be what it removed after getting the
+/// lock, and a read taken before waiting would report the old store.
+#[test]
+fn clearing_reports_the_store_saved_while_it_waited_for_the_lock() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join(STORE_FILE_NAME);
+    save_store_at(&path, "ote", entry(STORE_A)).expect("save A");
+
+    let held = RegistryLock::acquire(&path).expect("hold the lock");
+    let clearing = {
+        let path = path.clone();
+        std::thread::spawn(move || clear_store_at(&path, "ote"))
+    };
+    // Long enough for a clear that reads before locking to have read A.
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    registry_with("ote", STORE_B)
+        .save(&path)
+        .expect("another process saves B while clear waits");
+    drop(held);
+
+    let removed = clearing
+        .join()
+        .expect("the thread finishes")
+        .expect("clear");
+    assert_eq!(removed, Some(entry(STORE_B)));
+    assert_eq!(
+        StoreRegistry::load(&path).expect("load").stores.get("ote"),
+        None,
+        "the store that was reported is the one removed"
+    );
 }

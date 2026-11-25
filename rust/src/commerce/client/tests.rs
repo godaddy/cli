@@ -1,0 +1,414 @@
+use super::*;
+use crate::{
+    environments::test_support::{ENV_LOCK, EnvGuard},
+    error::codes,
+};
+use cli_engine::{Envelope, build_error_envelope};
+use httpmock::prelude::*;
+use reqwest::Client as HttpClient;
+use serde_json::json;
+
+const STORE_ID: &str = "6d1f0f4c-8a2e-4a52-9a5b-0f6a3c1d2e4b";
+
+fn client_for(server: &MockServer) -> Client {
+    client_with_builder(
+        HttpClient::builder(),
+        &server.base_url(),
+        "Bearer tok",
+        "req-1",
+    )
+    .expect("build client")
+}
+
+fn envelope(error: &CliCoreError) -> Envelope {
+    build_error_envelope(error, "commerce")
+}
+
+fn code(error: &CliCoreError) -> String {
+    envelope(error).error.map(|e| e.code).unwrap_or_default()
+}
+
+#[tokio::test]
+async fn a_store_is_read_through_the_v1_path_with_auth_headers() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path(format!("/v1/commerce/stores/{STORE_ID}"))
+                .header("authorization", "Bearer tok");
+            then.status(200).json_body(json!({
+                "id": STORE_ID,
+                "businessId": "biz-1",
+                "displayName": "Corner Shop",
+                "status": "ACTIVE"
+            }));
+        })
+        .await;
+
+    let store = fetch_store(&client_for(&server), STORE_ID, "ote")
+        .await
+        .expect("the store is returned");
+
+    mock.assert_async().await;
+    assert_eq!(store.display_name.as_deref(), Some("Corner Shop"));
+    assert_eq!(store.business_id.as_deref(), Some("biz-1"));
+}
+
+/// A missing store says which store and environment, and sends the user to where
+/// store ids are listed, rather than the generic "HTTP error 404".
+#[tokio::test]
+async fn a_404_names_the_store_and_says_where_to_find_one() {
+    let _lock = ENV_LOCK.lock().await;
+    let _unset = EnvGuard::unset("GDDY_DEVELOPER_URL");
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path(format!("/v1/commerce/stores/{STORE_ID}"));
+            then.status(404);
+        })
+        .await;
+
+    let error = fetch_store(&client_for(&server), STORE_ID, "ote")
+        .await
+        .expect_err("a missing store is an error");
+
+    let envelope = envelope(&error);
+    let message = envelope.error.as_ref().map(|e| e.message.clone());
+    let message = message.unwrap_or_default();
+    assert!(message.contains(STORE_ID), "{message}");
+    assert!(message.contains("ote"), "{message}");
+    assert_eq!(code(&error), codes::NOT_FOUND);
+    let fix = envelope.fix.unwrap_or_default();
+    assert!(fix.contains("Your stores"), "{fix}");
+    assert!(fix.contains("developer.ote-godaddy.com"), "{fix}");
+}
+
+/// The 404 text must not leak progenitor's placeholder URL for an unexpected
+/// response (see DEVEX-1390).
+#[tokio::test]
+async fn a_404_does_not_show_the_placeholder_request_url() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET);
+            then.status(404);
+        })
+        .await;
+
+    let error = fetch_store(&client_for(&server), STORE_ID, "ote")
+        .await
+        .expect_err("a missing store is an error");
+
+    let rendered = format!("{:?}", envelope(&error));
+    assert!(!rendered.contains("no.url.provided"), "{rendered}");
+}
+
+#[tokio::test]
+async fn a_403_says_the_account_may_not_read_the_store() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path(format!("/v1/commerce/stores/{STORE_ID}"));
+            then.status(403).body("forbidden");
+        })
+        .await;
+
+    let error = fetch_store(&client_for(&server), STORE_ID, "ote")
+        .await
+        .expect_err("a forbidden store is an error");
+
+    let envelope = envelope(&error);
+    let message = envelope
+        .error
+        .as_ref()
+        .map(|e| e.message.clone())
+        .unwrap_or_default();
+    assert!(message.contains(STORE_ID), "{message}");
+    assert!(message.contains("not allowed"), "{message}");
+    // A forbidden store is not a missing one: callers branch on the code.
+    assert_ne!(code(&error), codes::NOT_FOUND);
+    assert_eq!(code(&error), codes::NETWORK_ERROR);
+    assert!(
+        envelope
+            .fix
+            .as_deref()
+            .is_some_and(|fix| fix.contains("gddy auth status --fields scopes")
+                && !fix.contains("gddy auth scope")),
+        "{envelope:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_server_error_keeps_its_status() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET);
+            then.status(503).body("unavailable");
+        })
+        .await;
+
+    let error = fetch_store(&client_for(&server), STORE_ID, "ote")
+        .await
+        .expect_err("a 503 is an error");
+
+    let message = envelope(&error)
+        .error
+        .map(|e| e.message)
+        .unwrap_or_default();
+    assert!(message.contains("503"), "{message}");
+}
+
+#[tokio::test]
+async fn a_store_response_that_cannot_be_read_is_reported_not_swallowed() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET);
+            then.status(200).body("not json");
+        })
+        .await;
+
+    let error = fetch_store(&client_for(&server), STORE_ID, "ote")
+        .await
+        .expect_err("an unreadable body is an error");
+
+    assert_eq!(code(&error), codes::UNEXPECTED_ERROR);
+}
+
+/// The store schema has no required fields, so an empty or error-shaped 200 body
+/// decodes without complaint. It is not a store, and must not be shown as one or
+/// saved as the selection.
+#[tokio::test]
+async fn a_200_that_is_not_a_store_is_rejected() {
+    for body in [
+        json!({}),
+        json!({ "code": "INTERNAL", "message": "something went wrong" }),
+        json!({ "errors": [{ "message": "nope" }] }),
+    ] {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET);
+                then.status(200).json_body(body.clone());
+            })
+            .await;
+
+        let error = fetch_store(&client_for(&server), STORE_ID, "ote")
+            .await
+            .expect_err("a body with no store in it is an error");
+
+        assert_eq!(code(&error), codes::UNEXPECTED_ERROR, "{body}");
+    }
+}
+
+/// A sparse record is still a store: only a body with no usable identifying
+/// field is rejected, and blank text is not usable.
+#[tokio::test]
+async fn a_sparse_store_record_is_still_accepted() {
+    for body in [
+        json!({ "id": STORE_ID }),
+        json!({ "displayName": "Corner Shop" }),
+        json!({ "businessId": "biz-1" }),
+    ] {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET);
+                then.status(200).json_body(body.clone());
+            })
+            .await;
+
+        let result = fetch_store(&client_for(&server), STORE_ID, "ote").await;
+        assert!(result.is_ok(), "{body} is a store: {result:?}");
+    }
+}
+
+/// Store records carry government IDs, addresses and payment details, and an
+/// error is printed, logged and pasted into bug reports. No part of a response
+/// body may reach the error, whether the response is an error status or a 200
+/// whose body does not decode (serde names the offending value).
+#[tokio::test]
+async fn errors_never_contain_response_data() {
+    let secret = "SECRET-GOV-ID-123-45-6789";
+    for (label, status, body) in [
+        (
+            "500 with a record",
+            500,
+            json!({ "governmentIds": [{ "governmentId": secret }] }).to_string(),
+        ),
+        ("502 with text", 502, format!("upstream said: {secret}")),
+        ("422 with text", 422, format!("bad value {secret}")),
+        ("401 with text", 401, format!("token for {secret} rejected")),
+        ("403 with text", 403, format!("{secret} may not read")),
+        ("404 with text", 404, format!("no store for {secret}")),
+        (
+            "200 with a wrong-typed field",
+            200,
+            json!({ "id": STORE_ID, "latitude": secret }).to_string(),
+        ),
+        (
+            "200 that is not JSON",
+            200,
+            format!("<html>{secret}</html>"),
+        ),
+    ] {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET);
+                then.status(status).body(body.clone());
+            })
+            .await;
+
+        let error = fetch_store(&client_for(&server), STORE_ID, "ote")
+            .await
+            .expect_err("every one of these is an error");
+
+        let rendered = format!("{:?}", envelope(&error));
+        assert!(!rendered.contains(secret), "{label} leaked: {rendered}");
+    }
+}
+
+/// Dropping the body must not drop the status: a server error still says which.
+#[tokio::test]
+async fn an_error_status_is_still_named_without_its_body() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET);
+            then.status(503).body("unavailable");
+        })
+        .await;
+
+    let error = fetch_store(&client_for(&server), STORE_ID, "ote")
+        .await
+        .expect_err("a 503 is an error");
+
+    let message = envelope(&error)
+        .error
+        .map(|e| e.message)
+        .unwrap_or_default();
+    assert!(message.contains("503"), "{message}");
+    assert!(!message.contains("unavailable"), "{message}");
+}
+
+/// A token can be in effect two ways, and the advice must cover both. An exported
+/// token is not touched by `gddy pat remove`, which also needs `--env` and only
+/// removes the saved token for that one environment.
+#[test]
+fn the_403_advice_covers_exported_and_saved_tokens_for_the_active_environment() {
+    for (env, per_env_var) in [("ote", "GDDY_PAT_OTE"), ("my-env", "GDDY_PAT_MY_ENV")] {
+        let fix = forbidden_fix(env);
+
+        assert!(fix.contains(per_env_var), "{fix}");
+        assert!(fix.contains("GDDY_PAT "), "the bare variable too: {fix}");
+        assert!(
+            fix.contains("unset"),
+            "an exported token needs unsetting: {fix}"
+        );
+        assert!(
+            fix.contains(&format!("gddy pat remove --env {env}")),
+            "the command needs the environment: {fix}"
+        );
+    }
+}
+
+/// Blank text is not an identifier. A body whose only fields are empty or
+/// whitespace is no more a store than an empty object, so it must not be shown or
+/// saved as one.
+#[tokio::test]
+async fn a_body_of_only_blank_fields_is_rejected() {
+    for body in [
+        json!({ "id": "" }),
+        json!({ "displayName": "" }),
+        json!({ "displayName": "   " }),
+        json!({ "id": "", "businessId": "", "displayName": " " }),
+        json!({ "id": null, "displayName": null }),
+    ] {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET);
+                then.status(200).json_body(body.clone());
+            })
+            .await;
+
+        let error = fetch_store(&client_for(&server), STORE_ID, "ote")
+            .await
+            .expect_err("a body with no usable field is not a store");
+
+        assert_eq!(code(&error), codes::UNEXPECTED_ERROR, "{body}");
+    }
+}
+
+/// A response that names a different store is not an answer about the one asked
+/// for. Accepting it would let `use` save the requested id on the strength of a
+/// record that identifies another store.
+#[tokio::test]
+async fn a_response_for_a_different_store_is_rejected() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET);
+            then.status(200).json_body(json!({
+                "id": "11111111-1111-4111-8111-111111111111",
+                "displayName": "Other Shop"
+            }));
+        })
+        .await;
+
+    let error = fetch_store(&client_for(&server), STORE_ID, "ote")
+        .await
+        .expect_err("another store's record is not the requested store");
+
+    assert_eq!(code(&error), codes::UNEXPECTED_ERROR);
+    let rendered = format!("{:?}", envelope(&error));
+    assert!(!rendered.contains("Other Shop"), "{rendered}");
+}
+
+/// The same store spelled differently is still the same store, and an id that is
+/// not a store id at all is not.
+#[tokio::test]
+async fn the_returned_id_is_compared_as_a_store_id_not_as_text() {
+    for (returned, accepted) in [
+        (STORE_ID.to_owned(), true),
+        (STORE_ID.to_uppercase(), true),
+        (STORE_ID.replace('-', ""), true),
+        (format!(" {STORE_ID} "), true),
+        ("not-a-store-id".to_owned(), false),
+    ] {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET);
+                then.status(200)
+                    .json_body(json!({ "id": returned, "displayName": "Corner Shop" }));
+            })
+            .await;
+
+        let result = fetch_store(&client_for(&server), STORE_ID, "ote").await;
+
+        assert_eq!(result.is_ok(), accepted, "{returned:?}: {result:?}");
+    }
+}
+
+/// A sparse record with no id of its own, only a name or business id, is still
+/// accepted: there is nothing in it to contradict the request.
+#[tokio::test]
+async fn a_record_without_an_id_is_not_rejected_for_a_mismatch() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET);
+            then.status(200)
+                .json_body(json!({ "displayName": "Corner Shop" }));
+        })
+        .await;
+
+    let result = fetch_store(&client_for(&server), STORE_ID, "ote").await;
+
+    assert!(result.is_ok(), "{result:?}");
+}

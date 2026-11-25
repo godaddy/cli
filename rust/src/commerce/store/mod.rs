@@ -12,13 +12,15 @@
 //! today the only place to see it is the developer portal's "Your stores" page,
 //! which [`find_your_store_id_hint`] points to for the active environment.
 
+mod commands;
 pub(crate) mod context;
 
-use cli_engine::{CommandContext, Result};
+use cli_engine::Result;
 
 use crate::{environments, error::GddyError};
 
-use context::ResolvedStore;
+pub(crate) use commands::group;
+use context::{ResolvedStore, StoreIdInput};
 
 /// Path of the "Your stores" section on a developer portal.
 const YOUR_STORES_PATH: &str = "/docs/api-users/commerce#your-stores";
@@ -86,20 +88,32 @@ pub(crate) struct StoreIdArg {
 /// A validation error if a supplied id is not a valid store id, a config error
 /// if the persisted selection cannot be read, and a config error naming the ways
 /// to supply one if nothing is selected.
-pub(crate) fn resolve_store_id(ctx: &CommandContext, explicit: Option<&str>) -> Result<String> {
-    let env = &ctx.middleware.env;
-    require_store(context::lookup(env, explicit)?, env).map(|store| store.store_id)
+pub(crate) fn resolve_store_id(
+    env: &str,
+    explicit: Option<&str>,
+    input: StoreIdInput,
+) -> Result<String> {
+    require_store(context::lookup(env, explicit, input)?, env, input).map(|store| store.store_id)
 }
 
-/// Turns "nothing selected" into the error that tells the user how to select one.
-fn require_store(resolved: Option<ResolvedStore>, env: &str) -> Result<ResolvedStore> {
+/// Turns "nothing selected" into the error that tells the user how to select
+/// one, naming the way `input` takes an explicit id.
+fn require_store(
+    resolved: Option<ResolvedStore>,
+    env: &str,
+    input: StoreIdInput,
+) -> Result<ResolvedStore> {
+    let (pass, pass_again) = match input {
+        StoreIdInput::Flag => ("pass --store-id", "pass it with --store-id"),
+        StoreIdInput::Argument => ("pass a store id", "pass it as the store id"),
+    };
     resolved.ok_or_else(|| {
-        GddyError::config(
-            "no store selected: pass --store-id, set GDDY_STORE_ID, or run \
-             `gddy commerce store use <store-id>` to persist one for this environment",
-        )
+        GddyError::config(format!(
+            "no store selected: {pass}, set GDDY_STORE_ID, or run \
+             `gddy commerce store use <store-id>` to persist one for this environment"
+        ))
         .with_fix(format!(
-            "{} Then pass it with --store-id or run: gddy commerce store use <store-id>",
+            "{} Then {pass_again} or run: gddy commerce store use <store-id>",
             find_your_store_id_hint(env)
         ))
         .into_cli_error()
@@ -121,7 +135,8 @@ mod tests {
     #[test]
     fn nothing_selected_names_every_way_to_select_a_store() {
         let _lock = ENV_LOCK.blocking_lock();
-        let error = require_store(None, "ote").expect_err("nothing selected is an error");
+        let error = require_store(None, "ote", StoreIdInput::Flag)
+            .expect_err("nothing selected is an error");
         let envelope = cli_engine::build_error_envelope(&error, "commerce");
         let message = envelope
             .error
@@ -145,13 +160,33 @@ mod tests {
     }
 
     #[test]
+    fn the_missing_selection_advice_matches_how_the_command_takes_an_id() {
+        let _lock = ENV_LOCK.blocking_lock();
+        let text = |input| {
+            let error = require_store(None, "ote", input).expect_err("nothing selected");
+            let envelope = cli_engine::build_error_envelope(&error, "commerce");
+            format!(
+                "{} {}",
+                envelope.error.map(|e| e.message).unwrap_or_default(),
+                envelope.fix.unwrap_or_default()
+            )
+        };
+        assert!(text(StoreIdInput::Flag).contains("--store-id"));
+        let argument = text(StoreIdInput::Argument);
+        assert!(!argument.contains("--store-id"), "{argument}");
+        assert!(argument.contains("store use"), "{argument}");
+        assert!(argument.contains("GDDY_STORE_ID"), "{argument}");
+    }
+
+    #[test]
     fn a_selected_store_passes_through() {
         let resolved = ResolvedStore {
             store_id: "6d1f0f4c-8a2e-4a52-9a5b-0f6a3c1d2e4b".to_owned(),
             source: StoreIdSource::Flag,
             entry: None,
         };
-        let store = require_store(Some(resolved), "ote").expect("a selected store is returned");
+        let store = require_store(Some(resolved), "ote", StoreIdInput::Flag)
+            .expect("a selected store is returned");
         assert_eq!(store.store_id, "6d1f0f4c-8a2e-4a52-9a5b-0f6a3c1d2e4b");
     }
 
@@ -204,14 +239,15 @@ mod tests {
         let _lock = ENV_LOCK.blocking_lock();
         let _unset = EnvGuard::unset("GDDY_DEVELOPER_URL");
 
-        let missing = require_store(None, "ote").expect_err("nothing selected");
+        let missing = require_store(None, "ote", StoreIdInput::Flag).expect_err("nothing selected");
         assert!(
             fix_of(&missing).contains("developer.ote-godaddy.com"),
             "{}",
             fix_of(&missing)
         );
 
-        let invalid = context::lookup("ote", Some("nope")).expect_err("not a store id");
+        let invalid =
+            context::lookup("ote", Some("nope"), StoreIdInput::Flag).expect_err("not a store id");
         assert!(
             fix_of(&invalid).contains("developer.ote-godaddy.com"),
             "{}",

@@ -1,0 +1,904 @@
+use std::sync::Arc;
+
+use super::*;
+use crate::{
+    all_modules,
+    commerce::module,
+    environments::test_support::{ENV_LOCK, EnvGuard},
+};
+use cli_engine::{
+    Cli, CliConfig, OutputSchema, PipelineOpts, Stage, apply_pipeline,
+    environments::{EnvTable, Environments},
+    preview_human_view,
+};
+use commerce_client::client_with_builder;
+use httpmock::prelude::*;
+use reqwest::Client as HttpClient;
+use serde_json::from_str;
+
+const STORE_ID: &str = "6d1f0f4c-8a2e-4a52-9a5b-0f6a3c1d2e4b";
+
+fn client_for(server: &MockServer) -> Client {
+    client_with_builder(
+        HttpClient::builder(),
+        &server.base_url(),
+        "Bearer tok",
+        "req-1",
+    )
+    .expect("build client")
+}
+
+async fn serve_store(server: &MockServer) {
+    server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path(format!("/v1/commerce/stores/{STORE_ID}"));
+            then.status(200).json_body(serde_json::json!({
+                "id": STORE_ID,
+                "businessId": "biz-1",
+                "displayName": "Corner Shop",
+                "status": "ACTIVE",
+                "emailAddress": "shop@example.test",
+                "currency": "USD"
+            }));
+        })
+        .await;
+}
+
+async fn serve_status(server: &MockServer, status: u16) {
+    server
+        .mock_async(|when, then| {
+            when.method(GET);
+            then.status(status);
+        })
+        .await;
+}
+
+fn data(result: &CommandResult) -> &Value {
+    &result.data
+}
+
+/// Runs `args` through the commerce command tree at the beta stage. The
+/// saved selection lives wherever `XDG_CONFIG_HOME` points (see
+/// [`isolated_config`]).
+async fn run(args: &[&str]) -> (i32, Value) {
+    let environments = Arc::new(Environments::new("ote").with_environment("ote", EnvTable::new()));
+    let cli = Cli::new(
+        CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+            .with_min_stage(Stage::Beta)
+            .with_environments(environments)
+            .with_startup_args(Vec::<&str>::new())
+            .with_module(module()),
+    );
+    let output = cli.run(args.iter().copied()).await;
+    let parsed = from_str(&output.rendered);
+    assert!(parsed.is_ok(), "not json: {}", output.rendered);
+    let json = parsed.expect("checked by the assertion above");
+    (output.exit_code, json)
+}
+
+struct IsolatedConfig {
+    _dir: tempfile::TempDir,
+    _xdg: EnvGuard,
+    _bare: EnvGuard,
+    _per_env: EnvGuard,
+}
+
+/// Points the saved selection at a temporary directory, and refuses to go on if it
+/// does not end up there. Several tests write the file, one of them a damaged
+/// one, so a path that escaped the temporary directory would overwrite or break
+/// a developer's real configuration.
+fn isolated_config() -> IsolatedConfig {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let xdg = EnvGuard::set("XDG_CONFIG_HOME", &dir.path().display().to_string());
+    let registry = context::registry_path().expect("a config directory");
+    assert!(
+        registry.starts_with(dir.path()),
+        "the saved selection would be written to {}, outside the temporary directory {}",
+        registry.display(),
+        dir.path().display()
+    );
+    IsolatedConfig {
+        _dir: dir,
+        _xdg: xdg,
+        _bare: EnvGuard::unset("GDDY_STORE_ID"),
+        _per_env: EnvGuard::unset("GDDY_STORE_ID_OTE"),
+    }
+}
+
+#[tokio::test]
+async fn get_shows_the_store_in_camel_case() {
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+
+    let result = show(&client_for(&server), STORE_ID, "ote")
+        .await
+        .expect("the store is shown");
+
+    let data = data(&result);
+    assert_eq!(data["storeId"], STORE_ID);
+    assert_eq!(data["displayName"], "Corner Shop");
+    assert_eq!(data["status"], "ACTIVE");
+    assert_eq!(data["businessId"], "biz-1");
+    assert_eq!(data["emailAddress"], "shop@example.test");
+    assert_eq!(data["currency"], "USD");
+}
+
+/// The human view is what a terminal user sees, so check the rendered text, not
+/// only the data it is built from.
+#[tokio::test]
+async fn get_renders_a_readable_human_view() {
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+    let result = show(&client_for(&server), STORE_ID, "ote")
+        .await
+        .expect("the store is shown");
+
+    let rendered = preview_human_view(result.data.clone(), &store_columns());
+
+    for expected in ["Corner Shop", "ACTIVE", STORE_ID, "shop@example.test"] {
+        assert!(
+            rendered.contains(expected),
+            "{expected} missing: {rendered}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn use_saves_the_store_it_fetched() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+
+    let result = select(&client_for(&server), STORE_ID, "ote", false)
+        .await
+        .expect("the store is selected");
+
+    assert_eq!(data(&result)["action"], "selected");
+    let saved = context::saved_store("ote")
+        .expect("the file reads")
+        .expect("a selection was saved");
+    assert_eq!(saved.store_id, STORE_ID);
+    assert_eq!(saved.business_id.as_deref(), Some("biz-1"));
+    assert_eq!(saved.display_name.as_deref(), Some("Corner Shop"));
+}
+
+/// A store that cannot be read must not become the selection, or every later
+/// command would fail against an id that never worked.
+#[tokio::test]
+async fn use_saves_nothing_when_the_store_cannot_be_read() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    for status in [403, 404, 503] {
+        let server = MockServer::start_async().await;
+        serve_status(&server, status).await;
+
+        select(&client_for(&server), STORE_ID, "ote", false)
+            .await
+            .expect_err("an unreadable store is an error");
+
+        assert!(
+            context::saved_store("ote")
+                .expect("the file reads")
+                .is_none(),
+            "a {status} must not save a selection"
+        );
+    }
+}
+
+#[tokio::test]
+async fn use_dry_run_reads_the_store_but_saves_nothing() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+
+    let result = select(&client_for(&server), STORE_ID, "ote", true)
+        .await
+        .expect("the preview succeeds");
+
+    assert_eq!(data(&result)["action"], "would select");
+    assert!(result.metadata.dry_run, "a preview must be marked as one");
+    assert!(
+        context::saved_store("ote")
+            .expect("the file reads")
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn use_dry_run_fails_where_the_real_run_would() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let server = MockServer::start_async().await;
+    serve_status(&server, 404).await;
+
+    select(&client_for(&server), STORE_ID, "ote", true)
+        .await
+        .expect_err("a preview of a missing store is an error");
+}
+
+#[tokio::test]
+async fn use_replaces_the_selection_for_that_environment_only() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+    context::save_store(
+        "prod",
+        StoreEntry {
+            store_id: "11111111-1111-4111-8111-111111111111".to_owned(),
+            business_id: None,
+            display_name: None,
+        },
+    )
+    .expect("seed prod");
+
+    select(&client_for(&server), STORE_ID, "ote", false)
+        .await
+        .expect("selected");
+
+    let prod = context::saved_store("prod")
+        .expect("the file reads")
+        .expect("prod is kept");
+    assert_eq!(prod.store_id, "11111111-1111-4111-8111-111111111111");
+}
+
+#[tokio::test]
+async fn current_reports_no_selection_without_failing() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+
+    let (exit, json) = run(&[
+        "gddy", "commerce", "store", "current", "--env", "ote", "--output", "json",
+    ])
+    .await;
+
+    assert_eq!(exit, 0, "{json}");
+    assert_eq!(json["data"]["selected"], false);
+    assert_eq!(json["data"]["environment"], "ote");
+}
+
+#[tokio::test]
+async fn current_reports_the_saved_store_and_where_it_came_from() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    context::save_store(
+        "ote",
+        StoreEntry {
+            store_id: STORE_ID.to_owned(),
+            business_id: Some("biz-1".to_owned()),
+            display_name: Some("Corner Shop".to_owned()),
+        },
+    )
+    .expect("seed");
+
+    let (exit, json) = run(&[
+        "gddy", "commerce", "store", "current", "--env", "ote", "--output", "json",
+    ])
+    .await;
+
+    assert_eq!(exit, 0, "{json}");
+    assert_eq!(json["data"]["selected"], true);
+    assert_eq!(json["data"]["storeId"], STORE_ID);
+    assert_eq!(json["data"]["displayName"], "Corner Shop");
+    assert_eq!(json["data"]["source"], "file");
+}
+
+/// An environment variable overrides the saved store, so `current` must say so
+/// rather than claim the saved one is in effect.
+#[tokio::test]
+async fn current_says_when_an_environment_variable_overrides_the_saved_store() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let _override = EnvGuard::set("GDDY_STORE_ID_OTE", "22222222-2222-4222-8222-222222222222");
+    context::save_store(
+        "ote",
+        StoreEntry {
+            store_id: STORE_ID.to_owned(),
+            business_id: None,
+            display_name: None,
+        },
+    )
+    .expect("seed");
+
+    let (_, json) = run(&[
+        "gddy", "commerce", "store", "current", "--env", "ote", "--output", "json",
+    ])
+    .await;
+
+    assert_eq!(
+        json["data"]["storeId"],
+        "22222222-2222-4222-8222-222222222222"
+    );
+    assert_eq!(json["data"]["source"], "env-per-env");
+}
+
+#[tokio::test]
+async fn clear_removes_the_saved_store() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    context::save_store(
+        "ote",
+        StoreEntry {
+            store_id: STORE_ID.to_owned(),
+            business_id: None,
+            display_name: None,
+        },
+    )
+    .expect("seed");
+
+    let (exit, json) = run(&[
+        "gddy", "commerce", "store", "clear", "--env", "ote", "--output", "json",
+    ])
+    .await;
+
+    assert_eq!(exit, 0, "{json}");
+    assert_eq!(json["data"]["action"], "cleared");
+    assert_eq!(json["data"]["storeId"], STORE_ID);
+    assert!(context::saved_store("ote").expect("reads").is_none());
+}
+
+#[tokio::test]
+async fn clear_with_nothing_saved_says_so_and_succeeds() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+
+    let (exit, json) = run(&[
+        "gddy", "commerce", "store", "clear", "--env", "ote", "--output", "json",
+    ])
+    .await;
+
+    assert_eq!(exit, 0, "{json}");
+    assert_eq!(json["data"]["action"], "nothing to clear");
+}
+
+#[tokio::test]
+async fn clear_dry_run_keeps_the_saved_store() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    context::save_store(
+        "ote",
+        StoreEntry {
+            store_id: STORE_ID.to_owned(),
+            business_id: None,
+            display_name: None,
+        },
+    )
+    .expect("seed");
+
+    let (exit, json) = run(&[
+        "gddy",
+        "commerce",
+        "store",
+        "clear",
+        "--env",
+        "ote",
+        "--dry-run",
+        "--output",
+        "json",
+    ])
+    .await;
+
+    assert_eq!(exit, 0, "{json}");
+    assert_eq!(json["data"]["action"], "would clear");
+    assert!(
+        context::saved_store("ote").expect("reads").is_some(),
+        "a preview must not remove the selection"
+    );
+}
+
+#[test]
+fn only_the_commands_that_call_the_api_need_the_store_scope() {
+    for (command, reads_api) in [
+        (get_command(), true),
+        (use_command(), true),
+        (current_command(), false),
+        (clear_command(), false),
+    ] {
+        let spec = command.spec;
+        let scopes = spec.metadata().scopes;
+        assert_eq!(
+            scopes == vec![COMMERCE_STORE_READ.to_owned()],
+            reads_api,
+            "{}: {scopes:?}",
+            spec.name
+        );
+    }
+}
+
+#[test]
+fn commands_that_change_state_are_marked_mutating_and_the_rest_read() {
+    let tier = |command: RuntimeCommandSpec| command.spec.tier;
+    assert_eq!(tier(get_command()), Some(Tier::Read));
+    assert_eq!(tier(current_command()), Some(Tier::Read));
+    assert_eq!(tier(use_command()), Some(Tier::Mutate));
+    assert_eq!(tier(clear_command()), Some(Tier::Mutate));
+}
+
+/// `Tier::Mutate` is what makes the engine treat a command as mutating, so `use`
+/// and `clear` need no separate `.mutates(true)`. What is observable is the
+/// engine's own view of them: both are mutating for the dry-run safeguard, and
+/// both handle `--dry-run` themselves, while the read-only commands are neither.
+#[test]
+fn the_engine_treats_use_and_clear_as_mutating_and_dry_run_aware() {
+    for (command, mutating) in [
+        (get_command(), false),
+        (current_command(), false),
+        (use_command(), true),
+        (clear_command(), true),
+    ] {
+        let meta = command.spec.metadata();
+        assert_eq!(meta.dry_run_prompt, mutating, "{}", command.spec.name);
+        assert_eq!(meta.handles_dry_run, mutating, "{}", command.spec.name);
+    }
+}
+
+/// The commerce group is in beta, so it must not appear at the default release
+/// stage, and must once beta features are revealed.
+#[tokio::test]
+async fn the_commerce_group_is_hidden_at_ga_and_visible_from_beta() {
+    let at = |stage| {
+        Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(stage)
+                .with_modules(all_modules()),
+        )
+    };
+
+    let hidden = at(Stage::Ga)
+        .run(["gddy", "commerce", "store", "--help"])
+        .await;
+    assert_ne!(hidden.exit_code, 0, "{}", hidden.rendered);
+
+    let shown = at(Stage::Beta)
+        .run(["gddy", "commerce", "store", "--help"])
+        .await;
+    assert_eq!(shown.exit_code, 0, "{}", shown.rendered);
+    for command in ["get", "use", "current", "clear"] {
+        assert!(shown.rendered.contains(command), "{}", shown.rendered);
+    }
+}
+
+/// A preview must fail where the real run would. A damaged selection file stops
+/// `use`, so `use --dry-run` has to report it too, not claim it would select.
+#[tokio::test]
+async fn use_dry_run_reports_a_damaged_selection_file() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let path = context::registry_path().expect("a config directory");
+    std::fs::create_dir_all(path.parent().expect("has a parent")).expect("create dir");
+    std::fs::write(&path, "stores = [not toml").expect("seed a damaged file");
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+
+    let preview = select(&client_for(&server), STORE_ID, "ote", true)
+        .await
+        .expect_err("a preview must fail on a file the real run cannot read");
+    let real = select(&client_for(&server), STORE_ID, "ote", false)
+        .await
+        .expect_err("the real run fails on it too");
+
+    let message = |error: &cli_engine::CliCoreError| {
+        cli_engine::build_error_envelope(error, "commerce")
+            .error
+            .map(|e| e.message)
+            .unwrap_or_default()
+    };
+    assert_eq!(message(&preview), message(&real));
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("still there"),
+        "stores = [not toml",
+        "a preview must not touch the file"
+    );
+}
+
+fn text_of(error: &cli_engine::CliCoreError) -> String {
+    let envelope = cli_engine::build_error_envelope(error, "commerce");
+    format!(
+        "{} {}",
+        envelope.error.map(|e| e.message).unwrap_or_default(),
+        envelope.fix.unwrap_or_default()
+    )
+}
+
+/// With nothing selected, `get` takes the id as an argument, so the error must
+/// not tell the user to pass a `--store-id` flag it does not have.
+#[tokio::test]
+async fn get_without_a_store_does_not_suggest_a_flag_it_lacks() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+
+    let error = get_target("ote", None).expect_err("nothing is selected");
+
+    let text = text_of(&error);
+    assert!(!text.contains("--store-id"), "{text}");
+    assert!(text.contains("store use"), "{text}");
+}
+
+/// An id typed as an argument is named as an argument when it is not valid, for
+/// both commands that take one.
+#[tokio::test]
+async fn an_invalid_positional_id_is_not_called_a_flag() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+
+    for error in [
+        get_target("ote", Some("nope")).expect_err("not a store id"),
+        use_target("ote", "nope").expect_err("not a store id"),
+    ] {
+        let text = text_of(&error);
+        assert!(!text.contains("--store-id"), "{text}");
+        assert!(text.contains("<STORE_ID>"), "{text}");
+    }
+}
+
+#[tokio::test]
+async fn a_valid_positional_id_is_canonicalized() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let upper = STORE_ID.to_uppercase();
+
+    assert_eq!(get_target("ote", Some(&upper)).expect("valid"), STORE_ID);
+    assert_eq!(use_target("ote", &upper).expect("valid"), STORE_ID);
+}
+
+/// The same race through the command: `clear` waits for the registry lock while
+/// another process saves a different store. It must report the store it removed.
+/// Needs a second worker thread, since the waiting `clear` blocks one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn clear_reports_the_store_it_removed_when_the_selection_changes_underneath_it() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let other_store = "a1e14cc2-29bd-4e99-a1ad-c426cb0266c1";
+    let entry = |store_id: &str| StoreEntry {
+        store_id: store_id.to_owned(),
+        business_id: None,
+        display_name: None,
+    };
+    context::save_store("ote", entry(STORE_ID)).expect("seed A");
+    let path = context::registry_path().expect("a config directory");
+    let lock_file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(path.with_file_name("commerce.toml.lock"))
+        .expect("open the lock file");
+    lock_file.lock().expect("hold the registry lock");
+
+    let clearing = tokio::spawn(async {
+        run(&[
+            "gddy", "commerce", "store", "clear", "--env", "ote", "--output", "json",
+        ])
+        .await
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    std::fs::write(
+        &path,
+        format!("[stores.ote]\nstore_id = \"{other_store}\"\n"),
+    )
+    .expect("another process saves a different store");
+    lock_file.unlock().expect("release the lock");
+
+    let (exit, json) = clearing.await.expect("the command finishes");
+    assert_eq!(exit, 0, "{json}");
+    assert_eq!(json["data"]["action"], "cleared");
+    assert_eq!(json["data"]["storeId"], other_store, "{json}");
+}
+
+/// A preview must fail where the real run would. With a saved store and a
+/// directory where the lock file belongs, the real `clear` cannot open the lock,
+/// so `clear --dry-run` must report that too, not say it "would clear".
+#[tokio::test]
+async fn clear_dry_run_reports_a_lock_it_could_not_open() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    context::save_store(
+        "ote",
+        StoreEntry {
+            store_id: STORE_ID.to_owned(),
+            business_id: None,
+            display_name: None,
+        },
+    )
+    .expect("seed");
+    let path = context::registry_path().expect("a config directory");
+    let lock_path = path.with_file_name("commerce.toml.lock");
+    std::fs::remove_file(&lock_path).expect("remove the lock file the save made");
+    std::fs::create_dir(&lock_path).expect("a directory where the lock file belongs");
+
+    let args = |extra: &'static [&'static str]| {
+        let mut full = vec!["gddy", "commerce", "store", "clear", "--env", "ote"];
+        full.extend(extra);
+        full.extend(["--output", "json"]);
+        full
+    };
+    let (preview_exit, preview) = run(&args(&["--dry-run"])).await;
+    let (real_exit, real) = run(&args(&[])).await;
+
+    assert_ne!(preview_exit, 0, "{preview}");
+    assert_ne!(real_exit, 0, "{real}");
+    assert!(
+        preview.to_string().contains("commerce.toml.lock"),
+        "{preview}"
+    );
+    assert!(
+        context::saved_store("ote").expect("reads").is_some(),
+        "neither run removed the selection"
+    );
+}
+
+/// With nothing saved the real `clear` never touches the lock, so the preview
+/// must not fail on one either.
+#[tokio::test]
+async fn clear_dry_run_with_nothing_saved_ignores_the_lock() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let path = context::registry_path().expect("a config directory");
+    std::fs::create_dir_all(path.parent().expect("has a parent")).expect("create dir");
+    std::fs::create_dir(path.with_file_name("commerce.toml.lock")).expect("lock dir");
+
+    let (exit, json) = run(&[
+        "gddy",
+        "commerce",
+        "store",
+        "clear",
+        "--env",
+        "ote",
+        "--dry-run",
+        "--output",
+        "json",
+    ])
+    .await;
+
+    assert_eq!(exit, 0, "{json}");
+    assert_eq!(json["data"]["action"], "nothing to clear");
+}
+
+/// A selection file that is read-only is still replaced by the real save (it is
+/// swapped in by rename), so the preview must not refuse it.
+#[cfg(unix)]
+#[tokio::test]
+async fn use_dry_run_accepts_a_read_only_selection_file() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    context::save_store(
+        "prod",
+        StoreEntry {
+            store_id: "11111111-1111-4111-8111-111111111111".to_owned(),
+            business_id: None,
+            display_name: None,
+        },
+    )
+    .expect("seed");
+    let path = context::registry_path().expect("a config directory");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400)).expect("read-only");
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+
+    // The preview goes first: the real save swaps in a new, writable file, which
+    // would hide a preview that wrongly refused the read-only one.
+    let preview = select(&client_for(&server), STORE_ID, "ote", true).await;
+    let real = select(&client_for(&server), STORE_ID, "ote", false).await;
+
+    assert!(real.is_ok(), "the real save replaces the file: {real:?}");
+    assert!(preview.is_ok(), "so the preview agrees: {preview:?}");
+}
+
+/// The save-side check: a directory in place of the selection file stops a save.
+#[tokio::test]
+async fn use_dry_run_reports_a_directory_where_the_selection_file_belongs() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let path = context::registry_path().expect("a config directory");
+    std::fs::create_dir_all(&path).expect("a directory where the file belongs");
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+
+    let preview = select(&client_for(&server), STORE_ID, "ote", true).await;
+    let real = select(&client_for(&server), STORE_ID, "ote", false).await;
+
+    assert!(preview.is_err(), "{preview:?}");
+    assert!(real.is_err(), "{real:?}");
+}
+
+/// The real `clear` takes the lock whenever the selection file exists, even if
+/// it holds only another environment's store, so the preview must check the lock
+/// then too. (With no file at all neither touches the lock; see
+/// `clear_dry_run_with_nothing_saved_ignores_the_lock`.)
+#[tokio::test]
+async fn clear_dry_run_checks_the_lock_when_only_another_environment_is_saved() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    context::save_store(
+        "prod",
+        StoreEntry {
+            store_id: "11111111-1111-4111-8111-111111111111".to_owned(),
+            business_id: None,
+            display_name: None,
+        },
+    )
+    .expect("seed another environment");
+    let path = context::registry_path().expect("a config directory");
+    let lock_path = path.with_file_name("commerce.toml.lock");
+    std::fs::remove_file(&lock_path).expect("remove the lock file the save made");
+    std::fs::create_dir(&lock_path).expect("a directory where the lock file belongs");
+
+    let preview = run(&[
+        "gddy",
+        "commerce",
+        "store",
+        "clear",
+        "--env",
+        "ote",
+        "--dry-run",
+        "--output",
+        "json",
+    ])
+    .await;
+    let real = run(&[
+        "gddy", "commerce", "store", "clear", "--env", "ote", "--output", "json",
+    ])
+    .await;
+
+    assert_ne!(real.0, 0, "the real clear opens the lock: {}", real.1);
+    assert_ne!(preview.0, 0, "so the preview agrees: {}", preview.1);
+}
+
+/// A config directory that does not exist yet is created by the real save, so the
+/// preview checks the nearest ancestor that does exist, and passes when that is
+/// writable.
+#[tokio::test]
+async fn use_dry_run_accepts_a_config_directory_that_does_not_exist_yet() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+    let path = context::registry_path().expect("a config directory");
+    assert!(!path.parent().expect("has a parent").exists());
+
+    let preview = select(&client_for(&server), STORE_ID, "ote", true).await;
+
+    assert!(preview.is_ok(), "{preview:?}");
+    assert!(
+        !path.parent().expect("has a parent").exists(),
+        "a preview creates nothing that stays"
+    );
+}
+
+/// `use` opens the same lock file as `clear`, so a directory where it belongs
+/// stops the real save, and the preview must report that too.
+#[tokio::test]
+async fn use_dry_run_reports_a_lock_it_could_not_open() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    let path = context::registry_path().expect("a config directory");
+    std::fs::create_dir_all(path.parent().expect("has a parent")).expect("create dir");
+    std::fs::create_dir(path.with_file_name("commerce.toml.lock")).expect("lock dir");
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+
+    let preview = select(&client_for(&server), STORE_ID, "ote", true).await;
+    let real = select(&client_for(&server), STORE_ID, "ote", false).await;
+
+    assert!(
+        real.is_err(),
+        "the real save cannot open the lock: {real:?}"
+    );
+    assert!(preview.is_err(), "so the preview agrees: {preview:?}");
+}
+
+/// The default output is the handler's data projected down to the command's
+/// default fields, so a field the handler emits but the default fields leave out
+/// is never seen without `--fields`. Drive the real projection with the store the
+/// mock serves, and check every field the handler emits survives it.
+#[tokio::test]
+async fn the_default_output_shows_every_field_the_command_emits() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET);
+            then.status(200).json_body(serde_json::json!({
+                "id": STORE_ID,
+                "businessId": "biz-1",
+                "displayName": "Corner Shop",
+                "status": "ACTIVE",
+                "emailAddress": "shop@example.test",
+                "currency": "USD",
+                "createdAt": "2026-01-02T03:04:05Z",
+                "updatedAt": "2026-02-03T04:05:06Z"
+            }));
+        })
+        .await;
+    let result = show(&client_for(&server), STORE_ID, "ote")
+        .await
+        .expect("shown");
+    let emitted: Vec<String> = result
+        .data
+        .as_object()
+        .expect("an object")
+        .keys()
+        .cloned()
+        .collect();
+    let mut data = result.data.clone();
+
+    apply_pipeline(
+        &mut data,
+        &PipelineOpts {
+            fields: get_command()
+                .spec
+                .default_fields
+                .expect("default fields are set"),
+            fields_are_default: true,
+            ..PipelineOpts::default()
+        },
+    )
+    .expect("the default projection applies");
+
+    for field in &emitted {
+        assert!(
+            data.get(field).is_some_and(|value| !value.is_null()),
+            "{field} is emitted but missing from the default output: {data}"
+        );
+    }
+    assert_eq!(data["createdAt"], "2026-01-02T03:04:05Z");
+    assert_eq!(data["updatedAt"], "2026-02-03T04:05:06Z");
+}
+
+/// What `--schema` and `--help` advertise as output fields must be fields the
+/// handler really emits, and the other way round, so neither can drift.
+#[tokio::test]
+async fn the_advertised_output_fields_match_what_the_command_emits() {
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+    let result = show(&client_for(&server), STORE_ID, "ote")
+        .await
+        .expect("shown");
+    let mut emitted: Vec<&str> = result
+        .data
+        .as_object()
+        .expect("an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let mut advertised: Vec<&str> = StoreResult::fields().iter().map(|f| f.name).collect();
+    emitted.sort_unstable();
+    advertised.sort_unstable();
+
+    assert_eq!(advertised, emitted);
+}
+
+/// A response about another store must not be saved as the selection. The id that
+/// would be saved is the one that was asked for, so the record has to be checked
+/// against it before `use` writes anything.
+#[tokio::test]
+async fn use_does_not_save_a_store_the_api_did_not_identify() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    for body in [
+        serde_json::json!({}),
+        serde_json::json!({ "id": "", "displayName": "  " }),
+        serde_json::json!({
+            "id": "11111111-1111-4111-8111-111111111111",
+            "displayName": "Other Shop"
+        }),
+    ] {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET);
+                then.status(200).json_body(body.clone());
+            })
+            .await;
+
+        let result = select(&client_for(&server), STORE_ID, "ote", false).await;
+
+        assert!(result.is_err(), "{body} was accepted: {result:?}");
+        assert!(
+            context::saved_store("ote").expect("reads").is_none(),
+            "{body} must not become the selection"
+        );
+    }
+}

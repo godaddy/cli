@@ -32,6 +32,7 @@ bytes = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 clap = { version = "4.5", features = ["std", "string", "derive", "env"] }
 cli-engine = { version = "0.10.6", features = ["pkce-auth"] }
+commerce-client = { path = "commerce-client" }
 dirs = "6"
 domains-client = { path = "domains-client" }
 email-client = { path = "email-client" }
