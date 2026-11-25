@@ -16,14 +16,16 @@ pub(crate) fn module() -> Module {
             GroupSpec::new("commerce", "Manage your GoDaddy Commerce store").with_long(
                 "Work with your GoDaddy Commerce store.\n\
              \n\
-             \u{2022} store  \u{2014} choose the store the other commands work \
+             \u{2022} store    \u{2014} choose the store the other commands work \
              on, and see its details\n\
+             \u{2022} catalog  \u{2014} list and look at the products you sell\n\
              \n\
              Start with `gddy commerce store use <store-id>`. Your store id is \
              on the \"Your stores\" page of the GoDaddy developer portal.",
             ),
         )
         .with_group(store::group())
+        .with_group(catalog::group())
     })
     .with_feature_flag("commerce", Stage::Beta)
 }

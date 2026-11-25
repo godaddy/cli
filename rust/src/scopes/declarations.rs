@@ -72,6 +72,8 @@ declare_scopes! {
 
             /// Read a Commerce store's details
             COMMERCE_STORE_READ => "commerce.store:read",
+            /// Read the products in a Commerce store's catalog
+            COMMERCE_PRODUCT_READ => "commerce.product:read",
         }
         step_up {
             // Spends money.

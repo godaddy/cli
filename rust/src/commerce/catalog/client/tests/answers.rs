@@ -189,3 +189,114 @@ fn an_answer_has_to_contain_every_field_that_was_asked_for() {
         assert_eq!(answers(&data, &fields), expected, "{data} {fields:?}");
     }
 }
+
+fn bad_request() -> Value {
+    json!({ "errors": [{
+        "message": "SECRET-LABEL-FROM-THE-API",
+        "extensions": { "code": "BAD_REQUEST" }
+    }] })
+}
+
+/// The subgraph refuses a cursor it did not issue with `BAD_REQUEST`. For a
+/// listing that carries one, that is the person's `--continue` token, so it is
+/// reported as that, with what to do, and not as a failure of the request.
+#[tokio::test]
+async fn a_refused_cursor_is_a_bad_continue_token() {
+    let error = list_with_body_and_cursor(bad_request(), Some("made-up"))
+        .await
+        .expect_err("a refused cursor is a failure");
+
+    let text = text_of(&error);
+    assert_eq!(code_of(&error), codes::VALIDATION_ERROR);
+    assert!(text.contains("--continue"), "{text}");
+    assert!(text.contains("leave --continue off"), "{text}");
+    assert!(!text.contains("SECRET-LABEL"), "{text}");
+}
+
+/// Without a cursor there is no token to blame: the same answer is a failure of
+/// the request, which no change to the command's input would repair.
+#[tokio::test]
+async fn a_refusal_without_a_cursor_is_not_blamed_on_a_token() {
+    let error = list_with_body_and_cursor(bad_request(), None)
+        .await
+        .expect_err("a refusal is a failure");
+
+    let text = text_of(&error);
+    assert_eq!(code_of(&error), codes::UNEXPECTED_ERROR);
+    assert!(!text.contains("--continue"), "{text}");
+    assert!(!text.contains("SECRET-LABEL"), "{text}");
+    assert!(
+        !fix_of(&error).contains("corrected input"),
+        "{}",
+        fix_of(&error)
+    );
+}
+
+/// Another operation's refusal is not a token problem either, whatever it
+/// carries: only the listing's cursor is something a person types.
+#[tokio::test]
+async fn a_refusal_from_another_operation_is_not_blamed_on_a_token() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST);
+            then.status(200).json_body(bad_request());
+        })
+        .await;
+
+    let error = client_for(&server, STORE_ID)
+        .get_product("0c3b1a52-77de-4c0e-8f6b-1d2a9e4f5b60")
+        .await
+        .expect_err("a refusal is a failure");
+
+    assert_eq!(code_of(&error), codes::UNEXPECTED_ERROR);
+    assert!(
+        !text_of(&error).contains("--continue"),
+        "{}",
+        text_of(&error)
+    );
+}
+
+/// A cursor the subgraph accepts is passed through untouched.
+#[tokio::test]
+async fn a_cursor_is_sent_as_given() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST).is_true(|request| {
+                from_slice::<Value>(request.body_ref())
+                    .ok()
+                    .and_then(|body| body.pointer("/variables/after").cloned())
+                    == Some(json!("opaque=="))
+            });
+            then.status(200).json_body(page_with(
+                json!([]),
+                json!({ "hasNextPage": false, "endCursor": null }),
+                json!(0),
+            ));
+        })
+        .await;
+
+    client_for(&server, STORE_ID)
+        .list_products(10, Some("opaque=="), None)
+        .await
+        .expect("the cursor is accepted");
+
+    mock.assert_async().await;
+}
+
+async fn list_with_body_and_cursor(
+    body: Value,
+    after: Option<&str>,
+) -> Result<Option<product_list::ProductListSkuGroups>> {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(move |when, then| {
+            when.method(POST);
+            then.status(200).json_body(body.clone());
+        })
+        .await;
+    client_for(&server, STORE_ID)
+        .list_products(10, after, None)
+        .await
+}

@@ -21,7 +21,7 @@ use reqwest::{Client as HttpClient, ClientBuilder};
 use serde_json::{Value, from_value};
 use uuid::Uuid;
 
-use super::operations::{ProductList, product_list};
+use super::operations::{Product, ProductList, product, product_list};
 use crate::{
     api::http::encode_path_segment, commerce::client::http_error, environments, error::GddyError,
     http,
@@ -40,6 +40,10 @@ const VALIDATION_ERROR: &str = "VALIDATION_ERROR";
 const UNAUTHORIZED: &str = "UNAUTHORIZED";
 /// A query the subgraph's schema does not accept, which is a bug in this client.
 const QUERY_REJECTED: &str = "GRAPHQL_VALIDATION_FAILED";
+/// What the subgraph says to a request it cannot act on. For a listing that
+/// carries a cursor, the cursor is what it cannot act on: a made-up one is
+/// refused with this code, where a real one never is.
+const BAD_REQUEST: &str = "BAD_REQUEST";
 
 /// What to try for a failure that no change to the command's input can repair:
 /// a query gddy itself sends, or an answer it cannot read. The default hint for
@@ -120,6 +124,7 @@ impl CatalogClient {
         &self,
         variables: Q::Variables,
         fields: &[&str],
+        on_bad_request: fn() -> CliCoreError,
     ) -> Result<Q::ResponseData> {
         let mut payload = serde_json::to_value(Q::build_query(variables)).map_err(|_| {
             GddyError::unexpected("the catalog request could not be built")
@@ -175,7 +180,12 @@ impl CatalogClient {
             .into_cli_error()
         })?;
         if let Some(errors) = parsed.errors.filter(|errors| !errors.is_empty()) {
-            return Err(graphql_error(&errors, &self.store_id, &self.env));
+            return Err(graphql_error(
+                &errors,
+                &self.store_id,
+                &self.env,
+                on_bad_request,
+            ));
         }
         let data = parsed
             .data
@@ -186,10 +196,28 @@ impl CatalogClient {
         from_value(data).map_err(|_| malformed("it was not shaped as expected"))
     }
 
+    /// One product, by id. `None` when the store has no product with that id,
+    /// which the API says with an explicit `null` and which is not a failure of
+    /// the request.
+    pub(super) async fn get_product(&self, id: &str) -> Result<Option<product::ProductSkuGroup>> {
+        let data = self
+            .send::<Product>(
+                product::Variables { id: id.to_owned() },
+                &["skuGroup"],
+                request_refused,
+            )
+            .await?;
+        Ok(data.sku_group)
+    }
+
     /// One page of products (`skuGroups`), `first` at a time after the cursor
     /// `after`, optionally only those whose status is one of `status`. `None`
     /// when the store has no products connection at all, which the schema allows
     /// and which is not the same as an empty page.
+    ///
+    /// A cursor the subgraph refuses is reported as a bad `--continue` token and
+    /// not as a failure of the request, since a cursor is the only thing here
+    /// that a person can have mistyped.
     pub(super) async fn list_products(
         &self,
         first: i64,
@@ -207,6 +235,11 @@ impl CatalogClient {
                     }),
                 },
                 &["skuGroups"],
+                if after.is_some() {
+                    bad_continue_token
+                } else {
+                    request_refused
+                },
             )
             .await?;
         if let Some(page) = &data.sku_groups {
@@ -244,10 +277,20 @@ fn omit_unset(variables: &mut Value) {
 /// `message` is the API's free text and can quote the merchant values that were
 /// submitted, including in a 200 response, so it is never shown, and neither is
 /// anything else in the error that is not a plain identifier.
-fn graphql_error(errors: &[GraphqlError], store_id: &str, env: &str) -> CliCoreError {
+fn graphql_error(
+    errors: &[GraphqlError],
+    store_id: &str,
+    env: &str,
+    on_bad_request: fn() -> CliCoreError,
+) -> CliCoreError {
     let has = |code: &str| errors.iter().any(|error| error_code(error) == Some(code));
     if has(UNAUTHORIZED) {
         return http_error(403, store_id, env);
+    }
+    // What the subgraph says to a request it cannot act on. Which part of the
+    // request that is depends on the operation, so the caller says what it means.
+    if has(BAD_REQUEST) {
+        return on_bad_request();
     }
     if has(VALIDATION_ERROR) {
         return GddyError::validation(describe_refusal(errors))
@@ -313,7 +356,12 @@ fn describe_field(field: &Value) -> Option<String> {
             _ => None,
         })
         .collect::<Option<Vec<String>>>()?;
-    Some(format!("{} ({code})", path.join(".")))
+    // A refusal of the request as a whole has no field to name.
+    Some(if path.is_empty() {
+        code.to_owned()
+    } else {
+        format!("{} ({code})", path.join("."))
+    })
 }
 
 /// Whether `text` is a short identifier (letters, digits, `_`, `-`, `.`), the
@@ -333,6 +381,28 @@ fn is_plain(text: &str) -> bool {
 fn answers(data: &Value, fields: &[&str]) -> bool {
     data.as_object()
         .is_some_and(|data| fields.iter().all(|field| data.contains_key(*field)))
+}
+
+/// The error for a request the subgraph says it cannot act on, when nothing in
+/// the request is known to be a person's input.
+fn request_refused() -> CliCoreError {
+    GddyError::unexpected("the Commerce API could not act on the request")
+        .with_fix(NOT_FIXABLE_BY_INPUT)
+        .with_system(SYSTEM)
+        .into_cli_error()
+}
+
+/// The error for a `--continue` token the subgraph will not accept. It is a
+/// person's input, so it is a validation error that says what to do, and a page
+/// is never silently started over from the beginning in its place.
+fn bad_continue_token() -> CliCoreError {
+    GddyError::validation("the --continue token was not accepted")
+        .with_fix(
+            "Copy the token exactly as the previous page printed it, or leave \
+            --continue off to start from the first page.",
+        )
+        .with_system(SYSTEM)
+        .into_cli_error()
 }
 
 /// What is wrong with a page that is not self-consistent, as an error that does
