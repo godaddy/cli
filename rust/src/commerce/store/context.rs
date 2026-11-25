@@ -32,7 +32,7 @@
 
 use std::{collections::BTreeMap, path::Path};
 
-use cli_engine::{CliCoreError, Result};
+use cli_engine::{CliCoreError, Result, fs::config_base_dir};
 use serde::{Deserialize, Serialize};
 
 use crate::{environments, error::GddyError};
@@ -216,8 +216,14 @@ fn env_var_for(env: &str) -> String {
 }
 
 /// Path to the saved selection, if a config directory can be found.
+///
+/// The directory comes from the same place as the CLI's own `config.toml` and
+/// credentials, which honors `XDG_CONFIG_HOME` on every platform. (`dirs` ignores
+/// it on macOS and Windows, so a store selected under a custom config location
+/// would be saved somewhere else than the rest of the configuration, and tests
+/// could not redirect it.)
 pub(crate) fn registry_path() -> Option<std::path::PathBuf> {
-    dirs::config_dir().map(|dir| dir.join("gddy").join(STORE_FILE_NAME))
+    config_base_dir().map(|dir| dir.join("gddy").join(STORE_FILE_NAME))
 }
 
 /// Checks that `value` is a store id (a UUID) and returns its canonical

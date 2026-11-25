@@ -84,9 +84,20 @@ struct IsolatedConfig {
     _per_env: EnvGuard,
 }
 
+/// Points the saved selection at a temporary directory, and refuses to go on if it
+/// does not end up there. Several tests write the file, one of them a damaged
+/// one, so a path that escaped the temporary directory would overwrite or break
+/// a developer's real configuration.
 fn isolated_config() -> IsolatedConfig {
     let dir = tempfile::tempdir().expect("temp dir");
     let xdg = EnvGuard::set("XDG_CONFIG_HOME", &dir.path().display().to_string());
+    let registry = context::registry_path().expect("a config directory");
+    assert!(
+        registry.starts_with(dir.path()),
+        "the saved selection would be written to {}, outside the temporary directory {}",
+        registry.display(),
+        dir.path().display()
+    );
     IsolatedConfig {
         _dir: dir,
         _xdg: xdg,
