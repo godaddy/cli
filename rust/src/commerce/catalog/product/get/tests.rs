@@ -3,7 +3,8 @@ use std::cell::Cell;
 use super::*;
 use crate::error::codes;
 use cli_engine::{
-    OutputSchema, PipelineOpts, apply_pipeline, build_error_envelope, preview_human_view,
+    CliCoreError, OutputSchema, PipelineOpts, apply_pipeline, build_error_envelope,
+    preview_human_view,
 };
 use httpmock::prelude::*;
 use reqwest::Client as ReqwestClient;
@@ -107,7 +108,7 @@ fn a_product_id_is_checked_before_anything_is_sent() {
         "6d1f0f4c",
         "6d1f0f4c-8a2e-4a52-9a5b",
     ] {
-        let error = parse_product_id(given).expect_err("not a product id");
+        let error = parse_product_id(given, None).expect_err("not a product id");
         let envelope = build_error_envelope(&error, "commerce");
         assert_eq!(
             envelope.error.map(|e| e.code),
@@ -124,6 +125,49 @@ fn a_product_id_is_checked_before_anything_is_sent() {
     }
 }
 
+fn fix_of(error: &CliCoreError) -> String {
+    build_error_envelope(error, "commerce")
+        .fix
+        .unwrap_or_default()
+}
+
+/// Both hints that send a person to the list name the store when `--store-id`
+/// chose it, in its canonical form, so following one lists the store that was
+/// asked about and not the selected one. Without `--store-id`, or with a value that
+/// is not a store id, they name none.
+#[tokio::test]
+async fn the_hints_to_the_list_name_the_store_only_when_one_was_given() {
+    let server = MockServer::start_async().await;
+    serve(&server, Value::Null).await;
+    let flag = format!("  {}  ", STORE_ID.to_uppercase());
+    let named = format!("product list --store-id {STORE_ID}");
+
+    for (given, expected) in [
+        (Some(flag.as_str()), Some(named.as_str())),
+        (Some(STORE_ID), Some(named.as_str())),
+        (None, None),
+        (Some("not a store; rm -rf"), None),
+    ] {
+        let not_found = show(&client_for(&server), PRODUCT_ID, "ote", given)
+            .await
+            .expect_err("missing");
+        let malformed = parse_product_id("nope", given).expect_err("malformed");
+
+        for (what, fix) in [
+            ("not found", fix_of(&not_found)),
+            ("malformed", fix_of(&malformed)),
+        ] {
+            match expected {
+                Some(command) => assert!(fix.ends_with(command), "{what} {given:?}: {fix}"),
+                None => {
+                    assert!(fix.ends_with("product list"), "{what} {given:?}: {fix}");
+                    assert!(!fix.contains("--store-id"), "{what} {given:?}: {fix}");
+                }
+            }
+        }
+    }
+}
+
 /// The same product in another case or without hyphens is the same product, so
 /// it is sent in the form the API takes.
 #[test]
@@ -134,7 +178,7 @@ fn a_product_id_is_sent_hyphenated_and_in_lower_case() {
         format!("  {PRODUCT_ID}  "),
     ] {
         assert_eq!(
-            parse_product_id(&given).expect("valid"),
+            parse_product_id(&given, None).expect("valid"),
             PRODUCT_ID,
             "{given:?}"
         );

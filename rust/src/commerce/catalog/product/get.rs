@@ -99,23 +99,41 @@ where
     F: FnOnce() -> Fut,
     Fut: Future<Output = Result<CatalogClient>>,
 {
-    let product_id = parse_product_id(&args.product_id)?;
+    let store_flag = args.store.store_id.as_deref();
+    let product_id = parse_product_id(&args.product_id, store_flag)?;
     let client = connect().await?;
     show(&client, &product_id, env, args.store.store_id.as_deref()).await
+}
+
+/// The command that lists the store's products, for a hint to send the person to,
+/// naming the store when `--store-id` chose it: left out, the hint would list the
+/// selected store, or fail if there is none. The id is repeated only in its
+/// canonical form and only if it is one, so nothing else a person typed is ever
+/// put into a suggested command.
+fn list_command(store_flag: Option<&str>) -> String {
+    let store = store_flag.and_then(|id| Uuid::parse_str(id.trim()).ok());
+    match store {
+        Some(id) => format!(
+            "gddy commerce catalog product list --store-id {}",
+            id.hyphenated()
+        ),
+        None => "gddy commerce catalog product list".to_owned(),
+    }
 }
 
 /// The product id in the form the API takes: a UUID, hyphenated. Checked here,
 /// before anything is sent, so a mistyped id is named as one instead of coming
 /// back as a refused request.
-fn parse_product_id(value: &str) -> Result<String> {
+fn parse_product_id(value: &str, store_flag: Option<&str>) -> Result<String> {
     Uuid::parse_str(value.trim())
         .map(|id| id.hyphenated().to_string())
         .map_err(|_| {
             GddyError::validation(format!("{value:?} is not a product id"))
-                .with_fix(
+                .with_fix(format!(
                     "A product id is a UUID such as 6d1f0f4c-8a2e-4a52-9a5b-0f6a3c1d2e4b. \
-                     Find it with: gddy commerce catalog product list",
-                )
+                     Find it with: {}",
+                    list_command(store_flag)
+                ))
                 .with_system("commerce")
                 .into_cli_error()
         })
@@ -133,7 +151,10 @@ async fn show(
         GddyError::not_found(format!(
             "no product {product_id:?} was found in this store in the {env} environment"
         ))
-        .with_fix("List the store's products with: gddy commerce catalog product list")
+        .with_fix(format!(
+            "List the store's products with: {}",
+            list_command(store_flag)
+        ))
         .with_system("commerce")
         .into_cli_error()
     })?;
