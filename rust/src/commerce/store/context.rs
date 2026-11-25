@@ -341,103 +341,47 @@ pub(crate) fn clear_store(env: &str) -> Result<Option<StoreEntry>> {
     }
 }
 
-/// Fails now if [`save_store`] would fail for a reason other than the store
-/// itself: no config directory to save in, or an existing selection file that
-/// cannot be read. Writes nothing and takes no lock, so a `--dry-run` can
-/// report what the real run would hit.
+/// Fails now if [`save_store`] would fail on what is already on disk: no config
+/// directory to save in, an existing selection file that cannot be read, or a
+/// lock file that cannot be opened. Writes nothing and takes no lock, so a
+/// `--dry-run` can report those. It does not try to predict whether the files can
+/// be written: that depends on permissions the real run is the only reliable test
+/// of.
 pub(crate) fn check_can_save() -> Result<()> {
     let path = required_registry_path()?;
     StoreRegistry::load(&path)?;
-    check_lock_and_write_prerequisites(&path)
+    check_lock_is_openable(&path)
 }
 
-/// Fails if what a save or clear needs from the filesystem is in the way:
-///
-/// - The lock file must be openable for writing, which is how the real run opens
-///   it: a directory in its place, or a file the user cannot write, stops it.
-/// - The directory the files live in must be writable, since the lock file is
-///   created there and the new selection is written to a temporary file there
-///   and renamed over the old one. If that directory does not exist yet, it is
-///   the nearest existing ancestor that has to be writable, since that is where
-///   the real run would create it.
-///
-/// The selection file's own permissions do not matter, since it is replaced, not
-/// written in place, and a directory in its place is already reported when the
-/// registry is read. Nothing is locked or truncated, a missing lock file is fine
-/// (the real run creates it), and the one write is a probe file that is removed
-/// again, so the saved selection is never touched.
-fn check_lock_and_write_prerequisites(registry: &Path) -> Result<()> {
-    check_lock_is_openable(registry)?;
-    check_directory_is_writable(registry)
-}
-
-/// Fails if the lock file next to `registry` cannot be opened for writing. A
-/// missing lock file is fine: the real run creates it.
-fn check_lock_is_openable(registry: &Path) -> Result<()> {
-    let lock_path = registry.with_file_name(format!("{STORE_FILE_NAME}.lock"));
-    match std::fs::OpenOptions::new().write(true).open(&lock_path) {
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(CliCoreError::message(format!(
-                "failed to open {}: {error}",
-                lock_path.display()
-            )));
-        }
-    }
-    Ok(())
-}
-
-/// Creates and removes a probe file in the directory the registry lives in, or in
-/// the nearest ancestor that exists if it does not exist yet.
-fn check_directory_is_writable(registry: &Path) -> Result<()> {
-    let Some(dir) = registry
-        .parent()
-        .and_then(|parent| parent.ancestors().find(|dir| dir.exists()))
-    else {
-        return Ok(());
-    };
-    let probe = dir.join(format!(".{STORE_FILE_NAME}.{}.probe", std::process::id()));
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    match options.open(&probe) {
-        Ok(file) => {
-            drop(file);
-            // A probe that cannot be removed is not a reason to fail the preview.
-            std::fs::remove_file(&probe).ok();
-            Ok(())
-        }
-        Err(error) => Err(CliCoreError::message(format!(
-            "cannot save the store selection: {} is not writable: {error}",
-            dir.display()
-        ))),
-    }
-}
-
-/// Fails now if [`clear_store`] would fail for a reason other than the selection
-/// itself, as [`check_can_save`] does for a save. The real clear takes the lock
-/// whenever the selection file exists, whether or not it holds an entry for this
-/// environment, and does nothing at all when the file is missing, so this checks
-/// the lock in exactly that case. Writes nothing and takes no lock, so a
-/// `--dry-run` can report what the real run would hit.
-///
-/// The lock is needed whenever the file exists. The directory only has to be
-/// writable when there is an entry to remove (`will_remove`), because a clear
-/// that finds nothing for this environment rewrites nothing.
-pub(crate) fn check_can_clear(will_remove: bool) -> Result<()> {
+/// Fails now if [`clear_store`] would fail on what is already on disk, as
+/// [`check_can_save`] does for a save. The real clear takes the lock whenever the
+/// selection file exists, whether or not it holds an entry for this environment,
+/// and does nothing at all when the file is missing, so the lock is checked in
+/// exactly that case.
+pub(crate) fn check_can_clear() -> Result<()> {
     let Some(path) = registry_path() else {
         return Ok(());
     };
     match path.try_exists() {
         Ok(false) => Ok(()),
-        Ok(true) => {
-            check_lock_is_openable(&path)?;
-            if will_remove {
-                check_directory_is_writable(&path)?;
-            }
-            Ok(())
-        }
+        Ok(true) => check_lock_is_openable(&path),
         Err(error) => Err(unreadable(&path, &error)),
+    }
+}
+
+/// Fails if the lock file next to `registry` cannot be opened for writing, which
+/// is how the real run opens it: a directory in its place, or a file the user
+/// cannot write, stops a save or a clear. A missing lock file is fine (the real
+/// run creates it), and nothing is created, truncated or locked here.
+fn check_lock_is_openable(registry: &Path) -> Result<()> {
+    let lock_path = registry.with_file_name(format!("{STORE_FILE_NAME}.lock"));
+    match std::fs::OpenOptions::new().write(true).open(&lock_path) {
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(CliCoreError::message(format!(
+            "failed to open {}: {error}",
+            lock_path.display()
+        ))),
     }
 }
 

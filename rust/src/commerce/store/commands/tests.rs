@@ -736,145 +736,6 @@ async fn clear_dry_run_checks_the_lock_when_only_another_environment_is_saved() 
     assert_ne!(preview.0, 0, "so the preview agrees: {}", preview.1);
 }
 
-/// Restores a directory's permissions when dropped, so a test that makes one
-/// unwritable cannot leave a temporary directory that cannot be cleaned up.
-#[cfg(unix)]
-struct RestoreMode(std::path::PathBuf);
-
-#[cfg(unix)]
-impl Drop for RestoreMode {
-    fn drop(&mut self) {
-        use std::os::unix::fs::PermissionsExt as _;
-        std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o700)).ok();
-    }
-}
-
-/// Makes `dir` unwritable. Returns `None` when that has no effect, as for a
-/// process that ignores directory permissions (root), so the test can skip.
-#[cfg(unix)]
-fn make_unwritable(dir: &std::path::Path) -> Option<RestoreMode> {
-    use std::os::unix::fs::PermissionsExt as _;
-    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o500)).expect("chmod");
-    let guard = RestoreMode(dir.to_owned());
-    let probe = dir.join(".permission-probe");
-    match std::fs::File::create(&probe) {
-        Ok(_) => {
-            std::fs::remove_file(&probe).ok();
-            None
-        }
-        Err(_) => Some(guard),
-    }
-}
-
-/// The real save and clear write a temporary file next to the selection file and
-/// rename it over the old one, so an unwritable directory stops them even when
-/// the selection and lock files themselves look fine. The preview must say so.
-#[cfg(unix)]
-#[tokio::test]
-async fn previews_report_a_directory_that_cannot_be_written() {
-    let _lock = ENV_LOCK.lock().await;
-    let _config = isolated_config();
-    for env in ["ote", "prod"] {
-        context::save_store(
-            env,
-            StoreEntry {
-                store_id: "11111111-1111-4111-8111-111111111111".to_owned(),
-                business_id: None,
-                display_name: None,
-            },
-        )
-        .expect("seed a selection and its lock file");
-    }
-    let dir = context::registry_path()
-        .expect("a config directory")
-        .parent()
-        .expect("has a parent")
-        .to_owned();
-    let Some(_restore) = make_unwritable(&dir) else {
-        return;
-    };
-    let server = MockServer::start_async().await;
-    serve_store(&server).await;
-
-    let use_preview = select(&client_for(&server), STORE_ID, "ote", true).await;
-    let use_real = select(&client_for(&server), STORE_ID, "ote", false).await;
-    let clear_preview = run(&[
-        "gddy",
-        "commerce",
-        "store",
-        "clear",
-        "--env",
-        "ote",
-        "--dry-run",
-        "--output",
-        "json",
-    ])
-    .await;
-    let clear_real = run(&[
-        "gddy", "commerce", "store", "clear", "--env", "ote", "--output", "json",
-    ])
-    .await;
-
-    assert!(
-        use_real.is_err(),
-        "the real save cannot write: {use_real:?}"
-    );
-    assert!(
-        use_preview.is_err(),
-        "so the preview agrees: {use_preview:?}"
-    );
-    assert_ne!(clear_real.0, 0, "{}", clear_real.1);
-    assert_ne!(clear_preview.0, 0, "{}", clear_preview.1);
-    let leftovers: Vec<_> = std::fs::read_dir(&dir)
-        .expect("readable")
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .filter(|name| name.ends_with(".probe"))
-        .collect();
-    assert!(
-        leftovers.is_empty(),
-        "a probe was left behind: {leftovers:?}"
-    );
-}
-
-/// A clear that finds nothing for this environment rewrites nothing, so an
-/// unwritable directory does not stop it, and its preview must not claim it does.
-#[cfg(unix)]
-#[tokio::test]
-async fn clear_dry_run_with_nothing_to_remove_ignores_an_unwritable_directory() {
-    let _lock = ENV_LOCK.lock().await;
-    let _config = isolated_config();
-    context::save_store(
-        "prod",
-        StoreEntry {
-            store_id: "11111111-1111-4111-8111-111111111111".to_owned(),
-            business_id: None,
-            display_name: None,
-        },
-    )
-    .expect("seed another environment");
-    let dir = context::registry_path()
-        .expect("a config directory")
-        .parent()
-        .expect("has a parent")
-        .to_owned();
-    let Some(_restore) = make_unwritable(&dir) else {
-        return;
-    };
-    let args = |extra: &'static [&'static str]| {
-        let mut full = vec!["gddy", "commerce", "store", "clear", "--env", "ote"];
-        full.extend(extra);
-        full.extend(["--output", "json"]);
-        full
-    };
-
-    let real = run(&args(&[])).await;
-    let preview = run(&args(&["--dry-run"])).await;
-
-    assert_eq!(real.0, 0, "{}", real.1);
-    assert_eq!(preview.0, 0, "the preview agrees: {}", preview.1);
-}
-
 /// A config directory that does not exist yet is created by the real save, so the
 /// preview checks the nearest ancestor that does exist, and passes when that is
 /// writable.
@@ -896,21 +757,15 @@ async fn use_dry_run_accepts_a_config_directory_that_does_not_exist_yet() {
     );
 }
 
-/// The real save creates a missing config directory, which needs its nearest
-/// existing ancestor to be writable. The preview must check that ancestor, not
-/// treat a missing directory as fine.
-#[cfg(unix)]
+/// `use` opens the same lock file as `clear`, so a directory where it belongs
+/// stops the real save, and the preview must report that too.
 #[tokio::test]
-async fn use_dry_run_reports_an_unwritable_ancestor_of_a_missing_config_directory() {
+async fn use_dry_run_reports_a_lock_it_could_not_open() {
     let _lock = ENV_LOCK.lock().await;
     let _config = isolated_config();
     let path = context::registry_path().expect("a config directory");
-    let config_dir = path.parent().expect("has a parent");
-    assert!(!config_dir.exists());
-    let ancestor = config_dir.parent().expect("has an ancestor");
-    let Some(_restore) = make_unwritable(ancestor) else {
-        return;
-    };
+    std::fs::create_dir_all(path.parent().expect("has a parent")).expect("create dir");
+    std::fs::create_dir(path.with_file_name("commerce.toml.lock")).expect("lock dir");
     let server = MockServer::start_async().await;
     serve_store(&server).await;
 
@@ -919,7 +774,7 @@ async fn use_dry_run_reports_an_unwritable_ancestor_of_a_missing_config_director
 
     assert!(
         real.is_err(),
-        "the real save cannot create the directory: {real:?}"
+        "the real save cannot open the lock: {real:?}"
     );
     assert!(preview.is_err(), "so the preview agrees: {preview:?}");
 }

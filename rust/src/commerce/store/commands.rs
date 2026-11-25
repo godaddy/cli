@@ -134,9 +134,10 @@ async fn show(client: &Client, store_id: &str, env: &str) -> Result<CommandResul
 }
 
 /// Reads the store, and only if that succeeds saves it as the selection for
-/// `env`. Under `--dry-run` everything the real run needs is still checked, the
-/// read of the store and that the selection file can be saved to, so a preview
-/// fails where the real run would, but nothing is saved.
+/// `env`. Under `--dry-run` the store is still read and the saved selection is
+/// still checked (it must parse, and its lock file must be openable), so a
+/// preview fails on those, but nothing is saved. Whether the files can be
+/// written is not predicted; only the real run can say.
 async fn select(
     client: &Client,
     store_id: &str,
@@ -207,6 +208,10 @@ fn use_command() -> RuntimeCommandSpec {
                  store id is on the \"Your stores\" page of the GoDaddy \
                  developer portal.\n\
                  \n\
+                 With --dry-run, the store is still checked and nothing is saved. \
+                 The saved choice is checked too, but whether this machine can \
+                 write the change is not.\n\
+                 \n\
                  Examples:\n  \
                  gddy commerce store use 6d1f0f4c-8a2e-4a52-9a5b-0f6a3c1d2e4b",
             )
@@ -260,7 +265,12 @@ fn current_command() -> RuntimeCommandSpec {
 fn clear_command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<NoArgs, _, _, _>(
         CommandSpec::from_args::<NoArgs>("clear", "Forget the chosen store for this environment")
-            .with_long("Removes the store chosen with `gddy commerce store use`.")
+            .with_long(
+                "Removes the store chosen with `gddy commerce store use`.\n\
+                 \n\
+                 With --dry-run, nothing is removed. The saved choice is still \
+                 checked, but whether this machine can write the change is not.",
+            )
             .with_system(SYSTEM)
             .with_tier(Tier::Mutate)
             .handles_dry_run(true)
@@ -274,7 +284,7 @@ fn clear_command() -> RuntimeCommandSpec {
             // changed in between.
             let (removed, action) = if dry_run {
                 let saved = context::saved_store(&env)?;
-                context::check_can_clear(saved.is_some())?;
+                context::check_can_clear()?;
                 let action = if saved.is_some() {
                     "would clear"
                 } else {
