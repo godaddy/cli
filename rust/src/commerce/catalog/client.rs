@@ -134,11 +134,14 @@ impl CatalogClient {
             .await
             .map_err(network_error)?;
 
+        // An error status is mapped by the status alone, so its body is never
+        // read: a body that is cut off or times out must not turn a 404 or 401
+        // into a network error and lose the advice that goes with it.
         let status = response.status();
-        let bytes = response.bytes().await.map_err(network_error)?;
         if !status.is_success() {
             return Err(http_error(status.as_u16(), &self.store_id, &self.env));
         }
+        let bytes = response.bytes().await.map_err(network_error)?;
 
         // serde's message can quote the value it choked on, so the position is
         // all that is reported.

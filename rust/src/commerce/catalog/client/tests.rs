@@ -712,3 +712,72 @@ async fn a_field_path_that_is_not_made_of_identifiers_is_left_out() {
     assert!(text.contains("status (invalid_type)"), "{text}");
     assert!(!text.contains("SECRET"), "{text}");
 }
+
+/// Starts a server that answers any request with `status` and a `Content-Length`
+/// larger than the body it sends, then closes the connection, so reading the body
+/// fails after the status line and headers have arrived.
+async fn serve_truncated(status: u16) -> String {
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let address = listener.local_addr().expect("address");
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut buffer = vec![0u8; 8192];
+                let _ = socket.read(&mut buffer).await;
+                let response = format!(
+                    "HTTP/1.1 {status} X\r\ncontent-type: text/plain\r\ncontent-length: 1000\r\n\r\npartial"
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.shutdown().await;
+            });
+        }
+    });
+    format!("http://{address}")
+}
+
+/// An error status is mapped by the status alone, because its body is never
+/// used. A body that cannot be read (cut off, or timed out) must not turn a 401
+/// or 404 into a network error and lose the advice that goes with it.
+#[tokio::test]
+async fn an_error_status_keeps_its_mapping_when_its_body_cannot_be_read() {
+    for (status, expected_code) in [
+        (404, codes::NOT_FOUND),
+        (401, codes::AUTH_REQUIRED),
+        (403, codes::NETWORK_ERROR),
+    ] {
+        let base_url = serve_truncated(status).await;
+        let client =
+            CatalogClient::new(ReqwestClient::builder(), &base_url, "tok", STORE_ID, "ote")
+                .expect("build client");
+
+        let error = client
+            .list_products(10, None, None)
+            .await
+            .expect_err("an error status is a failure");
+
+        assert_eq!(code_of(&error), expected_code, "{status}");
+        if status == 404 {
+            assert!(text_of(&error).contains(STORE_ID), "{}", text_of(&error));
+        }
+    }
+}
+
+/// The same cut-off body on a success status is a real failure to read the
+/// answer, and is reported as a network problem.
+#[tokio::test]
+async fn a_success_status_whose_body_cannot_be_read_is_a_network_error() {
+    let base_url = serve_truncated(200).await;
+    let client = CatalogClient::new(ReqwestClient::builder(), &base_url, "tok", STORE_ID, "ote")
+        .expect("build client");
+
+    let error = client
+        .list_products(10, None, None)
+        .await
+        .expect_err("a cut-off answer is a failure");
+
+    assert_eq!(code_of(&error), codes::NETWORK_ERROR);
+}
