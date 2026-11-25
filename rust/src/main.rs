@@ -40,6 +40,7 @@ use crate::next_action::next_action;
 pub(crate) fn all_modules() -> Vec<Module> {
     vec![
         api::module(),
+        commerce::module(),
         db::module(),
         dns::module(),
         domain::module(),

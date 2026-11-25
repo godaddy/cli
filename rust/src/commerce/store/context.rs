@@ -286,6 +286,16 @@ fn resolve_with(
     }))
 }
 
+/// The selection saved for `env` in the registry file, ignoring the flag and the
+/// environment variables. `store clear` uses it to say what it would remove,
+/// since those other sources are not the file's to change.
+pub(crate) fn saved_store(env: &str) -> Result<Option<StoreEntry>> {
+    match registry_path() {
+        Some(path) => Ok(StoreRegistry::load(&path)?.stores.remove(env)),
+        None => Ok(None),
+    }
+}
+
 /// Saves `entry` as the selection for `env`, replacing any existing one and
 /// leaving other environments' selections alone.
 pub(crate) fn save_store(env: &str, entry: StoreEntry) -> Result<()> {

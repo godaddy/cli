@@ -12,12 +12,14 @@
 //! today the only place to see it is the developer portal's "Your stores" page,
 //! which [`find_your_store_id_hint`] points to for the active environment.
 
+mod commands;
 pub(crate) mod context;
 
 use cli_engine::{CommandContext, Result};
 
 use crate::{environments, error::GddyError};
 
+pub(crate) use commands::group;
 use context::ResolvedStore;
 
 /// Path of the "Your stores" section on a developer portal.

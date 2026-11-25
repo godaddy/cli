@@ -69,6 +69,9 @@ declare_scopes! {
 
             /// Browse and resolve Shopping catalog products
             SHOPPING_CATALOG_READ => "shopping.catalog:read",
+
+            /// Read a Commerce store's details
+            COMMERCE_STORE_READ => "commerce.store:read",
         }
         step_up {
             // Spends money.
