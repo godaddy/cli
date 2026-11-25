@@ -1,15 +1,14 @@
 //! `gddy domain-connect template init` — write a template file.
 
-use std::io::IsTerminal;
 use std::path::Path;
 
 use cli_engine::{
-    CommandContext, CommandResult, CommandSpec, NextAction, NextActionParam, RuntimeCommandSpec,
-    TableColumn, Tier,
+    CommandContext, CommandResult, CommandSpec, InteractivityPolicy, NextAction, NextActionParam,
+    RuntimeCommandSpec, TableColumn, Tier,
 };
 use serde_json::json;
 
-use super::interactive::prompt_template;
+use super::interactive::prompt_records;
 use super::parsers::parse_records;
 use super::types::{Essential, RecordKind, Template};
 use crate::error::GddyError;
@@ -29,25 +28,21 @@ output_schema!(InitOutput {
 
 #[derive(Debug, Clone, clap::Args)]
 struct InitArgs {
-    /// Build the template from flags instead of asking questions
-    #[arg(long = "no-interactive")]
-    no_interactive: bool,
-
     /// Your domain name, which identifies you as the provider, e.g. acme.com
-    #[arg(long = "provider-id", value_name = "DOMAIN")]
-    provider_id: Option<String>,
+    #[arg(long = "provider-id", value_name = "DOMAIN", required = true, value_parser = parse_provider_id)]
+    provider_id: String,
 
     /// Your name as customers see it, e.g. "Acme Corp"
-    #[arg(long = "provider-name", value_name = "NAME")]
-    provider_name: Option<String>,
+    #[arg(long = "provider-name", value_name = "NAME", required = true, value_parser = parse_required_text)]
+    provider_name: String,
 
     /// Short identifier for the service, e.g. managed-wordpress
-    #[arg(long = "service-id", value_name = "ID")]
-    service_id: Option<String>,
+    #[arg(long = "service-id", value_name = "ID", required = true, value_parser = parse_service_id)]
+    service_id: String,
 
     /// The service's name as customers see it, e.g. "Acme Managed WordPress"
-    #[arg(long = "service-name", value_name = "NAME")]
-    service_name: Option<String>,
+    #[arg(long = "service-name", value_name = "NAME", required = true, value_parser = parse_required_text)]
+    service_name: String,
 
     /// What the template sets up, e.g. "Points your domain at Acme hosting"
     #[arg(long = "description", value_name = "TEXT")]
@@ -199,40 +194,46 @@ fn check_logo_url(logo_url: &str) -> Result<(), GddyError> {
     .with_system(SYSTEM))
 }
 
-fn missing_identity(flag: &str) -> cli_engine::CliCoreError {
-    GddyError::validation(format!("--{flag} is required with --no-interactive."))
-        .with_fix(
-            "Pass --provider-id, --provider-name, --service-id and --service-name, or run \
-             without --no-interactive in a terminal to answer prompts.",
-        )
-        .with_system(SYSTEM)
-        .into_cli_error()
+/// Value parsers for the required identity flags. The engine's prompt
+/// recovery runs them on each typed answer, so a bad value is explained and
+/// asked again, and the same checks apply when the flag is given directly.
+fn parse_provider_id(value: &str) -> Result<String, String> {
+    let value = value.trim();
+    check_provider_id(value)
+        .map(|()| value.to_owned())
+        .map_err(|problem| problem.to_string())
+}
+
+fn parse_service_id(value: &str) -> Result<String, String> {
+    let value = value.trim();
+    check_service_id(value)
+        .map(|()| value.to_owned())
+        .map_err(|problem| problem.to_string())
+}
+
+fn parse_required_text(value: &str) -> Result<String, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        Err("A value is required.".to_owned())
+    } else {
+        Ok(value.to_owned())
+    }
 }
 
 fn from_flags(args: &InitArgs) -> cli_engine::Result<Template> {
-    let field = |value: &Option<String>, flag: &str| {
-        value
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_owned)
-            .ok_or_else(|| missing_identity(flag))
-    };
-    let provider_id = field(&args.provider_id, "provider-id")?;
-    let provider_name = field(&args.provider_name, "provider-name")?;
-    let service_id = field(&args.service_id, "service-id")?;
-    let service_name = field(&args.service_name, "service-name")?;
-    check_provider_id(&provider_id).map_err(GddyError::into_cli_error)?;
-    check_service_id(&service_id).map_err(GddyError::into_cli_error)?;
+    // The parsers already checked these when the flags were read; checking
+    // again keeps this safe to call with arguments built any other way.
+    check_provider_id(&args.provider_id).map_err(GddyError::into_cli_error)?;
+    check_service_id(&args.service_id).map_err(GddyError::into_cli_error)?;
     if let Some(logo_url) = &args.logo_url {
         check_logo_url(logo_url).map_err(GddyError::into_cli_error)?;
     }
 
     let mut template = Template::from_basic_inputs(
-        provider_id,
-        provider_name,
-        service_id,
-        service_name,
+        args.provider_id.clone(),
+        args.provider_name.clone(),
+        args.service_id.clone(),
+        args.service_name.clone(),
         args.description.clone(),
     );
     template.logo_url = args.logo_url.clone();
@@ -272,16 +273,16 @@ fn from_flags(args: &InitArgs) -> cli_engine::Result<Template> {
     Ok(template)
 }
 
-fn needs_terminal() -> cli_engine::CliCoreError {
-    GddyError::validation(
-        "This command asks questions, and there is no terminal to answer them in.",
-    )
-    .with_fix(
-        "Pass --no-interactive with --provider-id, --provider-name, --service-id and \
-         --service-name, plus an --add-<type> flag for each DNS record.",
-    )
-    .with_system(SYSTEM)
-    .into_cli_error()
+/// Builds the template from the flags. When prompting is on, the engine has
+/// already asked for any missing identity flag and for the optional
+/// description, so this only asks for what flags cannot express: DNS records.
+fn gather(ctx: &CommandContext, args: &InitArgs) -> cli_engine::Result<Template> {
+    let mut template = from_flags(args)?;
+    // Records given as flags are kept; offer to add more only when none were.
+    if ctx.is_interactive() && template.records.is_empty() {
+        prompt_records(ctx.prompter().as_ref(), &mut template)?;
+    }
+    Ok(template)
 }
 
 fn file_name(template: &Template) -> String {
@@ -368,15 +369,7 @@ fn write_template(
 }
 
 async fn run(ctx: CommandContext, args: InitArgs) -> cli_engine::Result<CommandResult> {
-    let template = if args.no_interactive {
-        from_flags(&args)?
-    } else {
-        let stdin = std::io::stdin();
-        if !stdin.is_terminal() {
-            return Err(needs_terminal());
-        }
-        prompt_template(&mut stdin.lock(), &mut std::io::stderr())?
-    };
+    let template = gather(&ctx, &args)?;
     let dir = std::env::current_dir().map_err(|error| {
         GddyError::unexpected(format!("could not find the current directory: {error}"))
             .with_system(SYSTEM)
@@ -393,9 +386,9 @@ pub(super) fn command() -> RuntimeCommandSpec {
                  current directory. A template lists the DNS records your service needs, so \
                  customers can connect their domain to it in one step.\n\
                  \n\
-                 In a terminal, the command asks for each value. With --no-interactive it \
-                 builds the template from flags instead. An existing file is left alone \
-                 unless you pass --force.\n\
+                 In a terminal, the command asks for each value the flags leave out. With \
+                 --non-interactive it builds the template from flags alone. An existing \
+                 file is left alone unless you pass --force.\n\
                  \n\
                  Each --add-<type> flag takes key=value pairs separated by commas. An \
                  unknown key is rejected and the error lists the keys that record type \
@@ -404,7 +397,7 @@ pub(super) fn command() -> RuntimeCommandSpec {
                  \n\
                  Example:\n\
                    gddy domain-connect template init \\\n\
-                     --no-interactive \\\n\
+                     --non-interactive \\\n\
                      --provider-id acme.com \\\n\
                      --provider-name \"Acme Corp\" \\\n\
                      --service-id email \\\n\
@@ -414,9 +407,11 @@ pub(super) fn command() -> RuntimeCommandSpec {
                  \n\
                  Next, check the file with `gddy domain-connect template validate`.\n\
                  \n\
-                 AI assistants: use --no-interactive; the prompts need a terminal. Ask the \
+                 AI assistants: use --non-interactive; the prompts need a terminal. Ask the \
                  user for the provider and service details instead of inventing them.",
             )
+            .with_interactivity(InteractivityPolicy::DefaultOnTty)
+            .with_prompted_args(["description"])
             .with_system(SYSTEM)
             .with_tier(Tier::Mutate)
             .mutates(true)

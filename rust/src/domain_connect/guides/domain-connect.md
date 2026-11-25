@@ -32,7 +32,7 @@ In a script, pass everything as flags:
 
 ```
 gddy domain-connect template init \
-  --no-interactive \
+  --non-interactive \
   --provider-id acme.com \
   --provider-name "Acme Corp" \
   --service-id email \
@@ -90,4 +90,4 @@ A template that isn't ready isn't submitted: the command lists the issues and ex
 
 Submitting is public and can't be undone from the CLI. There's nothing else to manage from the CLI after that: follow the review on the pull request, and to change the template, edit the file and submit it again.
 
-AI assistants: submitting publishes the template in a public pull request and claims the provider ID for the signed-in account. Show the user the file and the provider and service IDs, and get their explicit confirmation before running `template submit`. Do not infer it from a request to create or check a template. Use `template init --no-interactive`, since the prompts need a terminal, and ask the user for the provider and service details instead of inventing them.
+AI assistants: submitting publishes the template in a public pull request and claims the provider ID for the signed-in account. Show the user the file and the provider and service IDs, and get their explicit confirmation before running `template submit`. Do not infer it from a request to create or check a template. Use `template init --non-interactive`, since the prompts need a terminal, and ask the user for the provider and service details instead of inventing them.

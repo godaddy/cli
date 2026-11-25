@@ -1,215 +1,122 @@
-//! Interactive prompts for `template init`. Every prompt reads from a
-//! `BufRead` and writes to a `Write`, so tests can drive it with a `Cursor`.
+//! Interactive prompts for `template init`, asked through the engine's
+//! [`Prompter`] so they share cancel, validation and testing behaviour with
+//! every other interactive command.
 
-use std::io::{BufRead, Write};
+use std::sync::Arc;
+
+use cli_engine::prompt::{Prompter, TextValidator, prompt_repeat};
 
 use super::parsers::{self, Field, Need};
 use super::types::{Record, RecordKind, Template};
 use crate::error::GddyError;
 
-const SYSTEM: &str = "domain-connect";
-
-fn io_error(error: std::io::Error) -> cli_engine::CliCoreError {
-    GddyError::unexpected(format!("could not read your answer: {error}"))
-        .with_system(SYSTEM)
-        .into_cli_error()
-}
-
-fn say(writer: &mut impl Write, text: &str) -> cli_engine::Result<()> {
-    writeln!(writer, "{text}").map_err(io_error)
-}
-
-/// Asks one question and returns the trimmed answer. Fails when input ends,
-/// so a run with no one to answer stops instead of looping.
-fn ask(
-    reader: &mut impl BufRead,
-    writer: &mut impl Write,
-    prompt: &str,
-) -> cli_engine::Result<String> {
-    write!(writer, "{prompt}: ").map_err(io_error)?;
-    writer.flush().map_err(io_error)?;
-    let mut line = String::new();
-    if reader.read_line(&mut line).map_err(io_error)? == 0 {
-        return Err(GddyError::validation(
-            "Input ended before the template was complete; no file was written.",
-        )
-        .with_fix(
-            "Run this command in a terminal to answer the prompts, or pass --no-interactive \
-             with --provider-id, --provider-name, --service-id and --service-name.",
-        )
-        .with_system(SYSTEM)
-        .into_cli_error());
-    }
-    Ok(line.trim().to_owned())
-}
-
-/// Keeps asking until `accept` takes the answer, showing why it was refused.
-fn ask_until<T>(
-    reader: &mut impl BufRead,
-    writer: &mut impl Write,
-    prompt: &str,
-    mut accept: impl FnMut(String) -> Result<T, GddyError>,
-) -> cli_engine::Result<T> {
-    loop {
-        match accept(ask(reader, writer, prompt)?) {
-            Ok(value) => return Ok(value),
-            Err(problem) => say(writer, &format!("  {problem}"))?,
-        }
-    }
-}
-
-fn required(answer: String) -> Result<String, GddyError> {
-    if answer.is_empty() {
-        Err(GddyError::validation("A value is required."))
+fn nonempty(input: &str) -> Result<(), String> {
+    if input.is_empty() {
+        Err("A value is required.".to_owned())
     } else {
-        Ok(answer)
+        Ok(())
     }
 }
 
-/// Collects a whole template: the provider and service, then any records.
-pub(super) fn prompt_template(
-    reader: &mut impl BufRead,
-    writer: &mut impl Write,
-) -> cli_engine::Result<Template> {
-    say(writer, "Create a Domain Connect template")?;
-    say(writer, "")?;
-    let provider_id = ask_until(
-        reader,
-        writer,
-        "Provider ID (your domain name, such as acme.com)",
-        |answer| super::init::check_provider_id(&answer).map(|()| answer),
-    )?;
-    let provider_name = ask_until(reader, writer, "Provider name", required)?;
-    let service_id = ask_until(
-        reader,
-        writer,
-        "Service ID (such as managed-wordpress)",
-        |answer| super::init::check_service_id(&answer).map(|()| answer),
-    )?;
-    let service_name = ask_until(reader, writer, "Service name", required)?;
-    let description = ask(reader, writer, "Description (optional)")?;
-
-    let mut template = Template::from_basic_inputs(
-        provider_id,
-        provider_name,
-        service_id,
-        service_name,
-        (!description.is_empty()).then_some(description),
-    );
-
-    say(writer, "")?;
-    say(writer, "DNS records")?;
-    while confirm(reader, writer, "Add a record?")? {
-        let kind = prompt_kind(reader, writer)?;
-        template.records.push(prompt_record(reader, writer, kind)?);
-        say(writer, &format!("Added {} record.", kind.name()))?;
-    }
-    Ok(template)
-}
-
-fn confirm(
-    reader: &mut impl BufRead,
-    writer: &mut impl Write,
-    prompt: &str,
-) -> cli_engine::Result<bool> {
-    ask_until(
-        reader,
-        writer,
-        &format!("{prompt} (y/N)"),
-        |answer| match answer.to_ascii_lowercase().as_str() {
-            "y" | "yes" => Ok(true),
-            "" | "n" | "no" => Ok(false),
-            _ => Err(GddyError::validation("Answer y or n.")),
+/// Offers to add DNS records until the user says no.
+pub(super) fn prompt_records(
+    prompter: &dyn Prompter,
+    template: &mut Template,
+) -> cli_engine::Result<()> {
+    prompt_repeat(
+        prompter,
+        "Add a DNS record?",
+        "Add another DNS record?",
+        |prompter| {
+            let kind = prompt_kind(prompter)?;
+            template.records.push(prompt_record(prompter, kind)?);
+            Ok(())
         },
     )
+    .map(drop)
 }
 
-fn prompt_kind(
-    reader: &mut impl BufRead,
-    writer: &mut impl Write,
-) -> cli_engine::Result<RecordKind> {
-    say(writer, "Record type:")?;
-    for (index, kind) in RecordKind::ALL.iter().enumerate() {
-        say(
-            writer,
-            &format!(
-                "  {:>2}. {} ({})",
-                index + 1,
-                kind.name(),
-                kind.description()
-            ),
-        )?;
-    }
-    let count = RecordKind::ALL.len();
-    ask_until(reader, writer, &format!("Select (1-{count})"), |answer| {
-        answer
-            .parse::<usize>()
-            .ok()
-            .and_then(|number| number.checked_sub(1))
-            .and_then(|index| RecordKind::ALL.get(index).copied())
-            .ok_or_else(|| GddyError::validation(format!("Enter a number from 1 to {count}.")))
+fn prompt_kind(prompter: &dyn Prompter) -> cli_engine::Result<RecordKind> {
+    let options: Vec<String> = RecordKind::ALL
+        .iter()
+        .map(|kind| format!("{} ({})", kind.name(), kind.description()))
+        .collect();
+    let index = prompter.select("Record type", &options)?;
+    RecordKind::ALL.get(index).copied().ok_or_else(|| {
+        cli_engine::CliCoreError::message(format!("record type {index} is not in the list"))
     })
 }
 
-fn prompt_record(
-    reader: &mut impl BufRead,
-    writer: &mut impl Write,
-    kind: RecordKind,
-) -> cli_engine::Result<Record> {
+fn prompt_record(prompter: &dyn Prompter, kind: RecordKind) -> cli_engine::Result<Record> {
     let mut record = Record::new(kind);
     for field in parsers::fields(kind) {
-        let prompt = field_prompt(field);
-        ask_until(reader, writer, &prompt, |answer| {
-            let value = match (answer.is_empty(), &field.need) {
-                (false, _) => answer,
-                (true, Need::Default(default)) => (*default).to_owned(),
-                (true, Need::Optional) => return Ok(()),
-                (true, Need::Required) => {
-                    return Err(GddyError::validation("A value is required."));
-                }
-            };
-            parsers::set(&mut record, kind, field.attr, value)
-        })?;
+        let (message, default) = field_prompt(field);
+        let attr = field.attr;
+        let accepts_blank = matches!(field.need, Need::Optional);
+        let check: TextValidator = Arc::new(move |input: &str| {
+            if input.is_empty() {
+                return if accepts_blank {
+                    Ok(())
+                } else {
+                    nonempty(input)
+                };
+            }
+            // Try the value on a scratch record so a bad one is explained
+            // and asked again instead of ending the session.
+            parsers::set(&mut Record::new(kind), kind, attr, input.to_owned())
+                .map_err(|problem| problem.to_string())
+        });
+        let answer = prompter.text(&message, default, Some(check))?;
+        if answer.is_empty() {
+            continue;
+        }
+        parsers::set(&mut record, kind, attr, answer).map_err(GddyError::into_cli_error)?;
     }
     Ok(record)
 }
 
-fn field_prompt(field: &Field) -> String {
+fn field_prompt(field: &Field) -> (String, Option<&'static str>) {
     match &field.need {
-        Need::Required => field.label.to_owned(),
-        Need::Optional => format!("{} (optional)", field.label),
-        Need::Default(default) => format!("{} [{default}]", field.label),
+        Need::Required => (field.label.to_owned(), None),
+        Need::Optional => (format!("{} (optional)", field.label), None),
+        // The prompter shows the default itself; repeating it in the label
+        // printed it twice.
+        Need::Default(default) => (field.label.to_owned(), Some(*default)),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
+    use cli_engine::prompt::{Answer, ScriptedPrompter};
 
     use super::*;
     use crate::domain_connect::template::types::{Essential, Number};
 
-    fn run(input: &str) -> (cli_engine::Result<Template>, String) {
-        let mut reader = Cursor::new(input.as_bytes().to_vec());
-        let mut output = Vec::new();
-        let result = prompt_template(&mut reader, &mut output);
-        (result, String::from_utf8(output).expect("utf8 prompts"))
+    fn texts(answers: &[&str]) -> Vec<Answer> {
+        answers.iter().map(|answer| Answer::text(*answer)).collect()
+    }
+
+    fn template() -> Template {
+        Template::from_basic_inputs(
+            "acme.com".to_owned(),
+            "Acme".to_owned(),
+            "email".to_owned(),
+            "Email".to_owned(),
+            None,
+        )
     }
 
     #[test]
-    fn a_full_session_builds_the_template() {
-        // Provider, service, description, then one MX record taking the
-        // defaults for host, priority and TTL.
-        let (result, _) = run(concat!(
-            "acme.com\nAcme Corp\nemail\nAcme Email\nMail setup\n",
-            "y\n4\n\nmail.acme.com\n\n\nmail\nOnApply\n",
-            "n\n",
-        ));
+    fn a_record_session_takes_defaults_for_blank_answers() {
+        // One MX record (the fourth kind) taking the defaults for host,
+        // priority and TTL, then no more records.
+        let mut answers = vec![Answer::Confirm(true), Answer::Select(3)];
+        answers.extend(texts(&["", "mail.acme.com", "", "", "mail", "OnApply"]));
+        answers.push(Answer::Confirm(false));
+        let prompter = ScriptedPrompter::new(answers);
 
-        let template = result.expect("template");
-        assert_eq!(template.provider_id, "acme.com");
-        assert_eq!(template.service_id, "email");
-        assert_eq!(template.description.as_deref(), Some("Mail setup"));
+        let mut template = template();
+        prompt_records(&prompter, &mut template).expect("records");
         assert_eq!(template.records.len(), 1);
         let record = &template.records[0];
         assert_eq!(record.record_type, "MX");
@@ -219,55 +126,63 @@ mod tests {
         assert_eq!(record.ttl, Some(Number::Literal(3600)));
         assert_eq!(record.group_id.as_deref(), Some("mail"));
         assert_eq!(record.essential, Some(Essential::OnApply));
+        assert_eq!(prompter.remaining(), 0);
     }
 
     #[test]
-    fn an_invalid_answer_is_explained_and_asked_again() {
-        let (result, prompts) = run("acme\nacme.com\nAcme\nbad id\nemail\nEmail\n\nn\n");
-
-        let template = result.expect("template");
-        assert_eq!(template.provider_id, "acme.com");
-        assert_eq!(template.service_id, "email");
-        assert_eq!(template.description, None);
-        assert!(prompts.contains("domain name"), "{prompts}");
-        assert!(prompts.contains("letters, digits"), "{prompts}");
+    fn declining_the_first_offer_adds_no_records() {
+        let prompter = ScriptedPrompter::new([Answer::Confirm(false)]);
+        let mut template = template();
+        prompt_records(&prompter, &mut template).expect("records");
+        assert!(template.records.is_empty());
     }
 
     #[test]
     fn a_bad_record_value_is_asked_again_instead_of_ending_the_session() {
-        let (result, prompts) = run(concat!(
-            "acme.com\nAcme\nweb\nWeb\n\n",
-            "y\n99\n1\nwww\n192.0.2.1\nsoon\n600\n\nNo\n\n",
-            "n\n",
-        ));
+        let mut answers = vec![Answer::Confirm(true), Answer::Select(0)];
+        // An A record: host, value, TTL ("soon" is refused, then 600), group,
+        // essential ("No" is refused, then blank).
+        answers.extend(texts(&["www", "192.0.2.1", "soon", "600", "", "No", ""]));
+        answers.push(Answer::Confirm(false));
+        let prompter = ScriptedPrompter::new(answers);
 
-        let template = result.expect("template");
+        let mut template = template();
+        prompt_records(&prompter, &mut template).expect("records");
         let record = &template.records[0];
         assert_eq!(record.record_type, "A");
         assert_eq!(record.host.as_deref(), Some("www"));
         assert_eq!(record.points_to.as_deref(), Some("192.0.2.1"));
         assert_eq!(record.ttl, Some(Number::Literal(600)));
         assert_eq!(record.essential, None);
-        assert!(prompts.contains("Enter a number from 1 to 12"), "{prompts}");
-        assert!(prompts.contains("whole number"), "{prompts}");
-        assert!(prompts.contains("not a valid essential value"), "{prompts}");
+        let asked = prompter.transcript().join("\n");
+        assert!(asked.contains("whole number"), "{asked}");
+        assert!(asked.contains("not a valid essential value"), "{asked}");
     }
 
     #[test]
-    fn input_ending_early_fails_with_a_fix_instead_of_a_partial_template() {
-        let (result, _) = run("acme.com\n");
-
-        let err = result.expect_err("input ended");
-        assert!(err.to_string().contains("Input ended"), "{err}");
-        let fix = cli_engine::build_error_envelope(&err, SYSTEM)
-            .fix
-            .unwrap_or_default();
-        assert!(fix.contains("--no-interactive"), "{fix}");
+    fn cancelling_mid_record_stops_without_a_partial_record() {
+        let prompter = ScriptedPrompter::new([
+            Answer::Confirm(true),
+            Answer::Select(0),
+            Answer::text("www"),
+            Answer::Cancel,
+        ]);
+        let mut template = template();
+        let err = prompt_records(&prompter, &mut template).expect_err("cancelled");
+        assert!(err.to_string().contains("cancelled"), "{err}");
+        assert!(template.records.is_empty());
     }
 
     #[test]
     fn prompts_are_plain_text() {
-        let (_, prompts) = run("acme.com\nAcme\nweb\nWeb\n\ny\n1\n\nip\n\n\n\nn\n");
-        assert!(prompts.is_ascii(), "{prompts}");
+        let mut answers = vec![Answer::Confirm(true), Answer::Select(0)];
+        answers.extend(texts(&["", "ip", "", "", ""]));
+        answers.push(Answer::Confirm(false));
+        let prompter = ScriptedPrompter::new(answers);
+
+        let mut template = template();
+        prompt_records(&prompter, &mut template).expect("records");
+        let asked = prompter.transcript().join("\n");
+        assert!(asked.is_ascii(), "{asked}");
     }
 }

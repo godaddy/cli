@@ -86,7 +86,7 @@ mod tests {
                 "domain-connect",
                 "template",
                 "init",
-                "--no-interactive",
+                "--non-interactive",
                 "--provider-id",
                 "dry-run-check.example",
                 "--provider-name",
@@ -112,5 +112,119 @@ mod tests {
             "192.0.2.1"
         );
         assert!(!std::path::Path::new("dry-run-check.example.svc.json").exists());
+    }
+
+    fn scripted_cli(prompter: std::sync::Arc<cli_engine::prompt::ScriptedPrompter>) -> Cli {
+        Cli::new(
+            CliConfig::new("gddy", "GoDaddy developer CLI", "gddy")
+                .with_min_stage(Stage::Experimental)
+                .with_prompter(prompter)
+                .with_modules(crate::all_modules()),
+        )
+    }
+
+    fn init_args<'a>(extra: &[&'a str]) -> Vec<&'a str> {
+        let mut args = vec![
+            "gddy",
+            "domain-connect",
+            "template",
+            "init",
+            "--dry-run",
+            "--output",
+            "json",
+        ];
+        args.extend_from_slice(extra);
+        args
+    }
+
+    #[tokio::test]
+    async fn init_asks_only_for_what_the_flags_leave_out() {
+        use cli_engine::prompt::{Answer, ScriptedPrompter};
+
+        // Provider ID and service ID come from flags; the rest is asked,
+        // then one A record, then no more.
+        let prompter = std::sync::Arc::new(ScriptedPrompter::new([
+            Answer::text("Acme Corp"),
+            Answer::text("Acme Email"),
+            Answer::text(""),
+            Answer::Confirm(true),
+            Answer::Select(0),
+            Answer::text("www"),
+            Answer::text("192.0.2.1"),
+            Answer::text(""),
+            Answer::text(""),
+            Answer::text(""),
+            Answer::Confirm(false),
+        ]));
+        let output = scripted_cli(std::sync::Arc::clone(&prompter))
+            .run(init_args(&[
+                "--interactive",
+                "--provider-id",
+                "prompted.example",
+                "--service-id",
+                "svc",
+            ]))
+            .await;
+
+        assert_eq!(output.exit_code, 0, "{}", output.rendered);
+        let payload: serde_json::Value = serde_json::from_str(&output.rendered).expect("json");
+        assert_eq!(payload["data"]["providerId"], "prompted.example");
+        assert_eq!(payload["data"]["template"]["providerName"], "Acme Corp");
+        assert_eq!(
+            payload["data"]["template"]["records"][0]["pointsTo"],
+            "192.0.2.1"
+        );
+        assert_eq!(prompter.remaining(), 0);
+        let asked = prompter.transcript().join("\n");
+        assert!(!asked.contains("Provider ID"), "{asked}");
+        assert!(!asked.contains("Service ID"), "{asked}");
+    }
+
+    #[tokio::test]
+    async fn init_without_prompts_and_without_flags_fails_with_a_fix() {
+        use cli_engine::prompt::{Answer, ScriptedPrompter};
+
+        let prompter = std::sync::Arc::new(ScriptedPrompter::new([Answer::text("unused")]));
+        let output = scripted_cli(std::sync::Arc::clone(&prompter))
+            .run(init_args(&["--non-interactive"]))
+            .await;
+
+        assert_ne!(output.exit_code, 0, "{}", output.rendered);
+        assert!(
+            output.rendered.contains("--provider-id"),
+            "{}",
+            output.rendered
+        );
+        assert_eq!(prompter.remaining(), 1, "no prompt may be asked");
+    }
+
+    #[tokio::test]
+    async fn cancelling_init_exits_130_and_writes_nothing() {
+        use cli_engine::prompt::{Answer, ScriptedPrompter};
+
+        let prompter = std::sync::Arc::new(ScriptedPrompter::new([Answer::Cancel]));
+        let output = scripted_cli(prompter)
+            .run(init_args(&["--interactive"]))
+            .await;
+
+        assert_eq!(output.exit_code, 130, "{}", output.rendered);
+    }
+
+    #[tokio::test]
+    async fn init_no_longer_has_its_own_no_interactive_flag() {
+        let help = cli(Stage::Experimental)
+            .run(["gddy", "domain-connect", "template", "init", "--help"])
+            .await;
+        assert_eq!(help.exit_code, 0, "{}", help.rendered);
+        assert!(
+            !help.rendered.contains("--no-interactive"),
+            "{}",
+            help.rendered
+        );
+        assert!(
+            help.rendered.contains("Interactive by default"),
+            "{}",
+            help.rendered
+        );
     }
 }

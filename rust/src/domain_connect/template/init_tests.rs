@@ -12,7 +12,6 @@ struct Harness {
 fn parse(extra: &[&str]) -> InitArgs {
     let base = [
         "init",
-        "--no-interactive",
         "--provider-id",
         "acme.com",
         "--provider-name",
@@ -148,7 +147,7 @@ fn a_dry_run_fails_where_the_real_run_would() {
 fn a_provider_id_cannot_point_outside_the_current_directory() {
     for bad in ["../x.com", "a/b.com", "acme", "ACME.com", "acme.com/"] {
         let mut args = parse(&[]);
-        args.provider_id = Some(bad.to_owned());
+        args.provider_id = bad.to_owned();
         let err = from_flags(&args).expect_err(bad);
         assert!(err.to_string().contains("domain name"), "{bad}: {err}");
     }
@@ -209,14 +208,30 @@ fn essential_is_restricted_when_arguments_are_parsed() {
 }
 
 #[test]
-fn no_interactive_requires_the_four_identity_flags() {
-    let args = Harness::try_parse_from(["init", "--no-interactive", "--provider-id", "acme.com"])
-        .expect("arguments parse")
-        .args;
+fn the_four_identity_flags_are_required_by_the_parser() {
+    // Required to the parser, so the engine can ask for whichever are missing
+    // when prompting is on and report them all when it is off.
+    let err = Harness::try_parse_from(["init", "--provider-id", "acme.com"])
+        .err()
+        .expect("missing names are refused");
+    let message = err.to_string();
+    assert!(message.contains("--provider-name"), "{message}");
+    assert!(message.contains("--service-id"), "{message}");
+    assert!(message.contains("--service-name"), "{message}");
+}
 
-    let err = from_flags(&args).expect_err("missing names");
-    assert!(err.to_string().contains("--provider-name"), "{err}");
-    assert!(fix_of(&err).contains("--service-name"), "{}", fix_of(&err));
+#[test]
+fn the_identity_flags_are_checked_as_they_are_read() {
+    for bad in ["../x.com", "acme", "ACME.com"] {
+        let err = Harness::try_parse_from(["init", "--provider-id", bad])
+            .err()
+            .expect("bad provider id");
+        assert!(err.to_string().contains("domain name"), "{bad}: {err}");
+    }
+    let err = Harness::try_parse_from(["init", "--service-id", "Bad Id"])
+        .err()
+        .expect("bad service id");
+    assert!(err.to_string().contains("letters, digits"), "{err}");
 }
 
 #[test]
