@@ -831,3 +831,5 @@ async fn a_failure_no_input_can_repair_does_not_say_to_correct_the_input() {
         assert!(fix.contains("gddy update apply"), "{label}: {fix}");
     }
 }
+
+mod answers;

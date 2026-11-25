@@ -18,7 +18,7 @@ use generated_client_support::{
 };
 use graphql_client::{Error as GraphqlError, GraphQLQuery, Response};
 use reqwest::{Client as HttpClient, ClientBuilder};
-use serde_json::Value;
+use serde_json::{Value, from_value};
 use uuid::Uuid;
 
 use super::operations::{ProductList, product_list};
@@ -110,7 +110,17 @@ impl CatalogClient {
     /// partial `data`: a caller wants a complete result or the reason it is
     /// missing. No part of a response body reaches an error, and neither does the
     /// text of an `errors` entry: see [`graphql_error`].
-    async fn send<Q: GraphQLQuery>(&self, variables: Q::Variables) -> Result<Q::ResponseData> {
+    ///
+    /// `fields` are the root fields the operation selects. A server answers with
+    /// an entry for each, `null` when there is nothing, so one that is absent
+    /// means the answer is not an answer to this query. Without that check a
+    /// `data` that is empty, or holds something else, reads as "no results", and
+    /// a broken response would look like an empty catalog.
+    async fn send<Q: GraphQLQuery>(
+        &self,
+        variables: Q::Variables,
+        fields: &[&str],
+    ) -> Result<Q::ResponseData> {
         let mut payload = serde_json::to_value(Q::build_query(variables)).map_err(|_| {
             GddyError::unexpected("the catalog request could not be built")
                 .with_fix(NOT_FIXABLE_BY_INPUT)
@@ -152,28 +162,28 @@ impl CatalogClient {
         }
         let bytes = response.bytes().await.map_err(network_error)?;
 
-        // serde's message can quote the value it choked on, so the position is
-        // all that is reported.
-        let parsed: Response<Q::ResponseData> =
-            serde_json::from_slice(&bytes).map_err(|error| {
-                GddyError::unexpected(format!(
-                    "the Commerce API sent an answer that could not be read (line {}, column {})",
-                    error.line(),
-                    error.column()
-                ))
-                .with_fix(NOT_FIXABLE_BY_INPUT)
-                .with_system(SYSTEM)
-                .into_cli_error()
-            })?;
+        // serde's message can quote the value it choked on, so only the position
+        // of a syntax error is reported, and nothing of a shape mismatch.
+        let parsed: Response<Value> = serde_json::from_slice(&bytes).map_err(|error| {
+            GddyError::unexpected(format!(
+                "the Commerce API sent an answer that could not be read (line {}, column {})",
+                error.line(),
+                error.column()
+            ))
+            .with_fix(NOT_FIXABLE_BY_INPUT)
+            .with_system(SYSTEM)
+            .into_cli_error()
+        })?;
         if let Some(errors) = parsed.errors.filter(|errors| !errors.is_empty()) {
             return Err(graphql_error(&errors, &self.store_id, &self.env));
         }
-        parsed.data.ok_or_else(|| {
-            GddyError::unexpected("the Commerce API answered with neither data nor an error")
-                .with_fix(NOT_FIXABLE_BY_INPUT)
-                .with_system(SYSTEM)
-                .into_cli_error()
-        })
+        let data = parsed
+            .data
+            .ok_or_else(|| malformed("it had neither data nor an error"))?;
+        if !answers(&data, fields) {
+            return Err(malformed("it did not contain what was asked for"));
+        }
+        from_value(data).map_err(|_| malformed("it was not shaped as expected"))
     }
 
     /// One page of products (`skuGroups`), `first` at a time after the cursor
@@ -187,15 +197,21 @@ impl CatalogClient {
         status: Option<&[String]>,
     ) -> Result<Option<product_list::ProductListSkuGroups>> {
         let data = self
-            .send::<ProductList>(product_list::Variables {
-                first: Some(first),
-                after: after.map(str::to_owned),
-                status: status.map(|values| product_list::SKUGroupStatusFilter {
-                    eq: None,
-                    in_: Some(values.to_vec()),
-                }),
-            })
+            .send::<ProductList>(
+                product_list::Variables {
+                    first: Some(first),
+                    after: after.map(str::to_owned),
+                    status: status.map(|values| product_list::SKUGroupStatusFilter {
+                        eq: None,
+                        in_: Some(values.to_vec()),
+                    }),
+                },
+                &["skuGroups"],
+            )
             .await?;
+        if let Some(page) = &data.sku_groups {
+            check_page(page)?;
+        }
         Ok(data.sku_groups)
     }
 }
@@ -309,6 +325,51 @@ fn is_plain(text: &str) -> bool {
         && text
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+}
+
+/// Whether `data` has an entry for every root field in `fields`. A server
+/// answers with one for each field a query selects, `null` when there is nothing,
+/// so a missing one means the answer is not an answer to the query.
+fn answers(data: &Value, fields: &[&str]) -> bool {
+    data.as_object()
+        .is_some_and(|data| fields.iter().all(|field| data.contains_key(*field)))
+}
+
+/// What is wrong with a page that is not self-consistent, as an error that does
+/// not quote the page. A caller that paged on `hasNextPage` would loop or stop
+/// early on one with no cursor, and a null edge or node would drop a product
+/// from the list without a word.
+fn check_page(page: &product_list::ProductListSkuGroups) -> Result<()> {
+    let has_cursor = page
+        .page_info
+        .end_cursor
+        .as_deref()
+        .is_some_and(|cursor| !cursor.trim().is_empty());
+    if page.page_info.has_next_page && !has_cursor {
+        return Err(malformed(
+            "it said there was a next page but gave no way to reach it",
+        ));
+    }
+    let described = page
+        .edges
+        .iter()
+        .flatten()
+        .all(|edge| edge.as_ref().is_some_and(|edge| edge.node.is_some()));
+    if !described {
+        return Err(malformed("it listed a product without describing it"));
+    }
+    Ok(())
+}
+
+/// An answer from the Commerce API that cannot be used, with what is wrong
+/// described by gddy and never quoted from the answer.
+fn malformed(what: &str) -> CliCoreError {
+    GddyError::unexpected(format!(
+        "the Commerce API sent an answer that cannot be used: {what}"
+    ))
+    .with_fix(NOT_FIXABLE_BY_INPUT)
+    .with_system(SYSTEM)
+    .into_cli_error()
 }
 
 fn config_error(error: impl std::fmt::Display) -> CliCoreError {
