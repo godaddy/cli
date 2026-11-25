@@ -5,7 +5,13 @@ use cli_engine::{CliCoreError, CommandContext, Result};
 use commerce_client::{Client, Error, client_with_builder, types::V1Store};
 use uuid::Uuid;
 
-use crate::{commerce::store::find_your_store_id_hint, environments, error::GddyError, http};
+use crate::{
+    commerce::store::find_your_store_id_hint,
+    environments,
+    error::GddyError,
+    http,
+    pat::{PAT_ENV_VAR, env_var_for},
+};
 
 /// Name the Stores API is reported under in error envelopes.
 const SYSTEM: &str = "commerce";
@@ -83,6 +89,23 @@ fn require_store_record(store: V1Store) -> Result<V1Store> {
     }
 }
 
+/// What to try when the account may not read the store in `env`. A personal
+/// access token overrides a browser login and carries its own fixed permissions,
+/// so the advice covers both ways one can be in effect: exported in the shell,
+/// which `gddy pat remove` does not touch, and saved with `gddy pat add`, which
+/// it does, for one environment at a time.
+fn forbidden_fix(env: &str) -> String {
+    let per_env = env_var_for(env);
+    format!(
+        "Sign in with an account that has access to the store. After a browser login, \
+         `gddy auth status --fields scopes` shows the permissions it holds. A personal \
+         access token takes precedence over a browser login and carries its own fixed \
+         permissions. If {per_env} or {PAT_ENV_VAR} is set in your shell, unset it, or \
+         replace it with a token that can read stores. A token saved with `gddy pat add` \
+         is removed with: gddy pat remove --env {env}"
+    )
+}
+
 /// Maps a failed store read to a coded error. A 404 and a 403 name the store and
 /// say what to try, since "HTTP error 404" alone does not tell a merchant whether
 /// the id, the environment or their account is the problem.
@@ -106,14 +129,7 @@ fn http_error(status: u16, store_id: &str, env: &str) -> CliCoreError {
             format!("this account is not allowed to read store {store_id}"),
             SYSTEM,
         )
-        .with_fix(
-            "Sign in with an account that has access to the store. After a browser \
-             login, `gddy auth status --fields scopes` shows the permissions it \
-             holds. A personal access token takes precedence over a browser login \
-             and carries its own fixed permissions, so if you set GDDY_PAT or added \
-             one with `gddy pat add`, create a token that can read stores or remove \
-             it with `gddy pat remove`.",
-        ),
+        .with_fix(forbidden_fix(env)),
         _ => GddyError::from_http(status, "", SYSTEM),
     }
     .into_cli_error()

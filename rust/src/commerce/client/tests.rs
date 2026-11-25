@@ -135,7 +135,6 @@ async fn a_403_says_the_account_may_not_read_the_store() {
             .fix
             .as_deref()
             .is_some_and(|fix| fix.contains("gddy auth status --fields scopes")
-                && fix.contains("GDDY_PAT")
                 && !fix.contains("gddy auth scope")),
         "{envelope:?}"
     );
@@ -294,4 +293,25 @@ async fn an_error_status_is_still_named_without_its_body() {
         .unwrap_or_default();
     assert!(message.contains("503"), "{message}");
     assert!(!message.contains("unavailable"), "{message}");
+}
+
+/// A token can be in effect two ways, and the advice must cover both. An exported
+/// token is not touched by `gddy pat remove`, which also needs `--env` and only
+/// removes the saved token for that one environment.
+#[test]
+fn the_403_advice_covers_exported_and_saved_tokens_for_the_active_environment() {
+    for (env, per_env_var) in [("ote", "GDDY_PAT_OTE"), ("my-env", "GDDY_PAT_MY_ENV")] {
+        let fix = forbidden_fix(env);
+
+        assert!(fix.contains(per_env_var), "{fix}");
+        assert!(fix.contains("GDDY_PAT "), "the bare variable too: {fix}");
+        assert!(
+            fix.contains("unset"),
+            "an exported token needs unsetting: {fix}"
+        );
+        assert!(
+            fix.contains(&format!("gddy pat remove --env {env}")),
+            "the command needs the environment: {fix}"
+        );
+    }
 }
