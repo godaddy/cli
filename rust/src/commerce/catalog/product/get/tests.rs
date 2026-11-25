@@ -345,6 +345,13 @@ fn every_column_is_a_field_the_command_advertises() {
 }
 
 #[test]
+fn the_help_says_the_prices_are_in_the_stores_currency() {
+    let long = command().spec.long.expect("long help");
+
+    assert!(long.contains("store's currency"), "{long}");
+}
+
+#[test]
 fn the_command_declares_the_product_read_scope_and_is_read_only() {
     let spec = command().spec;
     assert_eq!(spec.tier, Some(Tier::Read));

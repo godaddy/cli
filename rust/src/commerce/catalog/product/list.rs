@@ -164,7 +164,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<ListArgs, _, _, _>(
         CommandSpec::from_args::<ListArgs>("list", "List the products in your store")
             .with_long(
-                "Lists the products in your store.\n\
+                "Lists the products in your store, with each one's lowest and \
+                 highest price and compare-at price (in your store's currency).\n\
                  \n\
                  A page of 25 is shown at a time. --limit sets the page size (up \
                  to 100), and when there is more, the output ends with the \

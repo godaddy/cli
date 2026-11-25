@@ -9,7 +9,7 @@ use cli_engine::{GroupSpec, RuntimeGroupSpec};
 pub(super) fn group() -> RuntimeGroupSpec {
     RuntimeGroupSpec::new(
         GroupSpec::new("product", "Manage products in your catalog").with_long(
-            "A product is an item offered for sale in your store, which may be \
+            "A product is an item offered for sale in your store, which may \
             have multiple variants. It can be thought of as a group of SKUs.",
         ),
     )

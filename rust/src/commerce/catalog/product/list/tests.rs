@@ -407,6 +407,15 @@ fn the_command_pages_with_a_cursor_not_an_offset() {
     assert!(spec.pagination.is_none(), "offset paging is not registered");
 }
 
+/// The amounts come with no currency beside them, so the help has to say whose
+/// they are.
+#[test]
+fn the_help_says_the_prices_are_in_the_stores_currency() {
+    let long = command().spec.long.expect("long help");
+
+    assert!(long.contains("store's currency"), "{long}");
+}
+
 #[test]
 fn the_command_declares_the_product_read_scope_and_is_read_only() {
     let spec = command().spec;
