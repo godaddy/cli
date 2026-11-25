@@ -48,7 +48,7 @@ pub(crate) async fn fetch_store(client: &Client, store_id: &str, env: &str) -> R
         .send()
         .await
     {
-        Ok(response) => require_store_record(response.into_inner()),
+        Ok(response) => require_store_record(response.into_inner(), store_id),
         Err(Error::UnexpectedResponse(response)) => {
             Err(http_error(response.status().as_u16(), store_id, env))
         }
@@ -70,22 +70,47 @@ pub(crate) async fn fetch_store(client: &Client, store_id: &str, env: &str) -> R
     }
 }
 
-/// Rejects a successful response that carries no store. The generated store type
-/// has no required fields, so an empty object, or an error-shaped one that sets
-/// none of its fields, decodes without complaint. Showing that as a store would
-/// invent a summary from the id that was asked for, and `use` would save an id
-/// the API never confirmed. A record with any identifying field is a store, even
-/// a sparse one.
-fn require_store_record(store: V1Store) -> Result<V1Store> {
-    if store.id.is_some() || store.business_id.is_some() || store.display_name.is_some() {
-        Ok(store)
-    } else {
-        Err(GddyError::unexpected(
+/// Rejects a successful response that is not the store that was asked for. The
+/// generated store type has no required fields, so an empty object, an
+/// error-shaped one, or one whose fields are all blank decodes without complaint.
+/// Showing that as a store would invent a summary from the id that was asked for,
+/// and `use` would save an id the API never confirmed.
+///
+/// A record counts as a store when it has a non-blank id, business id or name,
+/// even a sparse one. If it carries an id, that id must be the one requested:
+/// a response about a different store is not an answer, and saving the requested
+/// id on the strength of it would select a store the API did not identify.
+fn require_store_record(store: V1Store, requested: &str) -> Result<V1Store> {
+    let has_text = |value: Option<&str>| value.is_some_and(|text| !text.trim().is_empty());
+    let id = store.id.as_deref().map(String::as_str);
+    if !(has_text(id)
+        || has_text(store.business_id.as_deref())
+        || has_text(store.display_name.as_deref()))
+    {
+        return Err(GddyError::unexpected(
             "the Commerce API answered without a store: the response had no id, business \
              id or name",
         )
         .with_system(SYSTEM)
-        .into_cli_error())
+        .into_cli_error());
+    }
+    if has_text(id) && !same_store_id(id.unwrap_or_default(), requested) {
+        return Err(GddyError::unexpected(
+            "the Commerce API answered with a different store than the one requested",
+        )
+        .with_system(SYSTEM)
+        .into_cli_error());
+    }
+    Ok(store)
+}
+
+/// Whether `returned` names the same store as `requested`, ignoring case and
+/// hyphenation the way store ids are canonicalized elsewhere. A returned id that
+/// is not a store id at all is not the same store.
+fn same_store_id(returned: &str, requested: &str) -> bool {
+    match (Uuid::parse_str(returned.trim()), Uuid::parse_str(requested)) {
+        (Ok(returned), Ok(requested)) => returned == requested,
+        _ => false,
     }
 }
 

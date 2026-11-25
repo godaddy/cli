@@ -204,8 +204,8 @@ async fn a_200_that_is_not_a_store_is_rejected() {
     }
 }
 
-/// A sparse record is still a store: only a body with none of the identifying
-/// fields is rejected.
+/// A sparse record is still a store: only a body with no usable identifying
+/// field is rejected, and blank text is not usable.
 #[tokio::test]
 async fn a_sparse_store_record_is_still_accepted() {
     for body in [
@@ -314,4 +314,101 @@ fn the_403_advice_covers_exported_and_saved_tokens_for_the_active_environment() 
             "the command needs the environment: {fix}"
         );
     }
+}
+
+/// Blank text is not an identifier. A body whose only fields are empty or
+/// whitespace is no more a store than an empty object, so it must not be shown or
+/// saved as one.
+#[tokio::test]
+async fn a_body_of_only_blank_fields_is_rejected() {
+    for body in [
+        json!({ "id": "" }),
+        json!({ "displayName": "" }),
+        json!({ "displayName": "   " }),
+        json!({ "id": "", "businessId": "", "displayName": " " }),
+        json!({ "id": null, "displayName": null }),
+    ] {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET);
+                then.status(200).json_body(body.clone());
+            })
+            .await;
+
+        let error = fetch_store(&client_for(&server), STORE_ID, "ote")
+            .await
+            .expect_err("a body with no usable field is not a store");
+
+        assert_eq!(code(&error), codes::UNEXPECTED_ERROR, "{body}");
+    }
+}
+
+/// A response that names a different store is not an answer about the one asked
+/// for. Accepting it would let `use` save the requested id on the strength of a
+/// record that identifies another store.
+#[tokio::test]
+async fn a_response_for_a_different_store_is_rejected() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET);
+            then.status(200).json_body(json!({
+                "id": "11111111-1111-4111-8111-111111111111",
+                "displayName": "Other Shop"
+            }));
+        })
+        .await;
+
+    let error = fetch_store(&client_for(&server), STORE_ID, "ote")
+        .await
+        .expect_err("another store's record is not the requested store");
+
+    assert_eq!(code(&error), codes::UNEXPECTED_ERROR);
+    let rendered = format!("{:?}", envelope(&error));
+    assert!(!rendered.contains("Other Shop"), "{rendered}");
+}
+
+/// The same store spelled differently is still the same store, and an id that is
+/// not a store id at all is not.
+#[tokio::test]
+async fn the_returned_id_is_compared_as_a_store_id_not_as_text() {
+    for (returned, accepted) in [
+        (STORE_ID.to_owned(), true),
+        (STORE_ID.to_uppercase(), true),
+        (STORE_ID.replace('-', ""), true),
+        (format!(" {STORE_ID} "), true),
+        ("not-a-store-id".to_owned(), false),
+    ] {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET);
+                then.status(200)
+                    .json_body(json!({ "id": returned, "displayName": "Corner Shop" }));
+            })
+            .await;
+
+        let result = fetch_store(&client_for(&server), STORE_ID, "ote").await;
+
+        assert_eq!(result.is_ok(), accepted, "{returned:?}: {result:?}");
+    }
+}
+
+/// A sparse record with no id of its own, only a name or business id, is still
+/// accepted: there is nothing in it to contradict the request.
+#[tokio::test]
+async fn a_record_without_an_id_is_not_rejected_for_a_mismatch() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET);
+            then.status(200)
+                .json_body(json!({ "displayName": "Corner Shop" }));
+        })
+        .await;
+
+    let result = fetch_store(&client_for(&server), STORE_ID, "ote").await;
+
+    assert!(result.is_ok(), "{result:?}");
 }

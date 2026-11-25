@@ -869,3 +869,36 @@ async fn the_advertised_output_fields_match_what_the_command_emits() {
 
     assert_eq!(advertised, emitted);
 }
+
+/// A response about another store must not be saved as the selection. The id that
+/// would be saved is the one that was asked for, so the record has to be checked
+/// against it before `use` writes anything.
+#[tokio::test]
+async fn use_does_not_save_a_store_the_api_did_not_identify() {
+    let _lock = ENV_LOCK.lock().await;
+    let _config = isolated_config();
+    for body in [
+        serde_json::json!({}),
+        serde_json::json!({ "id": "", "displayName": "  " }),
+        serde_json::json!({
+            "id": "11111111-1111-4111-8111-111111111111",
+            "displayName": "Other Shop"
+        }),
+    ] {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET);
+                then.status(200).json_body(body.clone());
+            })
+            .await;
+
+        let result = select(&client_for(&server), STORE_ID, "ote", false).await;
+
+        assert!(result.is_err(), "{body} was accepted: {result:?}");
+        assert!(
+            context::saved_store("ote").expect("reads").is_none(),
+            "{body} must not become the selection"
+        );
+    }
+}
