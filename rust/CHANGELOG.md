@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.1](https://github.com/godaddy/cli/compare/v0.3.0...v0.3.1) (2026-11-25)
+
+
+### Miscellaneous
+
+* **commerce:** add the generated commerce-client crate and spec pipeline ([#403](https://github.com/godaddy/cli/issues/403)) ([99f2f1b](https://github.com/godaddy/cli/commit/99f2f1b2682cc1520f7ee39ef2b647e4f8669bc0))
+* **commerce:** add the per-environment store selection and store id resolution ([#411](https://github.com/godaddy/cli/issues/411)) ([1ab1f0a](https://github.com/godaddy/cli/commit/1ab1f0aaf6dbc14e0da514450fbe2c24454e1706))
+* **commerce:** add the v1 store read to the generated client ([#418](https://github.com/godaddy/cli/issues/418)) ([5f49431](https://github.com/godaddy/cli/commit/5f49431d28f2061b24703e384319dc54290642c2))
+* **commerce:** vendor the catalog-products GraphQL schema without deprecated nodes ([#407](https://github.com/godaddy/cli/issues/407)) ([5fe02c9](https://github.com/godaddy/cli/commit/5fe02c9ee1937f7f088674e5d2b1c559afa76868))
+
 ## [0.3.0](https://github.com/godaddy/cli/compare/v0.2.42...v0.3.0) (2026-11-24)
 
 
