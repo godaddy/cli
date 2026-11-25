@@ -30,6 +30,12 @@
       "users": ["jmunson-godaddy", "bdittmer-godaddy"]
     },
     {
+      "comment": "gddy domain-connect commands",
+      "label": "domain-connect",
+      "patterns": ["rust/src/domain_connect/**"],
+      "users": ["cderangula-godaddy", "cpavurala-godaddy", "nbabu-godaddy"]
+    },
+    {
       "comment": "gddy domain commands",
       "label": "domains",
       "patterns": ["rust/domains-client/**", "rust/src/domain/**"],

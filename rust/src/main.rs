@@ -5,6 +5,7 @@ mod config;
 mod db;
 mod dns;
 mod domain;
+mod domain_connect;
 mod email;
 mod env;
 mod environments;
@@ -43,6 +44,7 @@ pub(crate) fn all_modules() -> Vec<Module> {
         db::module(),
         dns::module(),
         domain::module(),
+        domain_connect::module(),
         email::module(),
         env::module(),
         hosting::module(),
