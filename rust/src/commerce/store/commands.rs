@@ -185,7 +185,9 @@ fn get_command() -> RuntimeCommandSpec {
             )
             .with_system(SYSTEM)
             .with_tier(Tier::Read)
-            .with_default_fields("storeId,displayName,status,businessId,emailAddress,currency")
+            .with_default_fields(
+                "storeId,displayName,status,businessId,emailAddress,currency,createdAt,updatedAt",
+            )
             .with_output_schema::<StoreResult>()
             .with_view(store_columns())
             .with_scopes(&[COMMERCE_STORE_READ]),

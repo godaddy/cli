@@ -7,7 +7,7 @@ use crate::{
     environments::test_support::{ENV_LOCK, EnvGuard},
 };
 use cli_engine::{
-    Cli, CliConfig, Stage,
+    Cli, CliConfig, OutputSchema, PipelineOpts, Stage, apply_pipeline,
     environments::{EnvTable, Environments},
     preview_human_view,
 };
@@ -777,4 +777,84 @@ async fn use_dry_run_reports_a_lock_it_could_not_open() {
         "the real save cannot open the lock: {real:?}"
     );
     assert!(preview.is_err(), "so the preview agrees: {preview:?}");
+}
+
+/// The default output is the handler's data projected down to the command's
+/// default fields, so a field the handler emits but the default fields leave out
+/// is never seen without `--fields`. Drive the real projection with the store the
+/// mock serves, and check every field the handler emits survives it.
+#[tokio::test]
+async fn the_default_output_shows_every_field_the_command_emits() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET);
+            then.status(200).json_body(serde_json::json!({
+                "id": STORE_ID,
+                "businessId": "biz-1",
+                "displayName": "Corner Shop",
+                "status": "ACTIVE",
+                "emailAddress": "shop@example.test",
+                "currency": "USD",
+                "createdAt": "2026-01-02T03:04:05Z",
+                "updatedAt": "2026-02-03T04:05:06Z"
+            }));
+        })
+        .await;
+    let result = show(&client_for(&server), STORE_ID, "ote")
+        .await
+        .expect("shown");
+    let emitted: Vec<String> = result
+        .data
+        .as_object()
+        .expect("an object")
+        .keys()
+        .cloned()
+        .collect();
+    let mut data = result.data.clone();
+
+    apply_pipeline(
+        &mut data,
+        &PipelineOpts {
+            fields: get_command()
+                .spec
+                .default_fields
+                .expect("default fields are set"),
+            fields_are_default: true,
+            ..PipelineOpts::default()
+        },
+    )
+    .expect("the default projection applies");
+
+    for field in &emitted {
+        assert!(
+            data.get(field).is_some_and(|value| !value.is_null()),
+            "{field} is emitted but missing from the default output: {data}"
+        );
+    }
+    assert_eq!(data["createdAt"], "2026-01-02T03:04:05Z");
+    assert_eq!(data["updatedAt"], "2026-02-03T04:05:06Z");
+}
+
+/// What `--schema` and `--help` advertise as output fields must be fields the
+/// handler really emits, and the other way round, so neither can drift.
+#[tokio::test]
+async fn the_advertised_output_fields_match_what_the_command_emits() {
+    let server = MockServer::start_async().await;
+    serve_store(&server).await;
+    let result = show(&client_for(&server), STORE_ID, "ote")
+        .await
+        .expect("shown");
+    let mut emitted: Vec<&str> = result
+        .data
+        .as_object()
+        .expect("an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let mut advertised: Vec<&str> = StoreResult::fields().iter().map(|f| f.name).collect();
+    emitted.sort_unstable();
+    advertised.sort_unstable();
+
+    assert_eq!(advertised, emitted);
 }
