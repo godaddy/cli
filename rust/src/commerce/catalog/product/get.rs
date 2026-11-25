@@ -1,5 +1,7 @@
 //! `gddy commerce catalog product get` — one product's details.
 
+use std::future::Future;
+
 use cli_engine::{CommandResult, CommandSpec, Result, RuntimeCommandSpec, TableColumn, Tier};
 use serde_json::{Value, to_value};
 use uuid::Uuid;
@@ -7,11 +9,10 @@ use uuid::Uuid;
 use super::output::ProductDetail;
 use crate::{
     commerce::{
-        catalog::{client::CatalogClient, connect},
+        catalog::{client::CatalogClient, connect, follow_up},
         store::StoreIdArg,
     },
     error::GddyError,
-    next_action::next_action,
     output_schema::output_schema,
     scopes::COMMERCE_PRODUCT_READ,
 };
@@ -83,11 +84,24 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_view(view_columns())
             .with_scopes(&[COMMERCE_PRODUCT_READ]),
         |ctx, args: GetArgs| async move {
-            let product_id = parse_product_id(&args.product_id)?;
-            let client = connect(&ctx, &args.store, &[COMMERCE_PRODUCT_READ]).await?;
-            show(&client, &product_id, &ctx.middleware.env).await
+            get(&args, &ctx.middleware.env, || {
+                connect(&ctx, &args.store, &[COMMERCE_PRODUCT_READ])
+            })
+            .await
         },
     )
+}
+
+/// What `get` does, with the way it reaches the API passed in so a test can see
+/// whether it was used: the id is checked first, and only a valid one connects.
+async fn get<F, Fut>(args: &GetArgs, env: &str, connect: F) -> Result<CommandResult>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<CatalogClient>>,
+{
+    let product_id = parse_product_id(&args.product_id)?;
+    let client = connect().await?;
+    show(&client, &product_id, env, args.store.store_id.as_deref()).await
 }
 
 /// The product id in the form the API takes: a UUID, hyphenated. Checked here,
@@ -109,7 +123,12 @@ fn parse_product_id(value: &str) -> Result<String> {
 
 /// Reads one product and shows it. A product the store does not have is a
 /// not-found error that names it, not an empty result.
-async fn show(client: &CatalogClient, product_id: &str, env: &str) -> Result<CommandResult> {
+async fn show(
+    client: &CatalogClient,
+    product_id: &str,
+    env: &str,
+    store_flag: Option<&str>,
+) -> Result<CommandResult> {
     let product = client.get_product(product_id).await?.ok_or_else(|| {
         GddyError::not_found(format!(
             "no product {product_id:?} was found in this store in the {env} environment"
@@ -123,9 +142,10 @@ async fn show(client: &CatalogClient, product_id: &str, env: &str) -> Result<Com
             .with_system("commerce")
             .into_cli_error()
     })?;
-    Ok(CommandResult::new(data).with_next_actions(vec![next_action(
+    Ok(CommandResult::new(data).with_next_actions(vec![follow_up(
         "commerce catalog product list",
         "List all products",
+        store_flag,
     )]))
 }
 

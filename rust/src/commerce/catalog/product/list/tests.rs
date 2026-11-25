@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use super::*;
 use crate::error::codes;
 use cli_engine::{
@@ -248,10 +250,25 @@ async fn the_status_filter_is_sent_only_when_given() {
 
 // --- the --continue token -------------------------------------------------
 
+/// Leaving `--continue` off is the only way to start from the first page.
 #[test]
-fn no_token_and_a_blank_token_both_start_from_the_first_page() {
-    for token in [None, Some(""), Some("   ")] {
-        assert_eq!(resume_cursor(token, &[]).expect("starts over"), None);
+fn no_token_starts_from_the_first_page() {
+    assert_eq!(resume_cursor(None, &[]).expect("starts over"), None);
+}
+
+/// A `--continue` that was given but is blank is what `--continue "$TOKEN"` becomes
+/// when the variable is empty. It is an error, not a quiet return to page one.
+#[test]
+fn a_blank_token_is_refused_and_not_taken_for_the_first_page() {
+    for token in ["", " ", "   ", "\t"] {
+        for filter in [statuses(&[]), statuses(&["ACTIVE"])] {
+            let error = resume_cursor(Some(token), &filter)
+                .expect_err(&format!("{token:?} is not a token"));
+
+            let text = text_of(&error);
+            assert_eq!(code_of(&error), codes::VALIDATION_ERROR, "{token:?}");
+            assert!(text.contains("leave --continue off"), "{token:?}: {text}");
+        }
     }
 }
 
@@ -407,8 +424,9 @@ fn the_result_carries_where_the_page_leaves_off() {
     let with_more = list_result(
         vec![json!({ "id": "a" })],
         CursorContinuation::more("|c1").with_total(9),
+        None,
     );
-    let last = list_result(vec![json!({ "id": "a" })], CursorContinuation::done());
+    let last = list_result(vec![json!({ "id": "a" })], CursorContinuation::done(), None);
 
     let cursor = with_more.metadata.cursor.expect("a cursor");
     assert_eq!(cursor.continue_from.as_deref(), Some("|c1"));
@@ -420,11 +438,137 @@ fn the_result_carries_where_the_page_leaves_off() {
 /// page, where it would send the user to a command with nothing to run it on.
 #[test]
 fn the_next_step_is_only_offered_when_there_is_a_product_to_show() {
-    let with = list_result(vec![json!({ "id": "a" })], CursorContinuation::done());
-    let without = list_result(vec![], CursorContinuation::done());
+    let with = list_result(vec![json!({ "id": "a" })], CursorContinuation::done(), None);
+    let without = list_result(vec![], CursorContinuation::done(), None);
 
     assert_eq!(with.metadata.next_actions.len(), 1);
     assert!(without.metadata.next_actions.is_empty());
+}
+
+/// The suggested `get` names the store the list was for when `--store-id` chose
+/// it, with the id as a structured parameter, so the next command reads the same
+/// store and not the selected one. With no `--store-id` it names none, since the
+/// selected store is what it will use.
+#[test]
+fn the_next_step_names_the_store_only_when_the_list_was_for_one_given() {
+    let page = || vec![json!({ "id": "a" })];
+
+    let given = list_result(page(), CursorContinuation::done(), Some(STORE_ID));
+    let action = &given.metadata.next_actions[0];
+    assert!(
+        action
+            .command
+            .ends_with("commerce catalog product get <product-id> --store-id <store-id>"),
+        "{}",
+        action.command
+    );
+    let store = &action.params["store-id"];
+    assert_eq!(store.value.as_deref(), Some(STORE_ID));
+    assert!(store.required);
+
+    let selected = list_result(page(), CursorContinuation::done(), None);
+    let action = &selected.metadata.next_actions[0];
+    assert!(!action.command.contains("--store-id"), "{}", action.command);
+    assert!(!action.params.contains_key("store-id"));
+}
+
+/// The product to show is the one thing the user must supply, so it is declared
+/// as a required parameter with the placeholder's own name.
+#[test]
+fn the_next_step_declares_the_product_id_as_a_required_parameter() {
+    for store in [None, Some(STORE_ID)] {
+        let result = list_result(
+            vec![json!({ "id": "a" })],
+            CursorContinuation::done(),
+            store,
+        );
+
+        let action = &result.metadata.next_actions[0];
+        assert!(
+            action.command.contains("<product-id>"),
+            "{}",
+            action.command
+        );
+        let param = &action.params["product-id"];
+        assert!(param.required);
+        assert_eq!(param.value, None, "the user picks the product");
+    }
+}
+
+// --- the handler ----------------------------------------------------------
+
+fn list_args(store_id: Option<&str>, status: &[&str]) -> ListArgs {
+    ListArgs {
+        store: StoreIdArg {
+            store_id: store_id.map(str::to_owned),
+        },
+        status: statuses(status),
+    }
+}
+
+/// A token that is not usable is refused before the command reaches the API, so a
+/// bad `--continue` costs no request and does not need a sign-in.
+#[tokio::test]
+async fn a_bad_token_fails_before_the_api_is_reached() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST);
+            then.status(200).json_body(page(&["a"], None, 1));
+        })
+        .await;
+    let connected = Cell::new(false);
+
+    for token in ["", "   ", "garbage", "ACTIVE|c1"] {
+        let error = list(&list_args(None, &[]), Some(token), 25, || {
+            connected.set(true);
+            let client = client_for(&server);
+            async move { Ok(client) }
+        })
+        .await
+        .expect_err("a bad token is refused");
+
+        assert_eq!(code_of(&error), codes::VALIDATION_ERROR, "{token:?}");
+    }
+
+    assert!(!connected.get(), "the API was connected to");
+    assert_eq!(mock.calls_async().await, 0);
+}
+
+/// The handler as a whole: a valid token is resumed from, and the result names the
+/// store the list was for.
+#[tokio::test]
+async fn a_valid_token_resumes_the_list_and_the_result_names_its_store() {
+    let server = MockServer::start_async().await;
+    serve_chain(
+        &server,
+        vec![page(&["a"], Some("c1"), 2), page(&["b"], None, 2)],
+    )
+    .await;
+
+    let result = list(
+        &list_args(Some(STORE_ID), &["ACTIVE"]),
+        Some("ACTIVE|c1"),
+        1,
+        || {
+            let client = client_for(&server);
+            async move { Ok(client) }
+        },
+    )
+    .await
+    .expect("the second page");
+
+    assert_eq!(result.data[0]["id"], "b");
+    assert_eq!(
+        result.metadata.cursor.expect("a cursor").continue_from,
+        None
+    );
+    assert_eq!(
+        result.metadata.next_actions[0].params["store-id"]
+            .value
+            .as_deref(),
+        Some(STORE_ID)
+    );
 }
 
 // --- what is shown --------------------------------------------------------

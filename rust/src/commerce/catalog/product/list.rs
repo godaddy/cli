@@ -4,20 +4,21 @@
 //! page size and `--continue` resumes after the previous page. The API's own
 //! cursor is what moves forward, so nothing before the page asked for is read.
 
+use std::future::Future;
+
 use cli_engine::{
-    Alignment, CliCoreError, CommandResult, CommandSpec, CursorConfig, CursorContinuation, Result,
-    RuntimeCommandSpec, TableColumn, Tier,
+    Alignment, CliCoreError, CommandResult, CommandSpec, CursorConfig, CursorContinuation,
+    NextActionParam, Result, RuntimeCommandSpec, TableColumn, Tier,
 };
 use serde_json::{Value, to_value};
 
 use super::output::ProductSummary;
 use crate::{
     commerce::{
-        catalog::{client::CatalogClient, connect},
+        catalog::{client::CatalogClient, connect, follow_up},
         store::StoreIdArg,
     },
     error::GddyError,
-    next_action::next_action,
     output_schema::output_schema,
     scopes::COMMERCE_PRODUCT_READ,
 };
@@ -118,11 +119,15 @@ fn bad_token() -> CliCoreError {
 }
 
 /// The API cursor to resume from for `--continue token`, or `None` to start from
-/// the first page. A blank token means the start; anything else has to be one this
-/// command issued, for the same `--status` filter, or it is an error and not a
-/// quiet return to page one.
+/// the first page. Only leaving `--continue` off starts from the first page: a
+/// value that was given has to be a token this command issued, for the same
+/// `--status` filter, or it is an error and not a quiet return to page one. That
+/// includes an empty one, which is what `--continue "$TOKEN"` becomes when the
+/// variable is empty, and where a script would otherwise read page one again
+/// without noticing. The token is used as given and not trimmed, since its
+/// cursor is the API's and opaque.
 fn resume_cursor(token: Option<&str>, statuses: &[String]) -> Result<Option<String>> {
-    let Some(token) = token.map(str::trim).filter(|token| !token.is_empty()) else {
+    let Some(token) = token else {
         return Ok(None);
     };
     let (issued_for, cursor) = token.split_once('|').ok_or_else(bad_token)?;
@@ -178,40 +183,68 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_scopes(&[COMMERCE_PRODUCT_READ])
             .with_cursor(CursorConfig::new(DEFAULT_LIMIT, MAX_LIMIT)),
         |ctx, args: ListArgs| async move {
-            // Checked first, so a bad token fails before anything is requested.
-            let after = resume_cursor(ctx.middleware.continue_token.as_deref(), &args.status)?;
-            let client = connect(&ctx, &args.store, &[COMMERCE_PRODUCT_READ]).await?;
-            let (products, continuation) = list_page(
-                &client,
-                &args.status,
+            list(
+                &args,
+                ctx.middleware.continue_token.as_deref(),
                 ctx.middleware.cursor_limit,
-                after.as_deref(),
+                || connect(&ctx, &args.store, &[COMMERCE_PRODUCT_READ]),
             )
-            .await?;
-            let data: Vec<Value> = products
-                .into_iter()
-                .map(to_value)
-                .collect::<std::result::Result<_, _>>()
-                .map_err(|_| {
-                    GddyError::unexpected("the product list could not be shown")
-                        .with_system("commerce")
-                        .into_cli_error()
-                })?;
-            Ok(list_result(data, continuation))
+            .await
         },
     )
 }
 
+/// What `list` does, with the way it reaches the API passed in so a test can see
+/// whether it was used: the token is checked first, so a bad one fails before
+/// anything is requested.
+async fn list<F, Fut>(
+    args: &ListArgs,
+    continue_token: Option<&str>,
+    limit: i64,
+    connect: F,
+) -> Result<CommandResult>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<CatalogClient>>,
+{
+    let after = resume_cursor(continue_token, &args.status)?;
+    let client = connect().await?;
+    let (products, continuation) =
+        list_page(&client, &args.status, limit, after.as_deref()).await?;
+    let data: Vec<Value> = products
+        .into_iter()
+        .map(to_value)
+        .collect::<std::result::Result<_, _>>()
+        .map_err(|_| {
+            GddyError::unexpected("the product list could not be shown")
+                .with_system("commerce")
+                .into_cli_error()
+        })?;
+    Ok(list_result(
+        data,
+        continuation,
+        args.store.store_id.as_deref(),
+    ))
+}
+
 /// The result of a list: the page, where it leaves off, and, only when there is a
 /// product to show, a next step that uses one.
-fn list_result(products: Vec<Value>, continuation: CursorContinuation) -> CommandResult {
+fn list_result(
+    products: Vec<Value>,
+    continuation: CursorContinuation,
+    store_flag: Option<&str>,
+) -> CommandResult {
     let offer = !products.is_empty();
     let result = CommandResult::new(Value::Array(products)).with_cursor(continuation);
     if offer {
-        result.with_next_actions(vec![next_action(
-            "commerce catalog product get <product-id>",
-            "Show one product",
-        )])
+        result.with_next_actions(vec![
+            follow_up(
+                "commerce catalog product get <product-id>",
+                "Show one product",
+                store_flag,
+            )
+            .with_param("product-id", NextActionParam::required()),
+        ])
     } else {
         result
     }

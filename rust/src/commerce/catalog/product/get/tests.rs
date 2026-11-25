@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use super::*;
 use crate::error::codes;
 use cli_engine::{
@@ -5,7 +7,7 @@ use cli_engine::{
 };
 use httpmock::prelude::*;
 use reqwest::Client as ReqwestClient;
-use serde_json::json;
+use serde_json::{from_slice, json};
 
 const STORE_ID: &str = "6d1f0f4c-8a2e-4a52-9a5b-0f6a3c1d2e4b";
 const PRODUCT_ID: &str = "0c3b1a52-77de-4c0e-8f6b-1d2a9e4f5b60";
@@ -48,7 +50,7 @@ async fn a_product_is_shown_in_merchant_terms() {
     let server = MockServer::start_async().await;
     serve(&server, product()).await;
 
-    let result = show(&client_for(&server), PRODUCT_ID, "ote")
+    let result = show(&client_for(&server), PRODUCT_ID, "ote", None)
         .await
         .expect("the product is shown");
 
@@ -74,7 +76,7 @@ async fn a_missing_product_is_a_clear_not_found() {
     let server = MockServer::start_async().await;
     serve(&server, Value::Null).await;
 
-    let error = show(&client_for(&server), PRODUCT_ID, "ote")
+    let error = show(&client_for(&server), PRODUCT_ID, "ote", None)
         .await
         .expect_err("a missing product is an error");
 
@@ -139,6 +141,18 @@ fn a_product_id_is_sent_hyphenated_and_in_lower_case() {
     }
 }
 
+fn get_args(store_id: Option<&str>, product_id: &str) -> GetArgs {
+    GetArgs {
+        store: StoreIdArg {
+            store_id: store_id.map(str::to_owned),
+        },
+        product_id: product_id.to_owned(),
+    }
+}
+
+/// Through the command itself: a malformed id is refused before the API is
+/// connected to or asked anything, so a mistyped id costs no request and does not
+/// need a sign-in.
 #[tokio::test]
 async fn a_malformed_id_never_reaches_the_api() {
     let server = MockServer::start_async().await;
@@ -149,10 +163,89 @@ async fn a_malformed_id_never_reaches_the_api() {
                 .json_body(json!({ "data": { "skuGroup": null } }));
         })
         .await;
+    let connected = Cell::new(false);
 
-    let _ = parse_product_id("not-a-uuid");
+    for given in ["", "not-a-uuid", "6d1f0f4c-8a2e-4a52-9a5b"] {
+        let error = get(&get_args(None, given), "ote", || {
+            connected.set(true);
+            let client = client_for(&server);
+            async move { Ok(client) }
+        })
+        .await
+        .expect_err("a malformed id is refused");
 
+        let envelope = build_error_envelope(&error, "commerce");
+        assert_eq!(
+            envelope.error.map(|e| e.code),
+            Some(codes::VALIDATION_ERROR.to_owned()),
+            "{given:?}"
+        );
+    }
+
+    assert!(!connected.get(), "the API was connected to");
     assert_eq!(mock.calls_async().await, 0);
+}
+
+/// A valid id does go through: connected once, product asked for in the form the
+/// API takes.
+#[tokio::test]
+async fn a_valid_id_connects_and_reads_the_product() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST).is_true(|request| {
+                from_slice::<Value>(request.body_ref())
+                    .ok()
+                    .and_then(|body| body.pointer("/variables/id").cloned())
+                    == Some(json!(PRODUCT_ID))
+            });
+            then.status(200)
+                .json_body(json!({ "data": { "skuGroup": product() } }));
+        })
+        .await;
+    let connected = Cell::new(0);
+
+    let result = get(&get_args(None, &PRODUCT_ID.to_uppercase()), "ote", || {
+        connected.set(connected.get() + 1);
+        let client = client_for(&server);
+        async move { Ok(client) }
+    })
+    .await
+    .expect("the product is shown");
+
+    assert_eq!(result.data["id"], PRODUCT_ID);
+    assert_eq!(connected.get(), 1);
+    assert_eq!(mock.calls_async().await, 1);
+}
+
+/// After `get --store-id B`, the way back to the list is for B too, with the id as
+/// a structured parameter. Without `--store-id` it names no store, since the
+/// selected one is what the list will use.
+#[tokio::test]
+async fn the_way_back_to_the_list_names_the_store_only_when_one_was_given() {
+    let server = MockServer::start_async().await;
+    serve(&server, product()).await;
+
+    let given = show(&client_for(&server), PRODUCT_ID, "ote", Some(STORE_ID))
+        .await
+        .expect("shown");
+    let action = &given.metadata.next_actions[0];
+    assert!(
+        action
+            .command
+            .ends_with("commerce catalog product list --store-id <store-id>"),
+        "{}",
+        action.command
+    );
+    assert_eq!(action.params["store-id"].value.as_deref(), Some(STORE_ID));
+    assert!(action.params["store-id"].required);
+
+    let selected = show(&client_for(&server), PRODUCT_ID, "ote", None)
+        .await
+        .expect("shown");
+    let action = &selected.metadata.next_actions[0];
+    assert!(!action.command.contains("--store-id"), "{}", action.command);
+    assert!(action.params.is_empty());
 }
 
 /// Every field the command emits must survive the default projection, or it is
@@ -161,7 +254,7 @@ async fn a_malformed_id_never_reaches_the_api() {
 async fn the_default_output_shows_every_field_the_command_emits() {
     let server = MockServer::start_async().await;
     serve(&server, product()).await;
-    let result = show(&client_for(&server), PRODUCT_ID, "ote")
+    let result = show(&client_for(&server), PRODUCT_ID, "ote", None)
         .await
         .expect("shown");
     let emitted: Vec<String> = result
@@ -196,7 +289,7 @@ async fn the_default_output_shows_every_field_the_command_emits() {
 async fn the_advertised_fields_match_what_the_command_emits() {
     let server = MockServer::start_async().await;
     serve(&server, product()).await;
-    let result = show(&client_for(&server), PRODUCT_ID, "ote")
+    let result = show(&client_for(&server), PRODUCT_ID, "ote", None)
         .await
         .expect("shown");
     let mut emitted: Vec<&str> = result
@@ -219,7 +312,7 @@ async fn the_advertised_fields_match_what_the_command_emits() {
 async fn a_product_renders_for_a_person_in_merchant_terms() {
     let server = MockServer::start_async().await;
     serve(&server, product()).await;
-    let result = show(&client_for(&server), PRODUCT_ID, "ote")
+    let result = show(&client_for(&server), PRODUCT_ID, "ote", None)
         .await
         .expect("shown");
 
