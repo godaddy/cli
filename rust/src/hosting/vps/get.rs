@@ -15,8 +15,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
     RuntimeCommandSpec::new_typed_with_context::<ServerIdArgs, _, _, _>(
         CommandSpec::from_args::<ServerIdArgs>("get", "Show one server in detail")
             .with_long(
-                "Show one server: its name, status, data center, IP address, operating \
-                 system and plan. `status` is the platform's own value, for example ACTIVE \
+                "Show one server: its name, status, IP address, operating system and \
+                 plan. `status` is the platform's own value, for example ACTIVE \
                  (running) or STOPPED.",
             )
             .with_system("hosting")

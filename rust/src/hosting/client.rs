@@ -271,9 +271,22 @@ impl HostingClient {
         response(request.send().await).await
     }
 
-    pub async fn list_servers(&self) -> Result<Value, ClientError> {
+    pub async fn list_servers(
+        &self,
+        page_token: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<Value, ClientError> {
         let client = self.api()?;
-        response(client.list_servers().send().await).await
+        let mut request = client.list_servers();
+        if let Some(token) = page_token {
+            request = request.page_token(token.to_owned());
+        }
+        if let Some(limit) = limit
+            && let Some(size) = page_size(limit)
+        {
+            request = request.page_size(size);
+        }
+        response(request.send().await).await
     }
 
     pub async fn get_server(&self, server_id: &str) -> Result<Value, ClientError> {

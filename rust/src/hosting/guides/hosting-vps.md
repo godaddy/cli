@@ -22,7 +22,7 @@ The following terms and concepts are relevant to working with servers:
 gddy hosting vps list
 ```
 
-The command returns every server with its `name`, `id`, `status`, `os`, `controlPanel`, `createdAt` and, when the plan has one, `expiresAt`. Add `--limit <n>` to cap how many are shown, and `--output json` for the same fields as JSON.
+The command returns every server with its `name`, `id`, `status`, `os`, `controlPanel`, `createdAt` and, when the plan has one, `expiresAt`. Add `--limit <n>` to cap how many come back, and `--output json` for the same fields as JSON.
 
 The list doesn't show a server's IP address. Use `get` for that.
 
@@ -32,7 +32,7 @@ The list doesn't show a server's IP address. Use `get` for that.
 gddy hosting vps get --server-id VPS-phx3-3f2a9c4e-1111-4a5b-8c6d-000000000001
 ```
 
-The command shows the name, status, data center, IP address, operating system and plan. `status` is the platform's own value, for example `ACTIVE` (running) or `STOPPED`.
+The command shows the name, status, IP address, operating system and plan. `status` is the platform's own value, for example `ACTIVE` (running) or `STOPPED`.
 
 ## Start, stop or restart
 

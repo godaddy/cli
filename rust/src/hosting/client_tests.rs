@@ -831,12 +831,34 @@ async fn list_servers_sends_bearer_auth_and_returns_items() {
         .await;
 
     let body = client(&server.base_url())
-        .list_servers()
+        .list_servers(None, None)
         .await
         .expect("list servers");
 
     mock.assert_async().await;
     assert_eq!(body["items"][0]["expiresAt"], "2027-03-02T11:08:40Z");
+}
+
+#[tokio::test]
+async fn list_servers_sends_page_token_and_limit() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/v1/hosting/servers")
+                .query_param("pageToken", "tok-1")
+                .query_param("pageSize", "5");
+            then.status(200)
+                .json_body(json!({ "items": [], "links": [] }));
+        })
+        .await;
+
+    client(&server.base_url())
+        .list_servers(Some("tok-1"), Some(5))
+        .await
+        .expect("list servers with pagination");
+
+    mock.assert_async().await;
 }
 
 const SERVER: &str = "VPS-phx3-3f2a9c4e-1111-4a5b-8c6d-000000000001";
@@ -850,7 +872,7 @@ async fn get_server_reads_one_server_by_id() {
                 .path(format!("/v1/hosting/servers/{SERVER}"))
                 .header("authorization", "Bearer test-token");
             then.status(200).json_body(json!({
-                "id": SERVER, "name": "web-prod", "status": "ACTIVE", "datacenter": "phx3",
+                "id": SERVER, "name": "web-prod", "status": "ACTIVE",
                 "ipAddress": "198.51.100.24"
             }));
         })

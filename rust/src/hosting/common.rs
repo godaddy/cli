@@ -15,12 +15,12 @@ output_schema!(HostingAppSummary {
 });
 
 output_schema!(HostingServerSummary {
-    "name": "string", optional;
+    "name": "string";
     "id": "string";
-    "status": "string", optional;
+    "status": "string";
     "os": "string", optional;
     "controlPanel": "string", optional;
-    "createdAt": "string", optional;
+    "createdAt": "string";
     "expiresAt": "string", optional;
 });
 
@@ -28,7 +28,6 @@ output_schema!(HostingServer {
     "id": "string";
     "name": "string";
     "status": "string";
-    "datacenter": "string";
     "ipAddress": "string", optional;
     "os": "string", optional;
     "plan": "string", optional;

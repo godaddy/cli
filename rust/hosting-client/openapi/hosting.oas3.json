@@ -944,6 +944,25 @@
           }
         ]
       },
+      "PagedServers": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PagedList"
+          },
+          {
+            "properties": {
+              "items": {
+                "items": {
+                  "$ref": "#/components/schemas/ServerSummary"
+                },
+                "nullable": true,
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        ]
+      },
       "PagedSubscriptions": {
         "allOf": [
           {
@@ -1131,10 +1150,6 @@
             "$ref": "#/components/schemas/date-time",
             "readOnly": true
           },
-          "datacenter": {
-            "readOnly": true,
-            "type": "string"
-          },
           "id": {
             "readOnly": true,
             "type": "string"
@@ -1161,18 +1176,6 @@
           }
         },
         "title": "Server",
-        "type": "object"
-      },
-      "ServerList": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ServerSummary"
-            },
-            "nullable": true,
-            "type": "array"
-          }
-        },
         "type": "object"
       },
       "ServerOperation": {
@@ -2844,12 +2847,38 @@
     "/v1/hosting/servers": {
       "get": {
         "operationId": "listServers",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Pagination_pageToken"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Pagination_pageSize"
+            }
+          },
+          {
+            "in": "query",
+            "name": "totalRequired",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Pagination_totalRequired"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ServerList"
+                  "$ref": "#/components/schemas/PagedServers"
                 }
               }
             },
