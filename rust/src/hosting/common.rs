@@ -14,6 +14,36 @@ output_schema!(HostingAppSummary {
     "status": "string";
 });
 
+output_schema!(HostingServerSummary {
+    "name": "string", optional;
+    "id": "string";
+    "status": "string", optional;
+    "os": "string", optional;
+    "controlPanel": "string", optional;
+    "createdAt": "string", optional;
+    "expiresAt": "string", optional;
+});
+
+output_schema!(HostingServer {
+    "id": "string";
+    "name": "string";
+    "status": "string";
+    "datacenter": "string";
+    "ipAddress": "string", optional;
+    "os": "string", optional;
+    "plan": "string", optional;
+    "createdAt": "string", optional;
+});
+
+output_schema!(HostingServerOperation {
+    "operationId": "string";
+    "type": "string";
+    "status": "string";
+    "error": "object", optional;
+    "createdAt": "string", optional;
+    "completedAt": "string", optional;
+});
+
 output_schema!(HostingDeploymentSummary {
     "deploymentId": "string";
     "status": "string";
@@ -379,6 +409,12 @@ pub const HOSTING_GUIDE: &str = include_str!("guides/hosting.md");
 pub const NODEJS_GUIDE: &str = include_str!("guides/hosting-nodejs.md");
 /// Markdown for `gddy guide hosting-wordpress`.
 pub const WORDPRESS_GUIDE: &str = include_str!("guides/hosting-wordpress.md");
+/// Markdown for `gddy guide hosting-vps`.
+pub const VPS_GUIDE: &str = include_str!("guides/hosting-vps.md");
+
+/// Feature flag key for the virtual private server commands. They stay
+/// Experimental until the servers API is served.
+pub const VPS_FLAG: &str = "hosting-vps";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum HostingProduct {
