@@ -8,7 +8,7 @@ use serde_json::to_value;
 use super::{
     get::{ProductResult, parse_product_id, product_not_found},
     output::ProductDetail,
-    result::changed,
+    result::{changed, preview},
 };
 use crate::{
     commerce::{
@@ -49,11 +49,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("commerce")
             .with_tier(Tier::Mutate)
             .mutates(true)
+            .handles_dry_run(true)
             .with_output_schema::<ProductResult>()
             .with_view(super::get::view_columns())
             .with_scopes(&[COMMERCE_PRODUCT_WRITE]),
         |ctx, args: ArchiveArgs| async move {
-            archive(&args, &ctx.middleware.env, || {
+            archive(&args, &ctx.middleware.env, ctx.dry_run(), || {
                 connect(&ctx, &args.store, &[COMMERCE_PRODUCT_WRITE])
             })
             .await
@@ -62,8 +63,14 @@ pub(super) fn command() -> RuntimeCommandSpec {
 }
 
 /// What `archive` does, with the way it reaches the API passed in so a test can
-/// see that a bad id is refused before anything is requested.
-async fn archive<F, Fut>(args: &ArchiveArgs, env: &str, connect: F) -> Result<CommandResult>
+/// see that a bad id is refused before anything is requested. Under `--dry-run`
+/// the product is read and nothing is archived.
+async fn archive<F, Fut>(
+    args: &ArchiveArgs,
+    env: &str,
+    dry_run: bool,
+    connect: F,
+) -> Result<CommandResult>
 where
     F: FnOnce() -> Fut,
     Fut: Future<Output = Result<CatalogClient>>,
@@ -71,6 +78,21 @@ where
     let store_flag = args.store.store_id.as_deref();
     let product_id = parse_product_id(&args.product_id, store_flag)?;
     let client = connect().await?;
+    if dry_run {
+        // The product has to be there for the real run to archive it.
+        client
+            .get_product(&product_id)
+            .await?
+            .ok_or_else(|| product_not_found(&product_id, env, store_flag))?;
+        return Ok(preview(
+            "dry-run: would archive product",
+            Some(&product_id),
+            &[(
+                "variants",
+                args.with_variants.then_some("archived with the product"),
+            )],
+        ));
+    }
     let product = client
         .archive_product(&product_id, args.with_variants)
         .await?

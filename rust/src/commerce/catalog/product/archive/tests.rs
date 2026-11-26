@@ -55,7 +55,7 @@ fn code_of(error: &CliCoreError) -> String {
 }
 
 async fn run(server: &MockServer, given: &ArchiveArgs) -> Result<CommandResult> {
-    archive(given, "ote", || {
+    archive(given, "ote", false, || {
         let client = client_for(server);
         async move { Ok(client) }
     })
@@ -119,7 +119,7 @@ async fn a_malformed_id_never_reaches_the_api() {
         .await;
     let connected = Cell::new(false);
 
-    let error = archive(&args("not-a-uuid", true), "ote", || {
+    let error = archive(&args("not-a-uuid", true), "ote", false, || {
         connected.set(true);
         let client = client_for(&server);
         async move { Ok(client) }
@@ -200,4 +200,94 @@ fn the_command_is_a_mutation_that_declares_the_write_scope() {
         spec.metadata().scopes,
         vec![COMMERCE_PRODUCT_WRITE.to_owned()]
     );
+}
+
+/// A preview reads the product, since the real run needs it to be there, and
+/// archives nothing: the one request is the read, never the mutation.
+#[tokio::test]
+async fn a_preview_reads_the_product_and_archives_nothing() {
+    let server = MockServer::start_async().await;
+    let read = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .is_true(|request| request.body_ref().windows(8).any(|w| w == b"skuGroup"));
+            then.status(200)
+                .json_body(json!({ "data": { "skuGroup": archived() } }));
+        })
+        .await;
+    let write = server
+        .mock_async(|when, then| {
+            when.method(POST).is_true(|request| {
+                from_slice::<Value>(request.body_ref())
+                    .ok()
+                    .and_then(|body| {
+                        body["query"]
+                            .as_str()
+                            .map(|q| q.contains("archiveSkuGroup"))
+                    })
+                    == Some(true)
+            });
+            then.status(200)
+                .json_body(json!({ "data": { "archiveSkuGroup": archived() } }));
+        })
+        .await;
+
+    let result = archive(&args(PRODUCT_ID, true), "ote", true, || {
+        let client = client_for(&server);
+        async move { Ok(client) }
+    })
+    .await
+    .expect("a preview");
+
+    assert!(result.metadata.dry_run, "marked as a preview");
+    assert_eq!(write.calls_async().await, 0, "nothing was archived");
+    assert_eq!(read.calls_async().await, 1, "the product was read");
+    assert_eq!(result.data["action"], "dry-run: would archive product");
+    assert_eq!(result.data["productId"], PRODUCT_ID);
+    assert_eq!(
+        result.data["changes"],
+        json!({ "variants": "archived with the product" })
+    );
+}
+
+#[tokio::test]
+async fn a_preview_without_the_cascade_says_nothing_about_variants() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST);
+            then.status(200)
+                .json_body(json!({ "data": { "skuGroup": archived() } }));
+        })
+        .await;
+
+    let result = archive(&args(PRODUCT_ID, false), "ote", true, || {
+        let client = client_for(&server);
+        async move { Ok(client) }
+    })
+    .await
+    .expect("a preview");
+
+    assert_eq!(result.data["changes"], json!({}));
+}
+
+#[tokio::test]
+async fn a_preview_of_a_missing_product_is_not_found() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST);
+            then.status(200)
+                .json_body(json!({ "data": { "skuGroup": null } }));
+        })
+        .await;
+
+    let error = archive(&args(PRODUCT_ID, false), "ote", true, || {
+        let client = client_for(&server);
+        async move { Ok(client) }
+    })
+    .await
+    .expect_err("missing");
+
+    assert_eq!(code_of(&error), codes::NOT_FOUND);
 }

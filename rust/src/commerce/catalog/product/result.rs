@@ -2,7 +2,7 @@
 //! the next step.
 
 use cli_engine::{CommandResult, Result};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::{commerce::catalog::follow_up, error::GddyError, next_action::required_value};
 
@@ -31,4 +31,25 @@ pub(super) fn changed(
         ]),
         None => result,
     })
+}
+
+/// What a `--dry-run` of a change prints: the action, and the details that would
+/// be sent, only those the person gave. Marked as a preview so a consumer can
+/// tell it from a change that was made.
+pub(super) fn preview(
+    action: &str,
+    product_id: Option<&str>,
+    details: &[(&str, Option<&str>)],
+) -> CommandResult {
+    let changes: Map<String, Value> = details
+        .iter()
+        .filter_map(|(name, value)| value.map(|value| ((*name).to_owned(), Value::from(value))))
+        .collect();
+    let mut data = Map::new();
+    data.insert("action".to_owned(), Value::from(action));
+    if let Some(id) = product_id {
+        data.insert("productId".to_owned(), Value::from(id));
+    }
+    data.insert("changes".to_owned(), Value::Object(changes));
+    CommandResult::new(Value::Object(data)).with_dry_run()
 }

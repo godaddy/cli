@@ -9,7 +9,7 @@ use super::{
     fields::{parse_label, parse_status},
     get::{ProductResult, parse_product_id, product_not_found},
     output::ProductDetail,
-    result::changed,
+    result::{changed, preview},
 };
 use crate::{
     commerce::{
@@ -64,11 +64,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("commerce")
             .with_tier(Tier::Mutate)
             .mutates(true)
+            .handles_dry_run(true)
             .with_output_schema::<ProductResult>()
             .with_view(super::get::view_columns())
             .with_scopes(&[COMMERCE_PRODUCT_WRITE]),
         |ctx, args: UpdateArgs| async move {
-            update(&args, &ctx.middleware.env, || {
+            update(&args, &ctx.middleware.env, ctx.dry_run(), || {
                 connect(&ctx, &args.store, &[COMMERCE_PRODUCT_WRITE])
             })
             .await
@@ -95,7 +96,13 @@ fn input(args: &UpdateArgs) -> Option<MutationUpdateSkuGroupInput> {
 
 /// What `update` does, with the way it reaches the API passed in so a test can
 /// see that a bad id or an empty change is refused before anything is requested.
-async fn update<F, Fut>(args: &UpdateArgs, env: &str, connect: F) -> Result<CommandResult>
+/// Under `--dry-run` the product is read and nothing is changed.
+async fn update<F, Fut>(
+    args: &UpdateArgs,
+    env: &str,
+    dry_run: bool,
+    connect: F,
+) -> Result<CommandResult>
 where
     F: FnOnce() -> Fut,
     Fut: Future<Output = Result<CatalogClient>>,
@@ -112,6 +119,23 @@ where
             .into_cli_error()
     })?;
     let client = connect().await?;
+    if dry_run {
+        // The product has to be there for the real run to change it.
+        client
+            .get_product(&product_id)
+            .await?
+            .ok_or_else(|| product_not_found(&product_id, env, store_flag))?;
+        return Ok(preview(
+            "dry-run: would update product",
+            Some(&product_id),
+            &[
+                ("label", args.label.as_deref()),
+                ("description", args.description.as_deref()),
+                ("status", args.status.as_deref()),
+                ("name", args.name.as_deref()),
+            ],
+        ));
+    }
     let product = client
         .update_product(&product_id, input)
         .await?

@@ -1,7 +1,7 @@
 use std::cell::Cell;
 
 use super::*;
-use crate::error::codes;
+use crate::error::{GddyError, codes};
 use cli_engine::{CliCoreError, build_error_envelope};
 use httpmock::{HttpMockRequest, prelude::*};
 use reqwest::Client as ReqwestClient;
@@ -83,7 +83,7 @@ async fn only_the_details_given_are_sent() {
         })
         .await;
 
-    create(&args(None), || {
+    create(&args(None), false, || {
         let client = client_for(&server);
         async move { Ok(client) }
     })
@@ -115,7 +115,7 @@ async fn every_detail_given_is_sent() {
     given.status = Some("ACTIVE".to_owned());
     given.name = Some("classic-tee".to_owned());
 
-    create(&given, || {
+    create(&given, false, || {
         let client = client_for(&server);
         async move { Ok(client) }
     })
@@ -132,7 +132,7 @@ async fn the_result_is_the_new_product_and_a_step_to_read_it_back() {
     let server = MockServer::start_async().await;
     serve(&server, json!({ "data": { "createSkuGroup": created() } })).await;
 
-    let result = create(&args(Some(STORE_ID)), || {
+    let result = create(&args(Some(STORE_ID)), false, || {
         let client = client_for(&server);
         async move { Ok(client) }
     })
@@ -164,7 +164,7 @@ async fn the_read_back_step_names_no_store_when_none_was_given() {
     let server = MockServer::start_async().await;
     serve(&server, json!({ "data": { "createSkuGroup": created() } })).await;
 
-    let result = create(&args(None), || {
+    let result = create(&args(None), false, || {
         let client = client_for(&server);
         async move { Ok(client) }
     })
@@ -193,7 +193,7 @@ async fn a_refused_request_says_which_detail_was_wrong() {
     let mut given = args(None);
     given.name = Some("Bad Name!".to_owned());
 
-    let error = create(&given, || {
+    let error = create(&given, false, || {
         let client = client_for(&server);
         async move { Ok(client) }
     })
@@ -215,7 +215,7 @@ async fn an_answer_with_no_product_is_not_a_success() {
     let server = MockServer::start_async().await;
     serve(&server, json!({ "data": { "createSkuGroup": null } })).await;
 
-    let error = create(&args(None), || {
+    let error = create(&args(None), false, || {
         let client = client_for(&server);
         async move { Ok(client) }
     })
@@ -233,7 +233,7 @@ async fn one_command_is_one_request() {
     let mock = serve(&server, json!({ "data": { "createSkuGroup": created() } })).await;
     let connected = Cell::new(0);
 
-    create(&args(None), || {
+    create(&args(None), false, || {
         connected.set(connected.get() + 1);
         let client = client_for(&server);
         async move { Ok(client) }
@@ -255,4 +255,53 @@ fn the_command_is_a_mutation_that_declares_the_write_scope() {
         spec.metadata().scopes,
         vec![COMMERCE_PRODUCT_WRITE.to_owned()]
     );
+}
+
+/// A preview signs in and connects, as the real run must, but creates nothing: no
+/// request reaches the API. What it would send is what it prints, only the
+/// details given.
+#[tokio::test]
+async fn a_preview_creates_nothing_and_says_what_it_would_create() {
+    let server = MockServer::start_async().await;
+    let mock = serve(&server, json!({ "data": { "createSkuGroup": created() } })).await;
+    let connected = Cell::new(0);
+    let mut given = args(None);
+    given.description = Some("Soft".to_owned());
+
+    let result = create(&given, true, || {
+        connected.set(connected.get() + 1);
+        let client = client_for(&server);
+        async move { Ok(client) }
+    })
+    .await
+    .expect("a preview");
+
+    assert!(result.metadata.dry_run, "marked as a preview");
+    assert_eq!(
+        connected.get(),
+        1,
+        "the real run needs it, so a preview does"
+    );
+    assert_eq!(mock.calls_async().await, 0, "nothing was created");
+    assert_eq!(result.data["action"], "dry-run: would create product");
+    assert_eq!(
+        result.data["changes"],
+        json!({ "label": "Classic Tee", "type": "PHYSICAL", "description": "Soft" })
+    );
+    assert!(
+        result.metadata.next_actions.is_empty(),
+        "nothing to read back"
+    );
+}
+
+/// A preview that cannot connect fails as the real run would.
+#[tokio::test]
+async fn a_preview_fails_where_connecting_fails() {
+    let error = create(&args(None), true, || async {
+        Err(GddyError::config("no store selected").into_cli_error())
+    })
+    .await
+    .expect_err("not connected");
+
+    assert_eq!(code_of(&error), codes::CONFIG_ERROR);
 }

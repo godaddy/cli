@@ -24,3 +24,6 @@ pub(super) fn group() -> RuntimeGroupSpec {
     .with_command(update::command())
     .with_command(archive::command())
 }
+
+#[cfg(test)]
+mod tests;

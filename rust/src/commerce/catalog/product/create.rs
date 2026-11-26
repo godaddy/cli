@@ -9,7 +9,7 @@ use super::{
     fields::{parse_kind, parse_label, parse_status},
     get::ProductResult,
     output::ProductDetail,
-    result::changed,
+    result::{changed, preview},
 };
 use crate::{
     commerce::{
@@ -64,11 +64,12 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_system("commerce")
             .with_tier(Tier::Mutate)
             .mutates(true)
+            .handles_dry_run(true)
             .with_output_schema::<ProductResult>()
             .with_view(super::get::view_columns())
             .with_scopes(&[COMMERCE_PRODUCT_WRITE]),
         |ctx, args: CreateArgs| async move {
-            create(&args, || {
+            create(&args, ctx.dry_run(), || {
                 connect(&ctx, &args.store, &[COMMERCE_PRODUCT_WRITE])
             })
             .await
@@ -90,13 +91,28 @@ fn input(args: &CreateArgs) -> MutationCreateSkuGroupInput {
 }
 
 /// What `create` does, with the way it reaches the API passed in so a test can
-/// see it is used once and only when there is something to send.
-async fn create<F, Fut>(args: &CreateArgs, connect: F) -> Result<CommandResult>
+/// see it is used once. Under `--dry-run` it is still used, since the store and
+/// the sign-in are what the real run needs and a preview should fail where the
+/// real run would, but nothing is created.
+async fn create<F, Fut>(args: &CreateArgs, dry_run: bool, connect: F) -> Result<CommandResult>
 where
     F: FnOnce() -> Fut,
     Fut: Future<Output = Result<CatalogClient>>,
 {
     let client = connect().await?;
+    if dry_run {
+        return Ok(preview(
+            "dry-run: would create product",
+            None,
+            &[
+                ("label", Some(&args.label)),
+                ("type", Some(&args.kind)),
+                ("description", args.description.as_deref()),
+                ("status", args.status.as_deref()),
+                ("name", args.name.as_deref()),
+            ],
+        ));
+    }
     let product = ProductDetail::from(client.create_product(input(args)).await?);
     changed(to_value(product), args.store.store_id.as_deref())
 }

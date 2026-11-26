@@ -1,7 +1,7 @@
 use std::cell::Cell;
 
 use super::*;
-use crate::error::codes;
+use crate::error::{GddyError, codes};
 use cli_engine::{CliCoreError, build_error_envelope};
 use httpmock::{HttpMockRequest, prelude::*};
 use reqwest::Client as ReqwestClient;
@@ -67,7 +67,7 @@ fn code_of(error: &CliCoreError) -> String {
 }
 
 async fn run(server: &MockServer, given: &UpdateArgs) -> Result<CommandResult> {
-    update(given, "ote", || {
+    update(given, "ote", false, || {
         let client = client_for(server);
         async move { Ok(client) }
     })
@@ -159,7 +159,7 @@ async fn naming_nothing_to_change_is_refused_before_the_api_is_reached() {
         .await;
     let connected = Cell::new(false);
 
-    let error = update(&args(PRODUCT_ID), "ote", || {
+    let error = update(&args(PRODUCT_ID), "ote", false, || {
         connected.set(true);
         let client = client_for(&server);
         async move { Ok(client) }
@@ -188,7 +188,7 @@ async fn a_malformed_id_never_reaches_the_api() {
     let mut given = args("not-a-uuid");
     given.label = Some("L".to_owned());
 
-    let error = update(&given, "ote", || {
+    let error = update(&given, "ote", false, || {
         connected.set(true);
         let client = client_for(&server);
         async move { Ok(client) }
@@ -291,4 +291,92 @@ fn the_command_is_a_mutation_that_declares_the_write_scope() {
         spec.metadata().scopes,
         vec![COMMERCE_PRODUCT_WRITE.to_owned()]
     );
+}
+
+/// A preview reads the product, since the real run needs it to be there, and
+/// changes nothing: the one request is the read, never the mutation.
+#[tokio::test]
+async fn a_preview_reads_the_product_and_changes_nothing() {
+    let server = MockServer::start_async().await;
+    let read = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .is_true(|request| request.body_ref().windows(8).any(|w| w == b"skuGroup"));
+            then.status(200)
+                .json_body(json!({ "data": { "skuGroup": updated() } }));
+        })
+        .await;
+    let write = server
+        .mock_async(|when, then| {
+            when.method(POST).is_true(|request| {
+                from_slice::<Value>(request.body_ref())
+                    .ok()
+                    .and_then(|body| body["query"].as_str().map(|q| q.contains("updateSkuGroup")))
+                    == Some(true)
+            });
+            then.status(200)
+                .json_body(json!({ "data": { "updateSkuGroup": updated() } }));
+        })
+        .await;
+    let mut given = args(PRODUCT_ID);
+    given.label = Some("New".to_owned());
+    given.status = Some("ACTIVE".to_owned());
+
+    let result = update(&given, "ote", true, || {
+        let client = client_for(&server);
+        async move { Ok(client) }
+    })
+    .await
+    .expect("a preview");
+
+    assert!(result.metadata.dry_run, "marked as a preview");
+    assert_eq!(write.calls_async().await, 0, "nothing was changed");
+    assert_eq!(read.calls_async().await, 1, "the product was read");
+    assert_eq!(result.data["action"], "dry-run: would update product");
+    assert_eq!(result.data["productId"], PRODUCT_ID);
+    assert_eq!(
+        result.data["changes"],
+        json!({ "label": "New", "status": "ACTIVE" })
+    );
+}
+
+/// A preview of a change to a product the store does not have fails as the real
+/// run would, and not as a change that would succeed.
+#[tokio::test]
+async fn a_preview_of_a_missing_product_is_not_found() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST);
+            then.status(200)
+                .json_body(json!({ "data": { "skuGroup": null } }));
+        })
+        .await;
+    let mut given = args(PRODUCT_ID);
+    given.label = Some("New".to_owned());
+
+    let error = update(&given, "ote", true, || {
+        let client = client_for(&server);
+        async move { Ok(client) }
+    })
+    .await
+    .expect_err("missing");
+
+    assert_eq!(code_of(&error), codes::NOT_FOUND);
+}
+
+/// An empty change is refused in a preview as it is for real, before connecting.
+#[tokio::test]
+async fn a_preview_with_nothing_to_change_is_refused_before_connecting() {
+    let connected = Cell::new(false);
+
+    let error = update(&args(PRODUCT_ID), "ote", true, || {
+        connected.set(true);
+        async { Err(GddyError::unexpected("not reached").into_cli_error()) }
+    })
+    .await
+    .expect_err("nothing to change");
+
+    assert_eq!(code_of(&error), codes::VALIDATION_ERROR);
+    assert!(!connected.get());
 }
