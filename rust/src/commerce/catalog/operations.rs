@@ -18,6 +18,15 @@ use graphql_client::GraphQLQuery;
 /// the string the API sent.
 type DateTime = String;
 
+/// One product (`skuGroup`), by id.
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "schemas/graphql/catalog-products.graphql",
+    query_path = "src/commerce/catalog/graphql/product.graphql",
+    response_derives = "Debug, Clone"
+)]
+pub(super) struct Product;
+
 /// One page of products (`skuGroups`).
 #[derive(GraphQLQuery)]
 #[graphql(

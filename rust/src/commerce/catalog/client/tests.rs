@@ -54,15 +54,6 @@ fn empty_page() -> Value {
     } } })
 }
 
-async fn serve(server: &MockServer, when: impl FnOnce(httpmock::When) -> httpmock::When) {
-    server
-        .mock_async(|w, then| {
-            when(w.method(POST));
-            then.status(200).json_body(empty_page());
-        })
-        .await;
-}
-
 #[tokio::test]
 async fn a_request_goes_to_the_store_scoped_subgraph_with_its_headers() {
     let server = MockServer::start_async().await;

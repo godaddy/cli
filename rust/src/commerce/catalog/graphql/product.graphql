@@ -1,0 +1,24 @@
+query Product($id: String!) {
+  skuGroup(id: $id) {
+    id
+    name
+    label
+    status
+    type
+    createdAt
+    updatedAt
+    archivedAt
+    activatedAt
+    description
+    htmlDescription
+    skuCount
+    priceRange {
+      min
+      max
+    }
+    compareAtPriceRange {
+      min
+      max
+    }
+  }
+}
