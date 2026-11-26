@@ -271,6 +271,86 @@ impl HostingClient {
         response(request.send().await).await
     }
 
+    pub async fn list_servers(
+        &self,
+        page_token: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<Value, ClientError> {
+        let client = self.api()?;
+        let mut request = client.list_servers();
+        if let Some(token) = page_token {
+            request = request.page_token(token.to_owned());
+        }
+        if let Some(limit) = limit
+            && let Some(size) = page_size(limit)
+        {
+            request = request.page_size(size);
+        }
+        response(request.send().await).await
+    }
+
+    pub async fn get_server(&self, server_id: &str) -> Result<Value, ClientError> {
+        let client = self.api()?;
+        response(client.get_server().server_id(server_id).send().await).await
+    }
+
+    /// Starts a server power action; `action` is `start`, `stop` or `restart`.
+    pub async fn server_action(&self, server_id: &str, action: &str) -> Result<Value, ClientError> {
+        let client = self.api()?;
+        match action {
+            "start" => {
+                response(
+                    client
+                        .create_server_start()
+                        .server_id(server_id)
+                        .send()
+                        .await,
+                )
+                .await
+            }
+            "stop" => {
+                response(
+                    client
+                        .create_server_stop()
+                        .server_id(server_id)
+                        .send()
+                        .await,
+                )
+                .await
+            }
+            "restart" => {
+                response(
+                    client
+                        .create_server_restart()
+                        .server_id(server_id)
+                        .send()
+                        .await,
+                )
+                .await
+            }
+            other => Err(ClientError::Request(format!(
+                "unknown server action {other}"
+            ))),
+        }
+    }
+
+    pub async fn get_server_operation(
+        &self,
+        server_id: &str,
+        operation_id: &str,
+    ) -> Result<Value, ClientError> {
+        let client = self.api()?;
+        response(
+            client
+                .get_server_operation()
+                .server_id(server_id)
+                .operation_id(operation_id)
+                .send()
+                .await,
+        )
+        .await
+    }
+
     pub async fn get_app(&self, app_id: &str) -> Result<Value, ClientError> {
         let client = self.api()?;
         response(client.get_app().app_id(app_id).send().await).await

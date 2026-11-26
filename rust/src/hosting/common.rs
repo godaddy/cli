@@ -1,5 +1,5 @@
 use clap::ValueEnum;
-use cli_engine::{CliCoreError, CommandContext};
+use cli_engine::{CliCoreError, CommandContext, FlagPolicy, Stage};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -12,6 +12,35 @@ output_schema!(HostingAppSummary {
     "id": "string";
     "name": "string";
     "status": "string";
+});
+
+output_schema!(HostingServerSummary {
+    "name": "string";
+    "id": "string";
+    "status": "string";
+    "os": "string", optional;
+    "controlPanel": "string", optional;
+    "createdAt": "string";
+    "expiresAt": "string", optional;
+});
+
+output_schema!(HostingServer {
+    "id": "string";
+    "name": "string";
+    "status": "string";
+    "ipAddress": "string", optional;
+    "os": "string", optional;
+    "plan": "string", optional;
+    "createdAt": "string", optional;
+});
+
+output_schema!(HostingServerOperation {
+    "operationId": "string";
+    "type": "string";
+    "status": "string";
+    "error": "object", optional;
+    "createdAt": "string", optional;
+    "completedAt": "string", optional;
 });
 
 output_schema!(HostingDeploymentSummary {
@@ -379,6 +408,16 @@ pub const HOSTING_GUIDE: &str = include_str!("guides/hosting.md");
 pub const NODEJS_GUIDE: &str = include_str!("guides/hosting-nodejs.md");
 /// Markdown for `gddy guide hosting-wordpress`.
 pub const WORDPRESS_GUIDE: &str = include_str!("guides/hosting-wordpress.md");
+/// Markdown for `gddy guide hosting-vps`.
+pub const VPS_GUIDE: &str = include_str!("guides/hosting-vps.md");
+
+/// Feature flag key for the virtual private server commands. They stay
+/// Experimental until the servers API is served.
+pub const VPS_FLAG: &str = "hosting-vps";
+
+pub fn vps_enabled(policy: &FlagPolicy) -> bool {
+    policy.visible(Some(VPS_FLAG), Stage::Experimental)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum HostingProduct {

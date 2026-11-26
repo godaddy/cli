@@ -58,6 +58,10 @@ declare_scopes! {
             HOSTING_SUBSCRIPTION_READ => "hosting.subscription:read",
             /// Attach a hosting subscription to an application
             HOSTING_SUBSCRIPTION_WRITE => "hosting.subscription:write",
+            /// Read virtual private servers
+            HOSTING_SERVER_READ => "hosting.server:read",
+            /// Start, stop, and restart virtual private servers
+            HOSTING_SERVER_EXECUTE => "hosting.server:execute",
 
             /// Read mailboxes and check mailbox-creation eligibility
             EMAIL_READ => "email.mailbox:read",

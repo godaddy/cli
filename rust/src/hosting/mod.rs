@@ -11,11 +11,17 @@ mod source;
 mod subscription;
 #[cfg(test)]
 mod test_support;
+mod vps;
 
 use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 
 pub fn module() -> Module {
-    Module::new("Hosting", |_ctx| {
+    Module::new("Hosting", |ctx| {
+        // Registered here, not on the Module, so the guide is offered only
+        // while the flag that shows the `vps` commands is on.
+        if common::vps_enabled(&ctx.middleware().flag_policy) {
+            ctx.add_guides_from_markdown([("hosting-vps.md", common::VPS_GUIDE)]);
+        }
         RuntimeGroupSpec::new(
             GroupSpec::new("hosting", "Manage GoDaddy hosting products").with_long(
                 "Work with GoDaddy hosting APIs.\n\
@@ -55,6 +61,7 @@ pub fn module() -> Module {
         .with_group(domain::group())
         .with_group(subscription::group())
         .with_group(operation::group())
+        .with_group(vps::group())
     })
     // One call per guide: a call sorts its files by name, which would list
     // `hosting-nodejs` ahead of the `hosting` index.

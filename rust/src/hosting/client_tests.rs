@@ -810,3 +810,131 @@ async fn ensure_database_tunnel_session_posts_to_prefixed_app_path() {
     assert_eq!(body["pollUrl"], "https://dbt-s1.c1.pma.example/healthz");
     assert_eq!(body["token"], "relay-token");
 }
+
+#[tokio::test]
+async fn list_servers_sends_bearer_auth_and_returns_items() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/v1/hosting/servers")
+                .header("authorization", "Bearer test-token");
+            then.status(200).json_body(json!({
+                "items": [{
+                    "name": "web-prod", "id": "VPS-phx3-3f2a9c4e-1111-4a5b-8c6d-000000000001",
+                    "status": "ACTIVE", "os": "LINUX", "controlPanel": "NONE",
+                    "createdAt": "2026-03-02T11:08:40Z", "expiresAt": "2027-03-02T11:08:40Z"
+                }],
+                "links": []
+            }));
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .list_servers(None, None)
+        .await
+        .expect("list servers");
+
+    mock.assert_async().await;
+    assert_eq!(body["items"][0]["expiresAt"], "2027-03-02T11:08:40Z");
+}
+
+#[tokio::test]
+async fn list_servers_sends_page_token_and_limit() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/v1/hosting/servers")
+                .query_param("pageToken", "tok-1")
+                .query_param("pageSize", "5");
+            then.status(200)
+                .json_body(json!({ "items": [], "links": [] }));
+        })
+        .await;
+
+    client(&server.base_url())
+        .list_servers(Some("tok-1"), Some(5))
+        .await
+        .expect("list servers with pagination");
+
+    mock.assert_async().await;
+}
+
+const SERVER: &str = "VPS-phx3-3f2a9c4e-1111-4a5b-8c6d-000000000001";
+
+#[tokio::test]
+async fn get_server_reads_one_server_by_id() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path(format!("/v1/hosting/servers/{SERVER}"))
+                .header("authorization", "Bearer test-token");
+            then.status(200).json_body(json!({
+                "id": SERVER, "name": "web-prod", "status": "ACTIVE",
+                "ipAddress": "198.51.100.24"
+            }));
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .get_server(SERVER)
+        .await
+        .expect("get server");
+
+    mock.assert_async().await;
+    assert_eq!(body["status"], "ACTIVE");
+}
+
+#[tokio::test]
+async fn server_actions_post_to_starts_stops_and_restarts() {
+    for (action, path, kind) in [
+        ("start", "starts", "START"),
+        ("stop", "stops", "STOP"),
+        ("restart", "restarts", "RESTART"),
+    ] {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(format!("/v1/hosting/servers/{SERVER}/{path}"))
+                    .header("authorization", "Bearer test-token");
+                then.status(202).json_body(
+                    json!({ "operationId": "7600456", "type": kind, "status": "PENDING" }),
+                );
+            })
+            .await;
+
+        let body = client(&server.base_url())
+            .server_action(SERVER, action)
+            .await
+            .expect("server action");
+
+        mock.assert_async().await;
+        assert_eq!(body["type"], kind);
+    }
+}
+
+#[tokio::test]
+async fn get_server_operation_reads_the_operation_on_that_server() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path(format!("/v1/hosting/servers/{SERVER}/operations/7600456"));
+            then.status(200).json_body(json!({
+                "operationId": "7600456", "type": "START", "status": "FAILED",
+                "error": { "details": [{ "issue": "ERROR" }] }
+            }));
+        })
+        .await;
+
+    let body = client(&server.base_url())
+        .get_server_operation(SERVER, "7600456")
+        .await
+        .expect("get operation");
+
+    mock.assert_async().await;
+    assert_eq!(body["error"]["details"][0]["issue"], "ERROR");
+}
