@@ -1,0 +1,24 @@
+mutation ProductCreate($input: MutationCreateSkuGroupInput!) {
+  createSkuGroup(input: $input) {
+    id
+    name
+    label
+    status
+    type
+    createdAt
+    updatedAt
+    archivedAt
+    activatedAt
+    description
+    htmlDescription
+    skuCount
+    priceRange {
+      min
+      max
+    }
+    compareAtPriceRange {
+      min
+      max
+    }
+  }
+}

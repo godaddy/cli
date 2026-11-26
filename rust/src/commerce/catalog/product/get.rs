@@ -2,7 +2,9 @@
 
 use std::future::Future;
 
-use cli_engine::{CommandResult, CommandSpec, Result, RuntimeCommandSpec, TableColumn, Tier};
+use cli_engine::{
+    CliCoreError, CommandResult, CommandSpec, Result, RuntimeCommandSpec, TableColumn, Tier,
+};
 use serde_json::{Value, to_value};
 use uuid::Uuid;
 
@@ -17,6 +19,7 @@ use crate::{
     scopes::COMMERCE_PRODUCT_READ,
 };
 
+// Also what `create`, `update` and `archive` print: the product as it now is.
 output_schema!(ProductResult {
     "id": "string";
     "name": "string";
@@ -37,7 +40,7 @@ output_schema!(ProductResult {
 });
 
 /// The fields `get` shows people, labelled in merchant terms.
-fn view_columns() -> Vec<TableColumn> {
+pub(super) fn view_columns() -> Vec<TableColumn> {
     vec![
         TableColumn::new("id", "ID"),
         TableColumn::new("label", "Name"),
@@ -110,7 +113,7 @@ where
 /// selected store, or fail if there is none. The id is repeated only in its
 /// canonical form and only if it is one, so nothing else a person typed is ever
 /// put into a suggested command.
-fn list_command(store_flag: Option<&str>) -> String {
+pub(super) fn list_command(store_flag: Option<&str>) -> String {
     let store = store_flag.and_then(|id| Uuid::parse_str(id.trim()).ok());
     match store {
         Some(id) => format!(
@@ -124,7 +127,7 @@ fn list_command(store_flag: Option<&str>) -> String {
 /// The product id in the form the API takes: a UUID, hyphenated. Checked here,
 /// before anything is sent, so a mistyped id is named as one instead of coming
 /// back as a refused request.
-fn parse_product_id(value: &str, store_flag: Option<&str>) -> Result<String> {
+pub(super) fn parse_product_id(value: &str, store_flag: Option<&str>) -> Result<String> {
     Uuid::parse_str(value.trim())
         .map(|id| id.hyphenated().to_string())
         .map_err(|_| {
@@ -139,6 +142,24 @@ fn parse_product_id(value: &str, store_flag: Option<&str>) -> Result<String> {
         })
 }
 
+/// The error for a product the store does not have: it names the product and
+/// the environment, and says how to find real ones.
+pub(super) fn product_not_found(
+    product_id: &str,
+    env: &str,
+    store_flag: Option<&str>,
+) -> CliCoreError {
+    GddyError::not_found(format!(
+        "no product {product_id:?} was found in this store in the {env} environment"
+    ))
+    .with_fix(format!(
+        "List the store's products with: {}",
+        list_command(store_flag)
+    ))
+    .with_system("commerce")
+    .into_cli_error()
+}
+
 /// Reads one product and shows it. A product the store does not have is a
 /// not-found error that names it, not an empty result.
 async fn show(
@@ -147,17 +168,10 @@ async fn show(
     env: &str,
     store_flag: Option<&str>,
 ) -> Result<CommandResult> {
-    let product = client.get_product(product_id).await?.ok_or_else(|| {
-        GddyError::not_found(format!(
-            "no product {product_id:?} was found in this store in the {env} environment"
-        ))
-        .with_fix(format!(
-            "List the store's products with: {}",
-            list_command(store_flag)
-        ))
-        .with_system("commerce")
-        .into_cli_error()
-    })?;
+    let product = client
+        .get_product(product_id)
+        .await?
+        .ok_or_else(|| product_not_found(product_id, env, store_flag))?;
     let data: Value = to_value(ProductDetail::from(product)).map_err(|_| {
         GddyError::unexpected("the product could not be shown")
             .with_system("commerce")

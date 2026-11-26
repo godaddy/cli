@@ -35,3 +35,34 @@ pub(super) struct Product;
     response_derives = "Debug, Clone"
 )]
 pub(super) struct ProductList;
+
+/// Create a product (`createSkuGroup`). Its input types derive `Default`, so a
+/// command sets only the fields it exposes and leaves the rest unset.
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "schemas/graphql/catalog-products.graphql",
+    query_path = "src/commerce/catalog/graphql/product_create.graphql",
+    response_derives = "Debug, Clone",
+    variables_derives = "Debug, Clone, Default"
+)]
+pub(super) struct ProductCreate;
+
+/// Change a product's own fields (`updateSkuGroup`).
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "schemas/graphql/catalog-products.graphql",
+    query_path = "src/commerce/catalog/graphql/product_update.graphql",
+    response_derives = "Debug, Clone",
+    variables_derives = "Debug, Clone, Default"
+)]
+pub(super) struct ProductUpdate;
+
+/// Archive a product (`archiveSkuGroup`).
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "schemas/graphql/catalog-products.graphql",
+    query_path = "src/commerce/catalog/graphql/product_archive.graphql",
+    response_derives = "Debug, Clone",
+    variables_derives = "Debug, Clone, Default"
+)]
+pub(super) struct ProductArchive;

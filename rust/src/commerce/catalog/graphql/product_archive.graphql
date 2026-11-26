@@ -1,0 +1,24 @@
+mutation ProductArchive($id: String!, $cascadeArchive: CascadeArchiveInput) {
+  archiveSkuGroup(id: $id, cascadeArchive: $cascadeArchive) {
+    id
+    name
+    label
+    status
+    type
+    createdAt
+    updatedAt
+    archivedAt
+    activatedAt
+    description
+    htmlDescription
+    skuCount
+    priceRange {
+      min
+      max
+    }
+    compareAtPriceRange {
+      min
+      max
+    }
+  }
+}
