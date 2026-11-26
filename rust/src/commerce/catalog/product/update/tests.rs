@@ -380,3 +380,57 @@ async fn a_preview_with_nothing_to_change_is_refused_before_connecting() {
     assert_eq!(code_of(&error), codes::VALIDATION_ERROR);
     assert!(!connected.get());
 }
+
+/// A description given as empty is sent as the empty string and the preview says
+/// it empties the description, so it is neither dropped nor taken for a no-op.
+#[tokio::test]
+async fn a_preview_says_an_empty_description_clears_it() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST);
+            then.status(200)
+                .json_body(json!({ "data": { "skuGroup": updated() } }));
+        })
+        .await;
+    let mut given = args(PRODUCT_ID);
+    given.label = Some("New".to_owned());
+    given.description = Some(String::new());
+
+    let result = update(&given, "ote", true, || {
+        let client = client_for(&server);
+        async move { Ok(client) }
+    })
+    .await
+    .expect("a preview");
+
+    assert_eq!(
+        result.data["changes"],
+        json!({ "label": "New", "description": "" })
+    );
+    assert_eq!(result.data["clears"], json!(["description"]));
+}
+
+/// With no empty detail there is nothing to list, so no `clears` at all.
+#[tokio::test]
+async fn a_preview_with_nothing_cleared_has_no_clears() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST);
+            then.status(200)
+                .json_body(json!({ "data": { "skuGroup": updated() } }));
+        })
+        .await;
+    let mut given = args(PRODUCT_ID);
+    given.label = Some("New".to_owned());
+
+    let result = update(&given, "ote", true, || {
+        let client = client_for(&server);
+        async move { Ok(client) }
+    })
+    .await
+    .expect("a preview");
+
+    assert!(result.data.get("clears").is_none(), "{}", result.data);
+}

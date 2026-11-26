@@ -143,13 +143,54 @@ async fn a_create_preview_is_readable_as_text() {
     assert_eq!(exit, 0, "{text}");
     for wanted in [
         "Action: dry-run: would create product",
-        "Name: Classic Tee",
-        "Type: PHYSICAL",
+        "New name: Classic Tee",
+        "New type: PHYSICAL",
     ] {
         assert!(text.contains(wanted), "{wanted} missing: {text}");
     }
     for blank in ["ID:", "Handle:", "Price from", "Created:"] {
         assert!(!text.contains(blank), "{blank} shown: {text}");
+    }
+}
+
+/// A handle the API would refuse is refused before anything else, for `create` and
+/// `update`, with `--dry-run` and without it, so a preview does not promise what
+/// the real run cannot do. The refusal comes from argument parsing, so no sign-in
+/// and no store are needed for it.
+#[tokio::test]
+async fn a_bad_handle_is_refused_in_a_preview_and_in_a_real_run() {
+    let cases: [(&str, &[&str]); 2] = [
+        (
+            "create",
+            &[
+                "create",
+                "--label",
+                "Tee",
+                "--type",
+                "physical",
+                "--name",
+                "Bad Name!",
+            ],
+        ),
+        ("update", &["update", PRODUCT_ID, "--name", "Bad Name!"]),
+    ];
+    for (what, command) in cases {
+        for dry_run in [false, true] {
+            let mut args = vec!["gddy", "commerce", "catalog", "product"];
+            args.extend_from_slice(command);
+            if dry_run {
+                args.push("--dry-run");
+            }
+            args.extend(["--output", "json"]);
+
+            let (exit, text) = run_human(&args).await;
+
+            assert_ne!(exit, 0, "{what} dry_run={dry_run}: {text}");
+            assert!(
+                text.contains("is not a valid handle"),
+                "{what} dry_run={dry_run}: {text}"
+            );
+        }
     }
 }
 
@@ -192,8 +233,8 @@ mod human {
         for wanted in [
             "Action: dry-run: would update product",
             &format!("Product: {PRODUCT_ID}"),
-            "Name: New",
-            "Status: ACTIVE",
+            "New name: New",
+            "New status: ACTIVE",
         ] {
             assert!(text.contains(wanted), "{wanted} missing: {text}");
         }
@@ -209,7 +250,7 @@ mod human {
         for heading in ["ID:", "Price from", "Created:", "Variants:", "Handle:"] {
             assert!(!text.contains(heading), "{heading} shown: {text}");
         }
-        assert!(text.contains("Type: DIGITAL"), "{text}");
+        assert!(text.contains("New type: DIGITAL"), "{text}");
     }
 
     #[test]
@@ -228,6 +269,33 @@ mod human {
             }));
 
             assert!(text.contains(shown), "{shown} missing: {text}");
+        }
+    }
+
+    /// A detail given as empty empties what is there. The text view hides empty
+    /// values, so the preview lists it by name, beside the other changes and when
+    /// it is the only one: it was hidden when a mixed change was previewed, and
+    /// printed blank rows when it was alone.
+    #[test]
+    fn a_description_being_cleared_is_shown_beside_other_changes_and_alone() {
+        let mixed = rendered(json!({
+            "action": "dry-run: would update product",
+            "productId": PRODUCT_ID,
+            "changes": { "label": "New", "description": "" },
+            "clears": ["description"]
+        }));
+        assert!(mixed.contains("Clears: description"), "{mixed}");
+        assert!(mixed.contains("New name: New"), "{mixed}");
+
+        let alone = rendered(json!({
+            "action": "dry-run: would update product",
+            "productId": PRODUCT_ID,
+            "changes": { "description": "" },
+            "clears": ["description"]
+        }));
+        assert!(alone.contains("Clears: description"), "{alone}");
+        for blank in ["New name", "New type", "New description", "New status"] {
+            assert!(!alone.contains(blank), "{blank} shown empty: {alone}");
         }
     }
 

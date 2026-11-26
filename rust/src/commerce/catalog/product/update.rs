@@ -6,7 +6,7 @@ use cli_engine::{CommandResult, CommandSpec, Result, RuntimeCommandSpec, Tier};
 use serde_json::to_value;
 
 use super::{
-    fields::{parse_label, parse_status},
+    fields::{parse_handle, parse_label, parse_status},
     get::{parse_product_id, product_not_found},
     output::ProductDetail,
     result::{ChangeResult, change_columns, changed, preview},
@@ -44,7 +44,7 @@ struct UpdateArgs {
     status: Option<String>,
 
     /// A new short handle: lowercase letters, digits, `-` and `_`.
-    #[arg(long, value_name = "HANDLE")]
+    #[arg(long, value_name = "HANDLE", value_parser = parse_handle)]
     name: Option<String>,
 }
 

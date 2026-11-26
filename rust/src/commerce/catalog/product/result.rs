@@ -31,27 +31,31 @@ output_schema!(ChangeResult {
     "action": "string", optional;
     "productId": "string", optional;
     "changes": "object", optional;
+    "clears": "[]string", optional;
 });
 
 /// The columns for a change a person reads. A change that was made is a product
 /// and a preview is not, so each column is left out when the output has no value
 /// for it: otherwise a preview would print a product's headings with nothing
 /// after them, and a product would print the preview's.
+///
+/// The details a preview would send are columns of their own, reached by their
+/// path in `changes`, and not a nested block: a block with no value in it (a
+/// description that is only being cleared) is printed as a heading over blank
+/// rows, where a column with no value is simply left out.
 pub(super) fn change_columns() -> Vec<TableColumn> {
-    let preview = |field: &str, header: &str| TableColumn::new(field, header).hide_when_empty(true);
+    let optional =
+        |field: &str, header: &str| TableColumn::new(field, header).hide_when_empty(true);
     let mut columns = vec![
-        preview("action", "Action"),
-        preview("productId", "Product"),
-        TableColumn::new("changes", "Changes")
-            .hide_when_empty(true)
-            .nested(vec![
-                preview("label", "Name"),
-                preview("type", "Type"),
-                preview("description", "Description"),
-                preview("status", "Status"),
-                preview("name", "Handle"),
-                preview("variants", "Variants"),
-            ]),
+        optional("action", "Action"),
+        optional("productId", "Product"),
+        optional("clears", "Clears"),
+        optional("changes.label", "New name"),
+        optional("changes.type", "New type"),
+        optional("changes.description", "New description"),
+        optional("changes.status", "New status"),
+        optional("changes.name", "New handle"),
+        optional("changes.variants", "Variants"),
     ];
     columns.extend(
         super::get::view_columns()
@@ -105,6 +109,17 @@ pub(super) fn preview(
     if let Some(id) = product_id {
         data.insert("productId".to_owned(), Value::from(id));
     }
+    // A detail given as empty empties what is there. It is in `changes` as the
+    // empty string it will be sent as, and the text view hides empty values, so it
+    // is also listed here, where a person reading text will see it.
+    let clears: Vec<Value> = details
+        .iter()
+        .filter(|(_, value)| value.is_some_and(str::is_empty))
+        .map(|(name, _)| Value::from(*name))
+        .collect();
     data.insert("changes".to_owned(), Value::Object(changes));
+    if !clears.is_empty() {
+        data.insert("clears".to_owned(), Value::Array(clears));
+    }
     CommandResult::new(Value::Object(data)).with_dry_run()
 }

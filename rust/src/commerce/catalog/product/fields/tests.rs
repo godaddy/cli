@@ -43,3 +43,47 @@ fn a_label_is_trimmed_and_cannot_be_blank() {
         assert!(parse_label(given).is_err(), "{given:?}");
     }
 }
+
+#[test]
+fn a_handle_is_accepted_when_the_api_would_accept_it() {
+    for given in [
+        "classic-tee",
+        "tee_2",
+        "a",
+        "0",
+        "a-b_c-9",
+        &"a".repeat(255),
+    ] {
+        assert_eq!(parse_handle(given), Ok(given.to_owned()), "{given:?}");
+    }
+    assert_eq!(
+        parse_handle("  classic-tee  "),
+        Ok("classic-tee".to_owned())
+    );
+}
+
+/// Each of these the API refuses (the first three were refused live), so a person
+/// is told here, in a preview as in a real run, and nothing is sent. A handle in
+/// upper case is refused and not rewritten, since a different handle than the one
+/// asked for is not what was asked for.
+#[test]
+fn a_handle_the_api_would_refuse_is_refused_here_and_says_what_is_accepted() {
+    for given in [
+        "Upper-Case",
+        "has space",
+        "Bad Name!",
+        "",
+        "   ",
+        "tee.2",
+        "tée",
+        "a/b",
+        &"a".repeat(256),
+    ] {
+        let error = parse_handle(given).expect_err("not a handle");
+        assert!(
+            error.contains("lowercase letters, digits"),
+            "{given:?}: {error}"
+        );
+        assert!(error.contains("classic-tee"), "{given:?}: {error}");
+    }
+}

@@ -6,7 +6,7 @@ use cli_engine::{CommandResult, CommandSpec, Result, RuntimeCommandSpec, Tier};
 use serde_json::to_value;
 
 use super::{
-    fields::{parse_kind, parse_label, parse_status},
+    fields::{parse_handle, parse_kind, parse_label, parse_status},
     output::ProductDetail,
     result::{ChangeResult, change_columns, changed, preview},
 };
@@ -44,7 +44,7 @@ struct CreateArgs {
 
     /// A short handle for the product: lowercase letters, digits, `-` and `_`.
     /// The API makes one from the label when this is left off.
-    #[arg(long, value_name = "HANDLE")]
+    #[arg(long, value_name = "HANDLE", value_parser = parse_handle)]
     name: Option<String>,
 }
 
