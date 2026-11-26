@@ -89,10 +89,10 @@ Run `gddy guide hosting` to see the hosting products and which guide covers each
 
 Run `gddy guide hosting-nodejs` for a walkthrough of deploying a Node.js app.
 
-A Node.js app runs on one of two products, and that choice decides what the deploy flow looks like. Read `hostingProduct` from `gddy hosting app get` to tell them apart:
+A Node.js app runs on one of two products, and that choice decides what the deploy flow looks like. Before publishing, check `hostingProduct` with `gddy hosting app get --app-id <app-id>`:
 
-- `WEB_HOSTING` — the app must be attached to a Web Hosting plan the customer owns before its first publish (`gddy hosting subscription attach`). If the user wants to buy Node.js Hosting, or has no plan with a free slot, see "Buy a plan" in the guide. It starts with `gddy shopping catalog search --category webHosting`.
-- `AIRO` — the app uses the customer's Airo App Builder plan. Do not attach a subscription and do not buy a Web Hosting plan; `subscription get`/`attach` fail on these apps.
+- `WEB_HOSTING` (Web Hosting) — the app must be attached to a Web Hosting plan the customer owns before its first publish (`gddy hosting subscription attach`). Check for an open slot on an existing plan before suggesting a purchase. If the user wants to buy Node.js Hosting, or has no plan with a free slot, see "Buy a plan" in the guide. It starts with `gddy shopping catalog search --category webHosting`.
+- `AIRO` (Airo App Builder) — the app uses the customer's Airo App Builder plan. Do not attach a subscription and do not buy a Web Hosting plan; `subscription get`/`attach` fail on these apps.
 
 Without `--hosting-product` on `gddy hosting app create`, GoDaddy picks the product for the account, so you can't assume which one a given app is on until you read it back.
 
