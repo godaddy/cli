@@ -6,9 +6,9 @@ use cli_engine::{CommandResult, CommandSpec, Result, RuntimeCommandSpec, Tier};
 use serde_json::to_value;
 
 use super::{
-    get::{ProductResult, parse_product_id, product_not_found},
+    get::{parse_product_id, product_not_found},
     output::ProductDetail,
-    result::{changed, preview},
+    result::{ChangeResult, change_columns, changed, preview},
 };
 use crate::{
     commerce::{
@@ -50,8 +50,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_tier(Tier::Mutate)
             .mutates(true)
             .handles_dry_run(true)
-            .with_output_schema::<ProductResult>()
-            .with_view(super::get::view_columns())
+            .with_output_schema::<ChangeResult>()
+            .with_view(change_columns())
             .with_scopes(&[COMMERCE_PRODUCT_WRITE]),
         |ctx, args: ArchiveArgs| async move {
             archive(&args, &ctx.middleware.env, ctx.dry_run(), || {
@@ -89,7 +89,11 @@ where
             Some(&product_id),
             &[(
                 "variants",
-                args.with_variants.then_some("archived with the product"),
+                Some(if args.with_variants {
+                    "archived with the product"
+                } else {
+                    "keep their status"
+                }),
             )],
         ));
     }

@@ -250,8 +250,10 @@ async fn a_preview_reads_the_product_and_archives_nothing() {
     );
 }
 
+/// Without `--with-variants` the preview says what the real run does with them,
+/// so the person is not left to infer it from a blank.
 #[tokio::test]
-async fn a_preview_without_the_cascade_says_nothing_about_variants() {
+async fn a_preview_without_the_cascade_says_the_variants_keep_their_status() {
     let server = MockServer::start_async().await;
     server
         .mock_async(|when, then| {
@@ -268,7 +270,10 @@ async fn a_preview_without_the_cascade_says_nothing_about_variants() {
     .await
     .expect("a preview");
 
-    assert_eq!(result.data["changes"], json!({}));
+    assert_eq!(
+        result.data["changes"],
+        json!({ "variants": "keep their status" })
+    );
 }
 
 #[tokio::test]

@@ -1,10 +1,65 @@
 //! What the commands that change a product print: the product as it now is, and
 //! the next step.
 
-use cli_engine::{CommandResult, Result};
+use cli_engine::{CommandResult, Result, TableColumn};
 use serde_json::{Map, Value};
 
-use crate::{commerce::catalog::follow_up, error::GddyError, next_action::required_value};
+use crate::{
+    commerce::catalog::follow_up, error::GddyError, next_action::required_value,
+    output_schema::output_schema,
+};
+
+// What `create`, `update` and `archive` print: the product as it now is, or with
+// `--dry-run` what would change.
+output_schema!(ChangeResult {
+    "id": "string", optional;
+    "name": "string", optional;
+    "label": "string", optional;
+    "status": "string", optional;
+    "type": "string", optional;
+    "description": "string", optional;
+    "variantCount": "number", optional;
+    "priceMin": "number", optional;
+    "priceMax": "number", optional;
+    "compareAtPriceMin": "number", optional;
+    "compareAtPriceMax": "number", optional;
+    "htmlDescription": "string", optional;
+    "createdAt": "string", optional;
+    "updatedAt": "string", optional;
+    "activatedAt": "string", optional;
+    "archivedAt": "string", optional;
+    "action": "string", optional;
+    "productId": "string", optional;
+    "changes": "object", optional;
+});
+
+/// The columns for a change a person reads. A change that was made is a product
+/// and a preview is not, so each column is left out when the output has no value
+/// for it: otherwise a preview would print a product's headings with nothing
+/// after them, and a product would print the preview's.
+pub(super) fn change_columns() -> Vec<TableColumn> {
+    let preview = |field: &str, header: &str| TableColumn::new(field, header).hide_when_empty(true);
+    let mut columns = vec![
+        preview("action", "Action"),
+        preview("productId", "Product"),
+        TableColumn::new("changes", "Changes")
+            .hide_when_empty(true)
+            .nested(vec![
+                preview("label", "Name"),
+                preview("type", "Type"),
+                preview("description", "Description"),
+                preview("status", "Status"),
+                preview("name", "Handle"),
+                preview("variants", "Variants"),
+            ]),
+    ];
+    columns.extend(
+        super::get::view_columns()
+            .into_iter()
+            .map(|column| column.hide_when_empty(true)),
+    );
+    columns
+}
 
 /// The result of a change: `product` as the API now has it, and a step to read it
 /// back. A product that cannot be turned into output is an error, not an empty

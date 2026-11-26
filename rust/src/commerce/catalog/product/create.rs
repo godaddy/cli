@@ -7,9 +7,8 @@ use serde_json::to_value;
 
 use super::{
     fields::{parse_kind, parse_label, parse_status},
-    get::ProductResult,
     output::ProductDetail,
-    result::{changed, preview},
+    result::{ChangeResult, change_columns, changed, preview},
 };
 use crate::{
     commerce::{
@@ -65,8 +64,8 @@ pub(super) fn command() -> RuntimeCommandSpec {
             .with_tier(Tier::Mutate)
             .mutates(true)
             .handles_dry_run(true)
-            .with_output_schema::<ProductResult>()
-            .with_view(super::get::view_columns())
+            .with_output_schema::<ChangeResult>()
+            .with_view(change_columns())
             .with_scopes(&[COMMERCE_PRODUCT_WRITE]),
         |ctx, args: CreateArgs| async move {
             create(&args, ctx.dry_run(), || {
