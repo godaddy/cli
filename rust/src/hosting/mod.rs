@@ -16,7 +16,12 @@ mod vps;
 use cli_engine::{GroupSpec, Module, RuntimeGroupSpec};
 
 pub fn module() -> Module {
-    Module::new("Hosting", |_ctx| {
+    Module::new("Hosting", |ctx| {
+        // Registered here, not on the Module, so the guide is offered only
+        // while the flag that shows the `vps` commands is on.
+        if common::vps_enabled(&ctx.middleware().flag_policy) {
+            ctx.add_guides_from_markdown([("hosting-vps.md", common::VPS_GUIDE)]);
+        }
         RuntimeGroupSpec::new(
             GroupSpec::new("hosting", "Manage GoDaddy hosting products").with_long(
                 "Work with GoDaddy hosting APIs.\n\
@@ -63,7 +68,6 @@ pub fn module() -> Module {
     .with_guides_from_markdown([("hosting.md", common::HOSTING_GUIDE)])
     .with_guides_from_markdown([("hosting-nodejs.md", common::NODEJS_GUIDE)])
     .with_guides_from_markdown([("hosting-wordpress.md", common::WORDPRESS_GUIDE)])
-    .with_guides_from_markdown([("hosting-vps.md", common::VPS_GUIDE)])
 }
 
 #[cfg(test)]

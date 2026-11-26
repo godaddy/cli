@@ -1,5 +1,5 @@
 use clap::ValueEnum;
-use cli_engine::{CliCoreError, CommandContext};
+use cli_engine::{CliCoreError, CommandContext, FlagPolicy, Stage};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -415,6 +415,10 @@ pub const VPS_GUIDE: &str = include_str!("guides/hosting-vps.md");
 /// Feature flag key for the virtual private server commands. They stay
 /// Experimental until the servers API is served.
 pub const VPS_FLAG: &str = "hosting-vps";
+
+pub fn vps_enabled(policy: &FlagPolicy) -> bool {
+    policy.visible(Some(VPS_FLAG), Stage::Experimental)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum HostingProduct {

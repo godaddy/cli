@@ -34,7 +34,7 @@ mod tests {
     use cli_engine::{Cli, CliConfig, Stage};
 
     use crate::hosting::common::VPS_FLAG;
-    use crate::hosting::test_support::{cli, run_hosting};
+    use crate::hosting::test_support::{cli, run_guide, run_hosting};
 
     fn cli_with_vps() -> Cli {
         Cli::new(
@@ -71,6 +71,16 @@ mod tests {
         assert!(help.contains("list"), "{help}");
         let hosting = run_hosting(&cli, &["--help"]).await;
         assert!(commands_section(&hosting).contains("vps"), "{hosting}");
+    }
+
+    #[tokio::test]
+    async fn the_vps_guide_is_offered_only_while_its_flag_is_on() {
+        let topics = run_guide(&cli(), None).await;
+        assert!(!topics.contains("hosting-vps"), "{topics}");
+        let topics = run_guide(&cli_with_vps(), None).await;
+        assert!(topics.contains("hosting-vps"), "{topics}");
+        let guide = run_guide(&cli_with_vps(), Some("hosting-vps")).await;
+        assert!(guide.contains("hosting vps list"), "{guide}");
     }
 
     #[tokio::test]
