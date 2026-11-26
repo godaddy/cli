@@ -122,12 +122,13 @@ fn same_store_id(returned: &str, requested: &str) -> bool {
 fn forbidden_fix(env: &str) -> String {
     let per_env = env_var_for(env);
     format!(
-        "Sign in with an account that has access to the store. After a browser login, \
-         `gddy auth status --fields scopes` shows the permissions it holds. A personal \
-         access token takes precedence over a browser login and carries its own fixed \
-         permissions. If {per_env} or {PAT_ENV_VAR} is set in your shell, unset it, or \
-         replace it with a token that can read stores. A token saved with `gddy pat add` \
-         is removed with: gddy pat remove --env {env}"
+        "Sign in with an account that has access to the store. After a browser \
+        login, `gddy auth status --fields scopes` shows the permissions it \
+        holds. A personal access token takes precedence over a browser login \
+        and carries its own fixed permissions. If {per_env} or {PAT_ENV_VAR} is \
+        set in your shell, unset it, or replace it with a token that has the \
+        permissions this command needs. A token saved with `gddy pat add` is \
+        removed with: gddy pat remove --env {env}"
     )
 }
 
@@ -138,7 +139,10 @@ fn forbidden_fix(env: &str) -> String {
 /// The response body is never put in the error. Store responses can carry
 /// government IDs, addresses and payment details, and an error is printed, logged
 /// and pasted into bug reports, so it names only the status.
-fn http_error(status: u16, store_id: &str, env: &str) -> CliCoreError {
+///
+/// The catalog client maps its HTTP failures the same way, so the wording does
+/// not assume the store is being read.
+pub(super) fn http_error(status: u16, store_id: &str, env: &str) -> CliCoreError {
     match status {
         404 => GddyError::from_status(
             404,
@@ -151,7 +155,7 @@ fn http_error(status: u16, store_id: &str, env: &str) -> CliCoreError {
         )),
         403 => GddyError::from_status(
             403,
-            format!("this account is not allowed to read store {store_id}"),
+            format!("this account is not allowed to use store {store_id}"),
             SYSTEM,
         )
         .with_fix(forbidden_fix(env)),

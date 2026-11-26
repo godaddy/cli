@@ -1,0 +1,30 @@
+query ProductList($first: Int, $after: String, $status: SKUGroupStatusFilter) {
+  skuGroups(first: $first, after: $after, status: $status) {
+    totalCount
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    edges {
+      node {
+        id
+        name
+        label
+        status
+        type
+        description
+        skuCount
+        createdAt
+        updatedAt
+        priceRange {
+          min
+          max
+        }
+        compareAtPriceRange {
+          min
+          max
+        }
+      }
+    }
+  }
+}
