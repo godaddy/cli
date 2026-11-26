@@ -9,7 +9,9 @@
 
 use serde::Serialize;
 
-use crate::commerce::catalog::operations::{product, product_list};
+use crate::commerce::catalog::operations::{
+    product, product_archive, product_create, product_list, product_update,
+};
 
 /// One product as `product list` shows it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -74,32 +76,46 @@ impl From<product_list::ProductListSkuGroupsEdgesNode> for ProductSummary {
     }
 }
 
-impl From<product::ProductSkuGroup> for ProductDetail {
-    fn from(node: product::ProductSkuGroup) -> Self {
-        let (price_min, price_max) = bounds(node.price_range.map(|range| (range.min, range.max)));
-        let (compare_at_price_min, compare_at_price_max) = bounds(
-            node.compare_at_price_range
-                .map(|range| (range.min, range.max)),
-        );
-        Self {
-            html_description: node.html_description,
-            activated_at: node.activated_at,
-            archived_at: node.archived_at,
-            summary: ProductSummary {
-                id: node.id,
-                name: node.name,
-                label: node.label,
-                status: node.status,
-                kind: node.type_,
-                description: node.description,
-                variant_count: node.sku_count,
-                price_min,
-                price_max,
-                compare_at_price_min,
-                compare_at_price_max,
-                created_at: node.created_at,
-                updated_at: node.updated_at,
-            },
+/// `ProductDetail` from the product each operation answers with. The operations
+/// each have a type of their own for the same selection, with the same fields.
+macro_rules! detail_from {
+    ($($node:ty),+ $(,)?) => {$(
+        impl From<$node> for ProductDetail {
+            fn from(node: $node) -> Self {
+                let (price_min, price_max) =
+                    bounds(node.price_range.map(|range| (range.min, range.max)));
+                let (compare_at_price_min, compare_at_price_max) = bounds(
+                    node.compare_at_price_range
+                        .map(|range| (range.min, range.max)),
+                );
+                Self {
+                    html_description: node.html_description,
+                    activated_at: node.activated_at,
+                    archived_at: node.archived_at,
+                    summary: ProductSummary {
+                        id: node.id,
+                        name: node.name,
+                        label: node.label,
+                        status: node.status,
+                        kind: node.type_,
+                        description: node.description,
+                        variant_count: node.sku_count,
+                        price_min,
+                        price_max,
+                        compare_at_price_min,
+                        compare_at_price_max,
+                        created_at: node.created_at,
+                        updated_at: node.updated_at,
+                    },
+                }
+            }
         }
-    }
+    )+};
 }
+
+detail_from!(
+    product::ProductSkuGroup,
+    product_create::ProductCreateCreateSkuGroup,
+    product_update::ProductUpdateUpdateSkuGroup,
+    product_archive::ProductArchiveArchiveSkuGroup,
+);

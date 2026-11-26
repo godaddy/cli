@@ -21,7 +21,10 @@ use reqwest::{Client as HttpClient, ClientBuilder};
 use serde_json::{Value, from_value};
 use uuid::Uuid;
 
-use super::operations::{Product, ProductList, product, product_list};
+use super::operations::{
+    Product, ProductArchive, ProductCreate, ProductList, ProductUpdate, product, product_archive,
+    product_create, product_list, product_update,
+};
 use crate::{
     api::http::encode_path_segment, commerce::client::http_error, environments, error::GddyError,
     http,
@@ -44,6 +47,9 @@ const QUERY_REJECTED: &str = "GRAPHQL_VALIDATION_FAILED";
 /// carries a cursor, the cursor is what it cannot act on: a made-up one is
 /// refused with this code, where a real one never is.
 const BAD_REQUEST: &str = "BAD_REQUEST";
+/// What the subgraph says when a mutation names a product the store does not
+/// have. A query for one says `null` instead.
+const NOT_FOUND: &str = "NOT_FOUND";
 
 /// What to try for a failure that no change to the command's input can repair:
 /// a query gddy itself sends, or an answer it cannot read. The default hint for
@@ -126,6 +132,21 @@ impl CatalogClient {
         fields: &[&str],
         on_bad_request: fn() -> CliCoreError,
     ) -> Result<Q::ResponseData> {
+        self.exchange::<Q>(variables, fields, on_bad_request, false)
+            .await?
+            .ok_or_else(|| malformed("it did not contain what was asked for"))
+    }
+
+    /// [`send`](Self::send), except that with `missing_is_none` an answer whose
+    /// only error is `NOT_FOUND` is `None`: the mutation named something the
+    /// store does not have, which is not a failure of the request.
+    async fn exchange<Q: GraphQLQuery>(
+        &self,
+        variables: Q::Variables,
+        fields: &[&str],
+        on_bad_request: fn() -> CliCoreError,
+        missing_is_none: bool,
+    ) -> Result<Option<Q::ResponseData>> {
         let mut payload = serde_json::to_value(Q::build_query(variables)).map_err(|_| {
             GddyError::unexpected("the catalog request could not be built")
                 .with_fix(NOT_FIXABLE_BY_INPUT)
@@ -180,6 +201,13 @@ impl CatalogClient {
             .into_cli_error()
         })?;
         if let Some(errors) = parsed.errors.filter(|errors| !errors.is_empty()) {
+            if missing_is_none
+                && errors
+                    .iter()
+                    .all(|error| error_code(error) == Some(NOT_FOUND))
+            {
+                return Ok(None);
+            }
             return Err(graphql_error(
                 &errors,
                 &self.store_id,
@@ -193,7 +221,9 @@ impl CatalogClient {
         if !answers(&data, fields) {
             return Err(malformed("it did not contain what was asked for"));
         }
-        from_value(data).map_err(|_| malformed("it was not shaped as expected"))
+        from_value(data)
+            .map(Some)
+            .map_err(|_| malformed("it was not shaped as expected"))
     }
 
     /// One product, by id. `None` when the store has no product with that id,
@@ -246,6 +276,67 @@ impl CatalogClient {
             check_page(page)?;
         }
         Ok(data.sku_groups)
+    }
+
+    /// Creates a product and returns it as the API stored it. The API answers
+    /// with the product it made, so an answer that is `null` is not a created
+    /// product and is refused as a malformed one.
+    pub(super) async fn create_product(
+        &self,
+        input: product_create::MutationCreateSkuGroupInput,
+    ) -> Result<product_create::ProductCreateCreateSkuGroup> {
+        let data = self
+            .send::<ProductCreate>(
+                product_create::Variables { input },
+                &["createSkuGroup"],
+                request_refused,
+            )
+            .await?;
+        data.create_sku_group
+            .ok_or_else(|| malformed("it did not contain the product that was created"))
+    }
+
+    /// Changes a product's own fields. `None` when the store has no product with
+    /// that id, which the API says with an explicit `null`.
+    pub(super) async fn update_product(
+        &self,
+        id: &str,
+        input: product_update::MutationUpdateSkuGroupInput,
+    ) -> Result<Option<product_update::ProductUpdateUpdateSkuGroup>> {
+        let data = self
+            .exchange::<ProductUpdate>(
+                product_update::Variables {
+                    id: id.to_owned(),
+                    input,
+                },
+                &["updateSkuGroup"],
+                request_refused,
+                true,
+            )
+            .await?;
+        Ok(data.and_then(|data| data.update_sku_group))
+    }
+
+    /// Archives a product, and its variants too when `variants` is set. `None`
+    /// when the store has no product with that id.
+    pub(super) async fn archive_product(
+        &self,
+        id: &str,
+        variants: bool,
+    ) -> Result<Option<product_archive::ProductArchiveArchiveSkuGroup>> {
+        let data = self
+            .exchange::<ProductArchive>(
+                product_archive::Variables {
+                    id: id.to_owned(),
+                    cascade_archive: variants
+                        .then_some(product_archive::CascadeArchiveInput { skus: Some(true) }),
+                },
+                &["archiveSkuGroup"],
+                request_refused,
+                true,
+            )
+            .await?;
+        Ok(data.and_then(|data| data.archive_sku_group))
     }
 }
 

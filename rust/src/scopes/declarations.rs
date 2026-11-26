@@ -74,6 +74,8 @@ declare_scopes! {
             COMMERCE_STORE_READ => "commerce.store:read",
             /// Read the products in a Commerce store's catalog
             COMMERCE_PRODUCT_READ => "commerce.product:read",
+            /// Create, update, or archive the products in a Commerce store's catalog
+            COMMERCE_PRODUCT_WRITE => "commerce.product:write",
         }
         step_up {
             // Spends money.

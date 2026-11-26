@@ -1,0 +1,24 @@
+mutation ProductUpdate($id: String!, $input: MutationUpdateSkuGroupInput!) {
+  updateSkuGroup(id: $id, input: $input) {
+    id
+    name
+    label
+    status
+    type
+    createdAt
+    updatedAt
+    archivedAt
+    activatedAt
+    description
+    htmlDescription
+    skuCount
+    priceRange {
+      min
+      max
+    }
+    compareAtPriceRange {
+      min
+      max
+    }
+  }
+}
